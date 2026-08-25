@@ -2,15 +2,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { checkRateLimit } from "@/lib/rate-limit";
-import { ActionResponse, PrintTypeEnum } from "@/lib/types";
-
-// Pricing per page in Paise
-export const PRINT_RATES_PAISE: Record<PrintTypeEnum, number> = {
-  BW_SINGLE: 200,   // ₹2.00
-  BW_DOUBLE: 150,   // ₹1.50
-  COLOR_SINGLE: 1000, // ₹10.00
-  COLOR_DOUBLE: 800,  // ₹8.00
-};
+import { ActionResponse, PrintTypeEnum, PRINT_RATES_PAISE } from "@/lib/types";
 
 /**
  * Fetch all print orders for a user

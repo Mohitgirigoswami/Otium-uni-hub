@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { useUser } from "@/components/providers/UserContext";
-import { getPrintOrders, createPrintOrder, PRINT_RATES_PAISE } from "@/actions/print.actions";
+import { getPrintOrders, createPrintOrder } from "@/actions/print.actions";
 import { formatPaiseToRupees, formatDate } from "@/lib/utils";
 import { toast } from "sonner";
 import {
@@ -19,7 +19,7 @@ import {
   CheckCircle2,
   AlertCircle,
 } from "lucide-react";
-import { PrintTypeEnum } from "@/lib/types";
+import { PrintTypeEnum, PRINT_RATES_PAISE } from "@/lib/types";
 import { PdfUploadDropzone } from "@/components/ui/PdfUploadDropzone";
 
 const PRINT_TYPES: { id: PrintTypeEnum; name: string; desc: string; rateRupees: string }[] = [

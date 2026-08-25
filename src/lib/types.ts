@@ -50,3 +50,11 @@ export interface SemesterData {
   gpa: number;
   totalCredits: number;
 }
+
+// Pricing per page in Paise (Strict integer storage)
+export const PRINT_RATES_PAISE: Record<PrintTypeEnum, number> = {
+  BW_SINGLE: 200,   // ₹2.00
+  BW_DOUBLE: 150,   // ₹1.50
+  COLOR_SINGLE: 1000, // ₹10.00
+  COLOR_DOUBLE: 800,  // ₹8.00
+};
