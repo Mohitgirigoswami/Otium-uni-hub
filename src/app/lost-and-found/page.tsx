@@ -12,6 +12,8 @@ import {
   createLostItem,
   markLostItemClaimed,
 } from "@/actions/lost-and-found.actions";
+import { getOrCreateConversation } from "@/actions/chat.actions";
+import { useRouter } from "next/navigation";
 import { formatDate } from "@/lib/utils";
 import { toast } from "sonner";
 import {
@@ -19,7 +21,7 @@ import {
   Plus,
   MapPin,
   Calendar,
-  Mail,
+  MessageSquare,
   CheckCircle2,
   Sparkles,
   Camera,
@@ -117,13 +119,33 @@ export default function LostAndFoundPage() {
     }
   };
 
-  const handleTriggerMailTo = (item: any) => {
-    const finderEmail = item.finder?.email || "campus-security@uni.edu";
-    const subject = encodeURIComponent(`Claim Inquiry for Lost Item: "${item.title}"`);
-    const body = encodeURIComponent(
-      `Hello ${item.finder?.name || "Fellow Student"},\n\nI saw your report on Otium Lost & Found regarding "${item.title}" found at ${item.locationFound}.\n\nI believe this belongs to me. Here are identifying details to verify ownership:\n[Please provide proof/serial number/description here]\n\nCan we coordinate a time to meet on campus?\n\nThank you,\n${user?.name || "Student"}`
-    );
-    window.location.href = `mailto:${finderEmail}?subject=${subject}&body=${body}`;
+  const router = useRouter();
+  const [chatLoadingId, setChatLoadingId] = useState<string | null>(null);
+
+  const handleDirectMessageFinder = async (item: any) => {
+    if (!user) {
+      toast.error("Please login to message the finder.");
+      return;
+    }
+    if (user.id === item.finderId) {
+      toast.info("You posted this found item report!");
+      return;
+    }
+
+    setChatLoadingId(item.id);
+    const res = await getOrCreateConversation({
+      participantOneId: user.id,
+      participantTwoId: item.finderId,
+      isAnonymousChat: false,
+    });
+    setChatLoadingId(null);
+
+    if (res.success && res.data) {
+      toast.success("Opening direct chat with finder...");
+      router.push(`/messages?id=${res.data.id}`);
+    } else {
+      toast.error(res.error || "Failed to start chat.");
+    }
   };
 
   const handleMarkClaimed = async (itemId: string) => {
@@ -310,11 +332,12 @@ export default function LostAndFoundPage() {
                         <Button
                           variant="brand"
                           size="sm"
-                          leftIcon={<Mail className="w-3.5 h-3.5" />}
-                          onClick={() => handleTriggerMailTo(item)}
+                          leftIcon={<MessageSquare className="w-3.5 h-3.5" />}
+                          isLoading={chatLoadingId === item.id}
+                          onClick={() => handleDirectMessageFinder(item)}
                           className="w-full text-xs"
                         >
-                          This is mine
+                          Message Finder
                         </Button>
                         <Button
                           variant="outline"

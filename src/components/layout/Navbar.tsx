@@ -20,6 +20,8 @@ import {
   AlertTriangle,
   ChevronDown,
   UserCheck,
+  MessageSquare,
+  ShieldCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -32,6 +34,7 @@ const NAV_ITEMS = [
   { href: "/incognito", label: "Incognito", icon: EyeOff, badge: "Anon" },
   { href: "/marketplace", label: "Marketplace", icon: ShoppingBag },
   { href: "/print-station", label: "Print", icon: Printer },
+  { href: "/messages", label: "Messages", icon: MessageSquare, badge: "Live" },
 ];
 
 export function Navbar() {
@@ -102,6 +105,18 @@ export function Navbar() {
                 <AlertTriangle className="w-3.5 h-3.5 text-rose-500" />
                 <span>Cooldown: {cooldownHoursRemaining}h</span>
               </div>
+            )}
+
+            {/* Admin Console Pill */}
+            {user?.role === "ADMIN" && (
+              <Link
+                href="/admin/print"
+                className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-700 dark:text-amber-300 text-xs font-bold hover:bg-amber-500/25 transition-colors"
+                title="Open Admin Operations Console"
+              >
+                <ShieldCheck className="w-3.5 h-3.5 text-amber-500" />
+                <span className="hidden sm:inline">Admin Hub</span>
+              </Link>
             )}
 
             {/* Persona Switcher Dropdown */}

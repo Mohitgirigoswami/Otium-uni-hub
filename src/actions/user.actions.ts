@@ -7,15 +7,65 @@ import { ActionResponse } from "@/lib/types";
 /**
  * Get or automatically initialize a primary user session for the app
  */
-export async function getOrCreateCurrentUser(): Promise<ActionResponse<any>> {
+export async function getOrCreateCurrentUser(
+  targetUserId?: string
+): Promise<ActionResponse<any>> {
   try {
-    const rateCheck = await checkRateLimit("user-auth");
+    const rateCheck = await checkRateLimit(targetUserId || "user-auth");
     if (!rateCheck.success) {
       return { error: rateCheck.error };
     }
 
-    // Try finding existing default user
+    if (targetUserId) {
+      let user = await prisma.user.findUnique({
+        where: { id: targetUserId },
+        include: {
+          incognitoProfile: true,
+          assignedTasks: {
+            where: { status: "ASSIGNED" },
+          },
+        },
+      });
+
+      if (user) {
+        return { success: true, data: user };
+      }
+
+      // If requested user is the admin operator, seed it
+      if (targetUserId === "usr_admin_operator") {
+        user = await prisma.user.create({
+          data: {
+            id: "usr_admin_operator",
+            name: "Campus Print Operator",
+            email: "admin.print@uni.edu",
+            role: "ADMIN" as any,
+            department: "Campus Printing & Operations",
+            year: 0,
+            image:
+              "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&auto=format&fit=crop&q=80",
+            phone: "+91 99999 00000",
+            incognitoProfile: {
+              create: {
+                handle: "AdminConsole",
+                avatarUrl:
+                  "https://api.dicebear.com/9.x/bottts/svg?seed=AdminConsole",
+              },
+            },
+          },
+          include: {
+            incognitoProfile: true,
+            assignedTasks: {
+              where: { status: "ASSIGNED" },
+            },
+          },
+        });
+        return { success: true, data: user };
+      }
+    }
+
+    // Default primary student
     let user = await prisma.user.findFirst({
+      where: { role: "STUDENT" },
       include: {
         incognitoProfile: true,
         assignedTasks: {
@@ -25,19 +75,22 @@ export async function getOrCreateCurrentUser(): Promise<ActionResponse<any>> {
     });
 
     if (!user) {
-      // Seed default active student
       user = await prisma.user.create({
         data: {
+          id: "usr_aarav_sharma",
           name: "Aarav Sharma",
           email: "aarav.sharma@uni.edu",
           department: "Computer Science & Engineering",
           year: 3,
-          image: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80",
+          role: "STUDENT" as any,
+          image:
+            "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80",
           phone: "+91 98765 43210",
           incognitoProfile: {
             create: {
               handle: "CyberHawk_99",
-              avatarUrl: "https://api.dicebear.com/9.x/bottts/svg?seed=CyberHawk_99",
+              avatarUrl:
+                "https://api.dicebear.com/9.x/bottts/svg?seed=CyberHawk_99",
             },
           },
         },
@@ -63,111 +116,113 @@ export async function getOrCreateCurrentUser(): Promise<ActionResponse<any>> {
 }
 
 /**
- * Switch or update user profile
+ * Fetch user by ID
  */
-export async function updateUserProfile(
-  userId: string,
-  formData: { name?: string; department?: string; year?: number; phone?: string }
-): Promise<ActionResponse<any>> {
+export async function getUserById(userId: string): Promise<ActionResponse<any>> {
   try {
-    const rateCheck = await checkRateLimit(userId);
-    if (!rateCheck.success) {
-      return { error: rateCheck.error };
-    }
-
-    const updated = await prisma.user.update({
+    const user = await prisma.user.findUnique({
       where: { id: userId },
-      data: {
-        name: formData.name,
-        department: formData.department,
-        year: formData.year ? Number(formData.year) : undefined,
-        phone: formData.phone,
+      include: {
+        incognitoProfile: true,
+        assignedTasks: {
+          where: { status: "ASSIGNED" },
+        },
       },
     });
 
+    if (!user) {
+      return { error: "User not found." };
+    }
+
     return {
       success: true,
-      data: updated,
+      data: user,
     };
   } catch (error: any) {
-    console.error("Error in updateUserProfile:", error);
+    console.error("Error in getUserById:", error);
     return {
-      error: error?.message || "Failed to update profile.",
+      error: error?.message || "Failed to fetch user.",
     };
   }
 }
 
 /**
- * Fetch full dashboard stats for the current user
+ * Switch persona / user
  */
-export async function getDashboardStats(userId: string): Promise<ActionResponse<any>> {
+export async function switchUserPersona(personaId: string): Promise<ActionResponse<any>> {
+  return getOrCreateCurrentUser(personaId);
+}
+
+/**
+ * Fetch aggregated statistics for student profile dashboard
+ */
+export async function getDashboardStats(
+  userId: string
+): Promise<ActionResponse<any>> {
+  return getUserDashboardStats(userId);
+}
+
+export async function getUserDashboardStats(
+  userId: string
+): Promise<ActionResponse<any>> {
   try {
-    const [
-      activeTasksCount,
-      openGigsCount,
-      subjects,
-      unclaimedLostCount,
-      activeRidesCount,
-      marketplaceItemsCount,
-      user,
-    ] = await Promise.all([
-      prisma.taskGig.count({
-        where: { assignedToId: userId, status: "ASSIGNED" },
-      }),
-      prisma.taskGig.count({
-        where: { status: "OPEN" },
-      }),
-      prisma.subject.findMany({
-        where: { userId },
-      }),
-      prisma.lostAndFoundItem.count({
-        where: { status: "UNCLAIMED" },
-      }),
-      prisma.rideShare.count({
-        where: { status: "OPEN" },
-      }),
-      prisma.marketplaceItem.count({
-        where: { status: "AVAILABLE" },
-      }),
-      prisma.user.findUnique({
-        where: { id: userId },
-        include: { incognitoProfile: true },
-      }),
-    ]);
+    const [user, subjects, activeGigs, postedGigs, printOrders, marketplaceItems] =
+      await Promise.all([
+        prisma.user.findUnique({
+          where: { id: userId },
+          include: { incognitoProfile: true },
+        }),
+        prisma.subject.findMany({ where: { userId } }),
+        prisma.taskGig.count({
+          where: { assignedToId: userId, status: "ASSIGNED" },
+        }),
+        prisma.taskGig.count({
+          where: { posterId: userId },
+        }),
+        prisma.printOrder.count({
+          where: { userId },
+        }),
+        prisma.marketplaceItem.count({
+          where: { sellerId: userId, status: "AVAILABLE" },
+        }),
+      ]);
 
-    // Calculate overall attendance
+    if (!user) {
+      return { error: "User not found." };
+    }
+
+    // Compute average attendance
     let totalClasses = 0;
-    let totalAttended = 0;
-    let criticalSubjects = 0;
-
-    subjects.forEach((subj) => {
-      totalClasses += subj.totalClasses;
-      totalAttended += subj.attendedClasses;
-      const pct = subj.totalClasses > 0 ? (subj.attendedClasses / subj.totalClasses) * 100 : 100;
-      if (pct < 75) criticalSubjects++;
+    let attendedClasses = 0;
+    subjects.forEach((s) => {
+      totalClasses += s.totalClasses;
+      attendedClasses += s.attendedClasses;
     });
 
-    const overallAttendance =
-      totalClasses > 0 ? Number(((totalAttended / totalClasses) * 100).toFixed(1)) : 100;
+    const attendancePct =
+      totalClasses > 0 ? (attendedClasses / totalClasses) * 100 : 100;
 
     return {
       success: true,
       data: {
         user,
-        activeTasksCount,
-        openGigsCount,
-        overallAttendance,
-        criticalSubjects,
-        totalSubjects: subjects.length,
-        unclaimedLostCount,
-        activeRidesCount,
-        marketplaceItemsCount,
+        stats: {
+          attendancePercentage: Number(attendancePct.toFixed(1)),
+          activeAssignedGigs: activeGigs,
+          totalPostedGigs: postedGigs,
+          activePrintOrders: printOrders,
+          activeListings: marketplaceItems,
+          isBlockedByCooldown: user.freelancerCooldown
+            ? new Date(user.freelancerCooldown) > new Date()
+            : false,
+          cooldownExpiresAt: user.freelancerCooldown,
+        },
       },
     };
   } catch (error: any) {
-    console.error("Error in getDashboardStats:", error);
+    console.error("Error in getUserDashboardStats:", error);
     return {
-      error: error?.message || "Failed to load dashboard statistics.",
+      error: error?.message || "Failed to load dashboard stats.",
     };
   }
 }

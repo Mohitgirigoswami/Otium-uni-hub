@@ -7,6 +7,8 @@ async function main() {
 
   // Clean existing tables safely
   try {
+    await prisma.message.deleteMany();
+    await prisma.conversation.deleteMany();
     await prisma.attendanceRecord.deleteMany();
     await prisma.subject.deleteMany();
     await prisma.semesterCGPA.deleteMany();
@@ -312,7 +314,71 @@ async function main() {
     },
   });
 
-  console.log("✅ Supabase PostgreSQL database seeded successfully!");
+  // Seed Admin Operator User
+  const adminUser = await prisma.user.upsert({
+    where: { id: "usr_admin_operator" },
+    update: {},
+    create: {
+      id: "usr_admin_operator",
+      name: "Campus Print Operator",
+      email: "admin.print@uni.edu",
+      role: "ADMIN",
+      department: "Campus Printing & IT Services",
+      year: 0,
+      phone: "+91 99999 00000",
+      image: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&auto=format&fit=crop&q=80",
+      incognitoProfile: {
+        create: {
+          handle: "AdminConsole",
+          avatarUrl: "https://api.dicebear.com/9.x/bottts/svg?seed=AdminConsole",
+        },
+      },
+    },
+  });
+
+  // Seed Direct Conversation between Aarav and Priya
+  const conv1 = await prisma.conversation.create({
+    data: {
+      participantOneId: user1.id,
+      participantTwoId: user2.id,
+      isAnonymousChat: false,
+    },
+  });
+
+  await prisma.message.create({
+    data: {
+      conversationId: conv1.id,
+      senderId: user2.id,
+      content: "Hey Aarav! Saw your coding gig for the distributed key-value store. Can you clarify if Raft heartbeats need gRPC stream RPCs?",
+    },
+  });
+
+  await prisma.message.create({
+    data: {
+      conversationId: conv1.id,
+      senderId: user1.id,
+      content: "Yes, exactly! We want bidirectional gRPC streaming for the append entries RPC. Let me know if you want to take it on!",
+    },
+  });
+
+  // Seed Anonymous Incognito Conversation
+  const conv2 = await prisma.conversation.create({
+    data: {
+      participantOneId: user1.id,
+      participantTwoId: user3.id,
+      isAnonymousChat: true,
+    },
+  });
+
+  await prisma.message.create({
+    data: {
+      conversationId: conv2.id,
+      senderId: user3.id,
+      content: "Hey, saw your confession about the DSP exam. That was hilarious! Which textbook did you study from?",
+    },
+  });
+
+  console.log("✅ Supabase PostgreSQL database seeded successfully with RBAC & Conversations!");
 }
 
 main()

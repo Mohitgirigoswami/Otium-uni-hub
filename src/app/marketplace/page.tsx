@@ -13,12 +13,15 @@ import {
   markItemSold,
   deleteMarketplaceItem,
 } from "@/actions/marketplace.actions";
+import { getOrCreateConversation } from "@/actions/chat.actions";
+import { useRouter } from "next/navigation";
 import { formatPaiseToRupees, formatDate } from "@/lib/utils";
 import { toast } from "sonner";
 import {
   ShoppingBag,
   Plus,
   Tag,
+  Search,
   CheckCircle2,
   Trash2,
   Phone,
@@ -26,6 +29,7 @@ import {
   Filter,
   Sparkles,
   ExternalLink,
+  MessageSquare,
   DollarSign,
 } from "lucide-react";
 import { MarketplaceCategoryType, ItemConditionType } from "@/lib/types";
@@ -86,6 +90,35 @@ export default function MarketplacePage() {
   useEffect(() => {
     fetchItemsList();
   }, [categoryFilter, statusFilter]);
+
+  const router = useRouter();
+  const [chatLoading, setChatLoading] = useState(false);
+
+  const handleDirectMessageSeller = async (sellerId: string) => {
+    if (!user) {
+      toast.error("Please login to message the seller.");
+      return;
+    }
+    if (user.id === sellerId) {
+      toast.info("This is your own listing!");
+      return;
+    }
+
+    setChatLoading(true);
+    const res = await getOrCreateConversation({
+      participantOneId: user.id,
+      participantTwoId: sellerId,
+      isAnonymousChat: false,
+    });
+    setChatLoading(false);
+
+    if (res.success && res.data) {
+      toast.success("Opening chat with seller...");
+      router.push(`/messages?id=${res.data.id}`);
+    } else {
+      toast.error(res.error || "Failed to start chat.");
+    }
+  };
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -560,15 +593,15 @@ export default function MarketplacePage() {
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
-                  {selectedItemForDetails.seller?.email && (
-                    <a
-                      href={`mailto:${selectedItemForDetails.seller.email}?subject=Interested in ${selectedItemForDetails.title}`}
-                      className="px-3 py-1.5 rounded-xl bg-brand-500/15 border border-brand-500/30 text-brand-700 dark:text-brand-300 text-xs font-bold flex items-center gap-1.5 hover:bg-brand-500/25 transition-colors"
-                    >
-                      <Mail className="w-3.5 h-3.5" />
-                      <span>Email Seller</span>
-                    </a>
-                  )}
+                  <Button
+                    size="sm"
+                    disabled={chatLoading}
+                    onClick={() => handleDirectMessageSeller(selectedItemForDetails.sellerId)}
+                    className="bg-brand-600 hover:bg-brand-500 text-xs"
+                    leftIcon={<MessageSquare className="w-3.5 h-3.5" />}
+                  >
+                    {chatLoading ? "Connecting..." : `Message ${selectedItemForDetails.seller?.name?.split(" ")[0] || "Seller"}`}
+                  </Button>
                 </div>
               </div>
             </div>

@@ -14,6 +14,8 @@ import {
   dropGig,
   completeGig,
 } from "@/actions/gigs.actions";
+import { getOrCreateConversation } from "@/actions/chat.actions";
+import { useRouter } from "next/navigation";
 import { formatPaiseToRupees, formatDate } from "@/lib/utils";
 import { toast } from "sonner";
 import {
@@ -31,6 +33,7 @@ import {
   ExternalLink,
   ChevronRight,
   TrendingUp,
+  MessageSquare,
 } from "lucide-react";
 import { TaskCategoryType } from "@/lib/types";
 import { PdfUploadDropzone } from "@/components/ui/PdfUploadDropzone";
@@ -81,9 +84,34 @@ export default function GigsPage() {
     setLoading(false);
   };
 
-  useEffect(() => {
-    fetchGigsList();
-  }, [categoryFilter, statusFilter]);
+  const router = useRouter();
+  const [chatLoading, setChatLoading] = useState(false);
+
+  const handleDirectMessagePoster = async (posterId: string) => {
+    if (!user) {
+      toast.error("Please login to message the task poster.");
+      return;
+    }
+    if (user.id === posterId) {
+      toast.info("You are the poster of this gig!");
+      return;
+    }
+
+    setChatLoading(true);
+    const res = await getOrCreateConversation({
+      participantOneId: user.id,
+      participantTwoId: posterId,
+      isAnonymousChat: false,
+    });
+    setChatLoading(false);
+
+    if (res.success && res.data) {
+      toast.success("Opening chat with poster...");
+      router.push(`/messages?id=${res.data.id}`);
+    } else {
+      toast.error(res.error || "Failed to start chat.");
+    }
+  };
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -712,10 +740,20 @@ export default function GigsPage() {
               </div>
             </div>
 
-            <div className="pt-4 border-t border-slate-200 dark:border-slate-800 flex justify-end gap-3">
+            <div className="pt-4 border-t border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-end gap-3">
               <Button variant="outline" onClick={() => setSelectedGigForDetails(null)}>
                 Close
               </Button>
+              {selectedGigForDetails.posterId !== user?.id && (
+                <Button
+                  variant="outline"
+                  disabled={chatLoading}
+                  onClick={() => handleDirectMessagePoster(selectedGigForDetails.posterId)}
+                  leftIcon={<MessageSquare className="w-4 h-4 text-brand-500" />}
+                >
+                  {chatLoading ? "Connecting..." : `Message ${selectedGigForDetails.poster?.name?.split(" ")[0] || "Poster"}`}
+                </Button>
+              )}
               {selectedGigForDetails.status === "OPEN" &&
                 selectedGigForDetails.posterId !== user?.id && (
                   <Button
