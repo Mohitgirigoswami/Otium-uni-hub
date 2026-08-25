@@ -31,12 +31,12 @@ export async function getMarketplaceItems(filters?: {
 
     if (filters?.search && filters.search.trim() !== "") {
       where.OR = [
-        { title: { contains: filters.search } },
-        { description: { contains: filters.search } },
+        { title: { contains: filters.search, mode: "insensitive" } },
+        { description: { contains: filters.search, mode: "insensitive" } },
       ];
     }
 
-    const rawItems = await prisma.marketplaceItem.findMany({
+    const items = await prisma.marketplaceItem.findMany({
       where,
       include: {
         seller: {
@@ -51,19 +51,6 @@ export async function getMarketplaceItems(filters?: {
         },
       },
       orderBy: { createdAt: "desc" },
-    });
-
-    const items = rawItems.map((item) => {
-      let parsedImages: string[] = [];
-      try {
-        parsedImages = typeof item.images === "string" ? JSON.parse(item.images) : item.images;
-      } catch (e) {
-        parsedImages = item.images ? [item.images] : [];
-      }
-      return {
-        ...item,
-        images: Array.isArray(parsedImages) ? parsedImages : [item.images],
-      };
     });
 
     return {
@@ -114,9 +101,9 @@ export async function createMarketplaceItem(data: {
         title: data.title.trim(),
         description: data.description.trim(),
         price: pricePaise, // Strictly store in Paise
-        category: data.category,
-        condition: data.condition,
-        images: JSON.stringify(imagesList),
+        category: data.category as any,
+        condition: data.condition as any,
+        images: imagesList,
         status: "AVAILABLE",
       },
       include: {
@@ -126,10 +113,7 @@ export async function createMarketplaceItem(data: {
 
     return {
       success: true,
-      data: {
-        ...item,
-        images: imagesList,
-      },
+      data: item,
     };
   } catch (error: any) {
     console.error("Error in createMarketplaceItem:", error);

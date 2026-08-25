@@ -3,8 +3,74 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = "file:./dev.db"
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum TaskCategory {
+  ASSIGNMENT
+  PROJECT
+  RESEARCH
+  PRESENTATION
+  CODING
+  DESIGN
+  TUTORING
+  OTHER
+}
+
+enum TaskStatus {
+  OPEN
+  ASSIGNED
+  COMPLETED
+  CANCELLED
+}
+
+enum MarketplaceCategory {
+  BOOKS_NOTES
+  ELECTRONICS
+  FURNITURE
+  CYCLES_TRANSPORT
+  HOSTEL_ESSENTIALS
+  CLOTHING
+  OTHER
+}
+
+enum ItemCondition {
+  BRAND_NEW
+  LIKE_NEW
+  GOOD
+  FAIR
+}
+
+enum MarketplaceStatus {
+  AVAILABLE
+  SOLD
+}
+
+enum PrintType {
+  BW_SINGLE
+  BW_DOUBLE
+  COLOR_SINGLE
+  COLOR_DOUBLE
+}
+
+enum PrintStatus {
+  SUBMITTED
+  PRINTING
+  READY
+  DELIVERED
+}
+
+enum LostAndFoundStatus {
+  UNCLAIMED
+  CLAIMED
+}
+
+enum RideShareStatus {
+  OPEN
+  FULL
+  COMPLETED
+  CANCELLED
 }
 
 model User {
@@ -46,7 +112,7 @@ model IncognitoPost {
   id         String           @id @default(cuid())
   content    String
   mediaUrl   String?
-  feedType   String           @default("GENERAL") // GENERAL, CONFESSION, ADVICE, MEME, CAMPUS_NEWS
+  feedType   String           @default("GENERAL")
   profileId  String
   profile    IncognitoProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
   likesCount Int              @default(0)
@@ -55,36 +121,36 @@ model IncognitoPost {
 }
 
 model MarketplaceItem {
-  id          String   @id @default(cuid())
+  id          String              @id @default(cuid())
   title       String
   description String
-  price       Int      // Strictly stored in Paise
-  category    String   // BOOKS_NOTES, ELECTRONICS, FURNITURE, CYCLES_TRANSPORT, HOSTEL_ESSENTIALS, CLOTHING, OTHER
-  condition   String   // BRAND_NEW, LIKE_NEW, GOOD, FAIR
-  status      String   @default("AVAILABLE") // AVAILABLE, SOLD
-  images      String   // Stored as JSON array string or comma separated
+  price       Int                 // Strictly stored in Paise
+  category    MarketplaceCategory
+  condition   ItemCondition
+  status      MarketplaceStatus   @default(AVAILABLE)
+  images      String[]
   sellerId    String
-  seller      User     @relation(fields: [sellerId], references: [id], onDelete: Cascade)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  seller      User                @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
 }
 
 model TaskGig {
-  id           String    @id @default(cuid())
+  id           String       @id @default(cuid())
   title        String
   description  String
   fileUrl      String?
-  budget       Int       // Strictly stored in Paise
-  category     String    // ASSIGNMENT, PROJECT, RESEARCH, PRESENTATION, CODING, DESIGN, TUTORING, OTHER
-  status       String    @default("OPEN") // OPEN, ASSIGNED, COMPLETED, CANCELLED
+  budget       Int          // Strictly stored in Paise
+  category     TaskCategory
+  status       TaskStatus   @default(OPEN)
   deadline     DateTime?
   posterId     String
-  poster       User      @relation("TaskPoster", fields: [posterId], references: [id], onDelete: Cascade)
+  poster       User         @relation("TaskPoster", fields: [posterId], references: [id], onDelete: Cascade)
   assignedToId String?
-  assignedTo   User?     @relation("TaskAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  assignedTo   User?        @relation("TaskAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
   completedAt  DateTime?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
 }
 
 model Subject {
@@ -110,36 +176,36 @@ model AttendanceRecord {
 }
 
 model PrintOrder {
-  id               String   @id @default(cuid())
+  id               String      @id @default(cuid())
   fileName         String
   fileUrl          String?
   pageCount        Int
-  printType        String   // BW_SINGLE, BW_DOUBLE, COLOR_SINGLE, COLOR_DOUBLE
+  printType        PrintType
   deliveryLocation String
   expectedDelivery DateTime
-  totalCost        Int      // Strictly stored in Paise
-  status           String   @default("SUBMITTED") // SUBMITTED, PRINTING, READY, DELIVERED
+  totalCost        Int         // Strictly stored in Paise
+  status           PrintStatus @default(SUBMITTED)
   userId           String
-  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  user             User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
 }
 
 model LostAndFoundItem {
-  id            String   @id @default(cuid())
+  id            String             @id @default(cuid())
   finderId      String
-  finder        User     @relation(fields: [finderId], references: [id], onDelete: Cascade)
+  finder        User               @relation(fields: [finderId], references: [id], onDelete: Cascade)
   title         String
   description   String
   locationFound String
   dateFound     DateTime
   imageUrl      String
-  category      String?  @default("OTHER") // ELECTRONICS, KEYS, ID_CARD, WALLET, BOOK, OTHER
-  status        String   @default("UNCLAIMED") // UNCLAIMED, CLAIMED
+  category      String?            @default("OTHER")
+  status        LostAndFoundStatus @default(UNCLAIMED)
   claimNotes    String?
   claimedById   String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
 }
 
 model RideShare {
@@ -153,7 +219,7 @@ model RideShare {
   totalSeats        Int                @default(4)
   splitCostEstimate Int                // Strictly stored in Paise
   cabProvider       String?            @default("Uber/Ola")
-  status            String             @default("OPEN") // OPEN, FULL, COMPLETED, CANCELLED
+  status            RideShareStatus    @default(OPEN)
   bookings          RideShareBooking[]
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
