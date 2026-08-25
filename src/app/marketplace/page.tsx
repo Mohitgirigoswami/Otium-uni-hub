@@ -29,6 +29,7 @@ import {
   DollarSign,
 } from "lucide-react";
 import { MarketplaceCategoryType, ItemConditionType } from "@/lib/types";
+import { ImageUploadDropzone } from "@/components/ui/ImageUploadDropzone";
 
 const CATEGORIES: { label: string; value: string }[] = [
   { label: "All Items", value: "ALL" },
@@ -65,6 +66,7 @@ export default function MarketplacePage() {
   const [category, setCategory] = useState<MarketplaceCategoryType>("BOOKS_NOTES");
   const [condition, setCondition] = useState<ItemConditionType>("LIKE_NEW");
   const [imageUrl, setImageUrl] = useState("");
+  const [isUploadingMedia, setIsUploadingMedia] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
 
@@ -460,18 +462,14 @@ export default function MarketplacePage() {
             </div>
           </div>
 
-          <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
-              Item Image URL (Cloudinary / Unsplash)
-            </label>
-            <input
-              type="url"
-              placeholder="https://images.unsplash.com/... or Cloudinary upload URL"
-              value={imageUrl}
-              onChange={(e) => setImageUrl(e.target.value)}
-              className="w-full px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
-            />
-          </div>
+          {/* Direct-to-Cloud Image Dropzone */}
+          <ImageUploadDropzone
+            onImageUploaded={(url) => setImageUrl(url)}
+            onUploadingChange={(up) => setIsUploadingMedia(up)}
+            existingImageUrl={imageUrl}
+            label="Upload Item Photograph (Direct to Cloudinary)"
+            folder="otium_marketplace"
+          />
 
           <div>
             <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
@@ -491,13 +489,15 @@ export default function MarketplacePage() {
             <Button
               type="button"
               variant="outline"
+              disabled={isUploadingMedia || isSubmitting}
               onClick={() => setIsSellModalOpen(false)}
             >
               Cancel
             </Button>
             <SubmitButton
-              isSubmitting={isSubmitting}
-              loadingText="Publishing Listing..."
+              disabled={isUploadingMedia || isSubmitting}
+              isSubmitting={isSubmitting || isUploadingMedia}
+              loadingText={isUploadingMedia ? "Uploading to Cloudinary..." : "Publishing Listing..."}
               className="bg-amber-600 hover:bg-amber-500"
             >
               Publish Listing

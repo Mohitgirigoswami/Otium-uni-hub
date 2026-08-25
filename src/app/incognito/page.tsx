@@ -28,6 +28,7 @@ import {
   Flame,
   Send,
 } from "lucide-react";
+import { ImageUploadDropzone } from "@/components/ui/ImageUploadDropzone";
 
 const FEED_TYPES = [
   { label: "All Whispers", value: "ALL" },
@@ -49,8 +50,10 @@ export default function IncognitoWallPage() {
 
   // Form states
   const [content, setContent] = useState("");
+  const [mediaUrl, setMediaUrl] = useState("");
   const [feedType, setFeedType] = useState("CONFESSION");
   const [customHandle, setCustomHandle] = useState("");
+  const [isUploadingMedia, setIsUploadingMedia] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [likeLoadingId, setLikeLoadingId] = useState<string | null>(null);
 
@@ -90,6 +93,7 @@ export default function IncognitoWallPage() {
     const res = await createIncognitoPost({
       userId: user.id,
       content,
+      mediaUrl: mediaUrl.trim() || undefined,
       feedType,
     });
     setIsSubmitting(false);
@@ -100,6 +104,7 @@ export default function IncognitoWallPage() {
       toast.success("Whisper published anonymously onto the wall!");
       setIsPostModalOpen(false);
       setContent("");
+      setMediaUrl("");
       fetchProfileAndFeed();
     }
   };
@@ -345,13 +350,22 @@ export default function IncognitoWallPage() {
             </label>
             <textarea
               required
-              rows={4}
+              rows={3}
               placeholder="What's on your mind? Share confession, advice, or campus secrets..."
               value={content}
               onChange={(e) => setContent(e.target.value)}
               className="w-full px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-accent-500"
             />
           </div>
+
+          {/* Direct Cloudinary Image Dropzone */}
+          <ImageUploadDropzone
+            onImageUploaded={(url) => setMediaUrl(url)}
+            onUploadingChange={(up) => setIsUploadingMedia(up)}
+            existingImageUrl={mediaUrl}
+            label="Optional Meme / Photo Attachment (Direct to Cloudinary)"
+            folder="otium_incognito"
+          />
 
           <div className="flex items-center gap-3 p-3 rounded-xl bg-slate-100/70 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 text-xs">
             <img
@@ -373,13 +387,15 @@ export default function IncognitoWallPage() {
             <Button
               type="button"
               variant="outline"
+              disabled={isUploadingMedia || isSubmitting}
               onClick={() => setIsPostModalOpen(false)}
             >
               Cancel
             </Button>
             <SubmitButton
-              isSubmitting={isSubmitting}
-              loadingText="Whispering..."
+              disabled={isUploadingMedia || isSubmitting}
+              isSubmitting={isSubmitting || isUploadingMedia}
+              loadingText={isUploadingMedia ? "Uploading attachment..." : "Whispering..."}
               className="bg-accent-600 hover:bg-accent-500"
             >
               Publish Whisper

@@ -27,6 +27,7 @@ import {
   HelpCircle,
   ExternalLink,
 } from "lucide-react";
+import { ImageUploadDropzone } from "@/components/ui/ImageUploadDropzone";
 
 const CATEGORIES = [
   { label: "All Items", value: "ALL" },
@@ -54,6 +55,7 @@ export default function LostAndFoundPage() {
   const [dateFound, setDateFound] = useState("");
   const [imageUrl, setImageUrl] = useState("");
   const [category, setCategory] = useState("ELECTRONICS");
+  const [isUploadingMedia, setIsUploadingMedia] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
 
@@ -394,19 +396,15 @@ export default function LostAndFoundPage() {
             </div>
           </div>
 
-          <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
-              Photograph Image URL *
-            </label>
-            <input
-              type="url"
-              required
-              placeholder="https://images.unsplash.com/... or Cloudinary URL"
-              value={imageUrl}
-              onChange={(e) => setImageUrl(e.target.value)}
-              className="w-full px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
-            />
-          </div>
+          {/* Direct Cloudinary Image Dropzone */}
+          <ImageUploadDropzone
+            onImageUploaded={(url) => setImageUrl(url)}
+            onUploadingChange={(up) => setIsUploadingMedia(up)}
+            existingImageUrl={imageUrl}
+            label="Upload Photograph of Found Item *"
+            folder="otium_lost_and_found"
+            required
+          />
 
           <div>
             <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
@@ -426,11 +424,17 @@ export default function LostAndFoundPage() {
             <Button
               type="button"
               variant="outline"
+              disabled={isUploadingMedia || isSubmitting}
               onClick={() => setIsReportModalOpen(false)}
             >
               Cancel
             </Button>
-            <SubmitButton isSubmitting={isSubmitting} loadingText="Publishing Item...">
+            <SubmitButton
+              disabled={isUploadingMedia || isSubmitting}
+              isSubmitting={isSubmitting || isUploadingMedia}
+              loadingText={isUploadingMedia ? "Uploading photograph..." : "Publishing Item..."}
+              className="bg-sky-600 hover:bg-sky-500"
+            >
               Broadcast Found Item
             </SubmitButton>
           </div>

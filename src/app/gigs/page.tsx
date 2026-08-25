@@ -33,6 +33,7 @@ import {
   TrendingUp,
 } from "lucide-react";
 import { TaskCategoryType } from "@/lib/types";
+import { PdfUploadDropzone } from "@/components/ui/PdfUploadDropzone";
 
 const CATEGORIES: { label: string; value: string }[] = [
   { label: "All Categories", value: "ALL" },
@@ -61,6 +62,7 @@ export default function GigsPage() {
   const [category, setCategory] = useState<TaskCategoryType>("CODING");
   const [deadline, setDeadline] = useState("");
   const [fileUrl, setFileUrl] = useState("");
+  const [isUploadingMedia, setIsUploadingMedia] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
 
@@ -589,42 +591,40 @@ export default function GigsPage() {
             />
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
-                Submission Deadline
-              </label>
-              <input
-                type="datetime-local"
-                value={deadline}
-                onChange={(e) => setDeadline(e.target.value)}
-                className="w-full px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
-                Attached Brief / PDF Link
-              </label>
-              <input
-                type="url"
-                placeholder="https://drive.google.com/... or Supabase URL"
-                value={fileUrl}
-                onChange={(e) => setFileUrl(e.target.value)}
-                className="w-full px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-              />
-            </div>
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
+              Submission Deadline
+            </label>
+            <input
+              type="datetime-local"
+              value={deadline}
+              onChange={(e) => setDeadline(e.target.value)}
+              className="w-full px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+            />
           </div>
+
+          {/* Direct Supabase Signed PDF Dropzone */}
+          <PdfUploadDropzone
+            onPdfUploaded={(url) => setFileUrl(url)}
+            onUploadingChange={(up) => setIsUploadingMedia(up)}
+            existingPdfUrl={fileUrl}
+            label="Attach Assignment Brief / Spec PDF (Direct to Supabase)"
+          />
 
           <div className="pt-4 border-t border-slate-200 dark:border-slate-800 flex justify-end gap-3">
             <Button
               type="button"
               variant="outline"
+              disabled={isUploadingMedia || isSubmitting}
               onClick={() => setIsCreateModalOpen(false)}
             >
               Cancel
             </Button>
-            <SubmitButton isSubmitting={isSubmitting} loadingText="Publishing Bounty...">
+            <SubmitButton
+              disabled={isUploadingMedia || isSubmitting}
+              isSubmitting={isSubmitting || isUploadingMedia}
+              loadingText={isUploadingMedia ? "Uploading document to Supabase..." : "Publishing Bounty..."}
+            >
               Post Gig Now
             </SubmitButton>
           </div>

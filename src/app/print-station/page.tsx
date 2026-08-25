@@ -20,6 +20,7 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { PrintTypeEnum } from "@/lib/types";
+import { PdfUploadDropzone } from "@/components/ui/PdfUploadDropzone";
 
 const PRINT_TYPES: { id: PrintTypeEnum; name: string; desc: string; rateRupees: string }[] = [
   {
@@ -65,10 +66,12 @@ export default function PrintStationPage() {
 
   // Form states
   const [fileName, setFileName] = useState("");
+  const [fileUrl, setFileUrl] = useState("");
   const [pageCount, setPageCount] = useState<string>("10");
   const [printType, setPrintType] = useState<PrintTypeEnum>("BW_DOUBLE");
   const [deliveryLocation, setDeliveryLocation] = useState(DELIVERY_LOCATIONS[0]);
   const [deliverySlot, setDeliverySlot] = useState("In 2 Hours (Standard)");
+  const [isUploadingMedia, setIsUploadingMedia] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const fetchOrders = async () => {
@@ -105,6 +108,7 @@ export default function PrintStationPage() {
     const res = await createPrintOrder({
       userId: user.id,
       fileName,
+      fileUrl: fileUrl.trim() || undefined,
       pageCount: pages,
       printType,
       deliveryLocation,
@@ -117,20 +121,9 @@ export default function PrintStationPage() {
     } else {
       toast.success("Print order queued! Delivery dispatched to your hostel.");
       setFileName("");
+      setFileUrl("");
       setPageCount("10");
       fetchOrders();
-    }
-  };
-
-  const handleSimulateFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      if (file.type !== "application/pdf" && !file.name.endsWith(".pdf")) {
-        toast.error("Only PDF documents (Max 20MB) are accepted.");
-        return;
-      }
-      setFileName(file.name);
-      toast.success(`PDF "${file.name}" uploaded successfully!`);
     }
   };
 
@@ -167,27 +160,17 @@ export default function PrintStationPage() {
             </h2>
 
             <form onSubmit={handleCreateOrder} className="space-y-6">
-              {/* PDF File Dropzone */}
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">
-                  Document PDF *
-                </label>
-                <div className="border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-brand-500 rounded-2xl p-6 text-center cursor-pointer relative bg-slate-50/50 dark:bg-slate-800/30 transition-colors">
-                  <input
-                    type="file"
-                    accept="application/pdf"
-                    onChange={handleSimulateFileUpload}
-                    className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
-                  />
-                  <FileText className="w-10 h-10 mx-auto text-brand-500 mb-2" />
-                  <p className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                    {fileName ? fileName : "Click or drag PDF document here"}
-                  </p>
-                  <p className="text-[11px] text-slate-400 mt-1">
-                    Direct-to-cloud signed upload (Max 20MB, application/pdf)
-                  </p>
-                </div>
-              </div>
+              {/* Direct Supabase Signed PDF Dropzone */}
+              <PdfUploadDropzone
+                onPdfUploaded={(url, name) => {
+                  setFileUrl(url);
+                  setFileName(name);
+                }}
+                onUploadingChange={(up) => setIsUploadingMedia(up)}
+                existingPdfUrl={fileUrl}
+                label="Upload Document PDF (Direct to Supabase)"
+                required
+              />
 
               {/* Print Type Selection */}
               <div>
@@ -273,8 +256,9 @@ export default function PrintStationPage() {
                 </div>
 
                 <SubmitButton
-                  isSubmitting={isSubmitting}
-                  loadingText="Submitting Order..."
+                  disabled={isUploadingMedia || isSubmitting}
+                  isSubmitting={isSubmitting || isUploadingMedia}
+                  loadingText={isUploadingMedia ? "Uploading document to Supabase..." : "Submitting Order..."}
                   size="lg"
                   leftIcon={<Printer className="w-4 h-4" />}
                 >
