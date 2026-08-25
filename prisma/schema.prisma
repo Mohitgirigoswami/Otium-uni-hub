@@ -1,0 +1,182 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model User {
+  id                 String             @id @default(cuid())
+  name               String?
+  email              String?            @unique
+  image              String?
+  phone              String?
+  department         String?
+  year               Int?
+  freelancerCooldown DateTime?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  incognitoProfile   IncognitoProfile?
+  postedTasks        TaskGig[]          @relation("TaskPoster")
+  assignedTasks      TaskGig[]          @relation("TaskAssignee")
+  marketplaceItems   MarketplaceItem[]
+  subjects           Subject[]
+  printOrders        PrintOrder[]
+  lostAndFoundItems  LostAndFoundItem[]
+  hostedRides        RideShare[]        @relation("RideHost")
+  bookedRides        RideShareBooking[]
+  cgpaSemesters      SemesterCGPA[]
+}
+
+model IncognitoProfile {
+  id        String          @id @default(cuid())
+  handle    String          @unique
+  avatarUrl String
+  userId    String          @unique
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  posts     IncognitoPost[]
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+}
+
+model IncognitoPost {
+  id         String           @id @default(cuid())
+  content    String
+  mediaUrl   String?
+  feedType   String           @default("GENERAL") // GENERAL, CONFESSION, ADVICE, MEME, CAMPUS_NEWS
+  profileId  String
+  profile    IncognitoProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  likesCount Int              @default(0)
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+}
+
+model MarketplaceItem {
+  id          String   @id @default(cuid())
+  title       String
+  description String
+  price       Int      // Strictly stored in Paise
+  category    String   // BOOKS_NOTES, ELECTRONICS, FURNITURE, CYCLES_TRANSPORT, HOSTEL_ESSENTIALS, CLOTHING, OTHER
+  condition   String   // BRAND_NEW, LIKE_NEW, GOOD, FAIR
+  status      String   @default("AVAILABLE") // AVAILABLE, SOLD
+  images      String   // Stored as JSON array string or comma separated
+  sellerId    String
+  seller      User     @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model TaskGig {
+  id           String    @id @default(cuid())
+  title        String
+  description  String
+  fileUrl      String?
+  budget       Int       // Strictly stored in Paise
+  category     String    // ASSIGNMENT, PROJECT, RESEARCH, PRESENTATION, CODING, DESIGN, TUTORING, OTHER
+  status       String    @default("OPEN") // OPEN, ASSIGNED, COMPLETED, CANCELLED
+  deadline     DateTime?
+  posterId     String
+  poster       User      @relation("TaskPoster", fields: [posterId], references: [id], onDelete: Cascade)
+  assignedToId String?
+  assignedTo   User?     @relation("TaskAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  completedAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+model Subject {
+  id              String             @id @default(cuid())
+  name            String
+  code            String?
+  totalClasses    Int                @default(0)
+  attendedClasses Int                @default(0)
+  userId          String
+  user            User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  records         AttendanceRecord[]
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+}
+
+model AttendanceRecord {
+  id        String   @id @default(cuid())
+  subjectId String
+  subject   Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  date      DateTime @default(now())
+  status    String   // PRESENT, ABSENT, CANCELLED
+  createdAt DateTime @default(now())
+}
+
+model PrintOrder {
+  id               String   @id @default(cuid())
+  fileName         String
+  fileUrl          String?
+  pageCount        Int
+  printType        String   // BW_SINGLE, BW_DOUBLE, COLOR_SINGLE, COLOR_DOUBLE
+  deliveryLocation String
+  expectedDelivery DateTime
+  totalCost        Int      // Strictly stored in Paise
+  status           String   @default("SUBMITTED") // SUBMITTED, PRINTING, READY, DELIVERED
+  userId           String
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model LostAndFoundItem {
+  id            String   @id @default(cuid())
+  finderId      String
+  finder        User     @relation(fields: [finderId], references: [id], onDelete: Cascade)
+  title         String
+  description   String
+  locationFound String
+  dateFound     DateTime
+  imageUrl      String
+  category      String?  @default("OTHER") // ELECTRONICS, KEYS, ID_CARD, WALLET, BOOK, OTHER
+  status        String   @default("UNCLAIMED") // UNCLAIMED, CLAIMED
+  claimNotes    String?
+  claimedById   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model RideShare {
+  id                String             @id @default(cuid())
+  hostId            String
+  host              User               @relation("RideHost", fields: [hostId], references: [id], onDelete: Cascade)
+  origin            String             @default("Campus Main Gate")
+  destination       String
+  departureTime     DateTime
+  availableSeats    Int
+  totalSeats        Int                @default(4)
+  splitCostEstimate Int                // Strictly stored in Paise
+  cabProvider       String?            @default("Uber/Ola")
+  status            String             @default("OPEN") // OPEN, FULL, COMPLETED, CANCELLED
+  bookings          RideShareBooking[]
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+}
+
+model RideShareBooking {
+  id          String    @id @default(cuid())
+  rideId      String
+  ride        RideShare @relation(fields: [rideId], references: [id], onDelete: Cascade)
+  passengerId String
+  passenger   User      @relation(fields: [passengerId], references: [id], onDelete: Cascade)
+  seatsBooked Int       @default(1)
+  createdAt   DateTime  @default(now())
+}
+
+model SemesterCGPA {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  semester     Int
+  gpa          Float
+  totalCredits Float
+  courses      String   // JSON encoded courses list [{name, credits, grade, gradePoint}]
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
