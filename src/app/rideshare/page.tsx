@@ -7,7 +7,12 @@ import { Badge } from "@/components/ui/Badge";
 import { Modal } from "@/components/ui/Modal";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { useUser } from "@/components/providers/UserContext";
-import { getRides, createRide, bookRideSeats } from "@/actions/rideshare.actions";
+import {
+  getRides,
+  createRide,
+  bookRideSeats,
+  removePassengerAction,
+} from "@/actions/rideshare.actions";
 import { formatPaiseToRupees, formatDate, formatTimeOnly } from "@/lib/utils";
 import { toast } from "sonner";
 import {
@@ -22,25 +27,20 @@ import {
   Building,
   Navigation,
   CheckCircle2,
+  Search,
+  UserX,
+  ShieldAlert,
 } from "lucide-react";
-
-const QUICK_DESTINATIONS = [
-  "All Routes",
-  "Kempegowda International Airport (BLR)",
-  "Central Railway Junction (SBC)",
-  "Tech City Metro Station",
-  "Nexus Mall & IMAX",
-];
 
 export default function RideSharePage() {
   const { user } = useUser();
   const [rides, setRides] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [destinationFilter, setDestinationFilter] = useState("All Routes");
+  const [searchFilter, setSearchFilter] = useState("");
   const [isHostModalOpen, setIsHostModalOpen] = useState(false);
 
   // Form states
-  const [origin, setOrigin] = useState("Campus Main Gate");
+  const [origin, setOrigin] = useState("YMCA Campus");
   const [destination, setDestination] = useState("");
   const [departureTime, setDepartureTime] = useState("");
   const [availableSeats, setAvailableSeats] = useState("3");
@@ -51,7 +51,7 @@ export default function RideSharePage() {
 
   const fetchRidesList = async () => {
     setLoading(true);
-    const dest = destinationFilter === "All Routes" ? undefined : destinationFilter;
+    const dest = searchFilter.trim() ? searchFilter.trim() : undefined;
     const res = await getRides({ destination: dest });
     if (res.success && res.data) {
       setRides(res.data);
@@ -61,7 +61,7 @@ export default function RideSharePage() {
 
   useEffect(() => {
     fetchRidesList();
-  }, [destinationFilter]);
+  }, [searchFilter]);
 
   const handleHostRide = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -69,16 +69,16 @@ export default function RideSharePage() {
       toast.error("Please login to post a cab split.");
       return;
     }
-    if (!destination.trim() || !departureTime) {
-      toast.error("Please fill in the destination and departure time.");
+    if (!origin.trim() || !destination.trim() || !departureTime) {
+      toast.error("Please fill in origin, destination, and departure time.");
       return;
     }
 
     setIsSubmitting(true);
     const res = await createRide({
       hostId: user.id,
-      origin,
-      destination,
+      origin: origin.trim(),
+      destination: destination.trim(),
       departureTime,
       availableSeats: Number(availableSeats),
       splitCostEstimateRupees: Number(splitCostRupees),
@@ -112,11 +112,50 @@ export default function RideSharePage() {
     }
   };
 
+  const handleKickPassenger = async (
+    rideId: string,
+    passengerId: string,
+    passengerName: string
+  ) => {
+    if (!user) return;
+    const confirm = window.confirm(
+      `Are you sure you want to kick/remove "${passengerName}" from this cab split? The seat will immediately become available for others.`
+    );
+    if (!confirm) return;
+
+    setActionLoadingId(`${rideId}-${passengerId}`);
+    const res = await removePassengerAction({
+      rideId,
+      passengerId,
+      hostUserId: user.id,
+    });
+    setActionLoadingId(null);
+
+    if (res.error) {
+      toast.error(res.error);
+    } else {
+      toast.success(`Removed ${passengerName}. Seat opened up!`);
+      fetchRidesList();
+    }
+  };
+
   const getDestinationIcon = (dest: string) => {
     const d = dest.toLowerCase();
-    if (d.includes("airport") || d.includes("blr") || d.includes("flight"))
+    if (
+      d.includes("airport") ||
+      d.includes("t3") ||
+      d.includes("t1") ||
+      d.includes("blr") ||
+      d.includes("del") ||
+      d.includes("flight")
+    )
       return <Plane className="w-4 h-4 text-sky-400" />;
-    if (d.includes("train") || d.includes("railway") || d.includes("station") || d.includes("sbc"))
+    if (
+      d.includes("train") ||
+      d.includes("railway") ||
+      d.includes("station") ||
+      d.includes("metro")
+    )
       return <Train className="w-4 h-4 text-emerald-400" />;
     return <Building className="w-4 h-4 text-accent-400" />;
   };
@@ -151,7 +190,7 @@ export default function RideSharePage() {
               Airport & Station RideSplit
             </h1>
             <p className="text-sm text-slate-300 max-w-2xl leading-relaxed">
-              Heading to the airport for holidays or catching a weekend train? Share cab fares with verified batchmates. Automatically sorted by upcoming departure times.
+              Heading to the airport for holidays or catching a weekend train? Share cab fares with verified batchmates. Host controls & passenger kick safeguards.
             </p>
           </div>
 
@@ -167,37 +206,45 @@ export default function RideSharePage() {
         </div>
       </div>
 
-      {/* Quick Destination Pills */}
-      <GlassCard className="p-4">
-        <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
-          {QUICK_DESTINATIONS.map((dest) => (
-            <button
-              key={dest}
-              onClick={() => setDestinationFilter(dest)}
-              className={`px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
-                destinationFilter === dest
-                  ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/30"
-                  : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
-              }`}
-            >
-              {dest}
-            </button>
-          ))}
+      {/* Free-Text Destination Search & Filter */}
+      <GlassCard className="p-4 flex flex-col sm:flex-row items-center gap-3">
+        <div className="relative flex-1 w-full">
+          <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            type="text"
+            placeholder="Search any destination (e.g., Delhi Airport T3, YMCA Campus, Faridabad Station)..."
+            value={searchFilter}
+            onChange={(e) => setSearchFilter(e.target.value)}
+            className="w-full pl-9 pr-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          />
         </div>
+        {searchFilter && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setSearchFilter("")}
+            className="text-xs"
+          >
+            Clear Filter
+          </Button>
+        )}
       </GlassCard>
 
       {/* Rides Grid (Auto-sorted by closest departure) */}
       {loading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="h-64 rounded-2xl bg-slate-200/50 dark:bg-slate-800 animate-pulse" />
+            <div
+              key={i}
+              className="h-64 rounded-2xl bg-slate-200/50 dark:bg-slate-800 animate-pulse"
+            />
           ))}
         </div>
       ) : rides.length === 0 ? (
         <GlassCard className="text-center py-16">
           <Car className="w-12 h-12 mx-auto text-slate-400 mb-3 opacity-60" />
           <h3 className="text-lg font-bold text-slate-700 dark:text-slate-300">
-            No active cab splits for this route
+            No active cab splits found
           </h3>
           <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
             Be the first to host a ride split and save money with campus peers!
@@ -215,8 +262,11 @@ export default function RideSharePage() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {rides.map((ride) => {
             const isHost = ride.hostId === user?.id;
-            const hasJoined = ride.bookings?.some((b: any) => b.passengerId === user?.id);
+            const hasJoined = ride.bookings?.some(
+              (b: any) => b.passengerId === user?.id
+            );
             const isFull = ride.availableSeats === 0 || ride.status === "FULL";
+            const bookedPassengers = ride.bookings || [];
 
             return (
               <GlassCard
@@ -273,6 +323,65 @@ export default function RideSharePage() {
                       </span>
                     </div>
                   </div>
+
+                  {/* Passenger Manifest & Host Kick Safeguards */}
+                  {bookedPassengers.length > 0 && (
+                    <div className="p-3 rounded-xl bg-indigo-500/5 border border-indigo-500/20 space-y-2">
+                      <div className="flex items-center justify-between text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                        <span className="flex items-center gap-1">
+                          <Users className="w-3.5 h-3.5 text-indigo-400" />
+                          <span>Joined Passengers ({bookedPassengers.length})</span>
+                        </span>
+                        {isHost && (
+                          <span className="text-[10px] text-amber-500 font-semibold lowercase">
+                            host control active
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="space-y-1.5">
+                        {bookedPassengers.map((b: any) => (
+                          <div
+                            key={b.id}
+                            className="flex items-center justify-between text-xs p-1.5 rounded-lg bg-white/40 dark:bg-slate-900/40"
+                          >
+                            <div className="flex items-center gap-2 truncate">
+                              <img
+                                src={
+                                  b.passenger?.image ||
+                                  `https://api.dicebear.com/9.x/bottts/svg?seed=${b.passenger?.name || "Passenger"}`
+                                }
+                                alt="Passenger"
+                                className="w-5 h-5 rounded-full object-cover"
+                              />
+                              <span className="font-medium text-slate-800 dark:text-slate-200 truncate max-w-[120px]">
+                                {b.passenger?.name || "Student"}
+                              </span>
+                            </div>
+
+                            {isHost && (
+                              <button
+                                type="button"
+                                disabled={actionLoadingId === `${ride.id}-${b.passengerId}`}
+                                onClick={() =>
+                                  handleKickPassenger(
+                                    ride.id,
+                                    b.passengerId,
+                                    b.passenger?.name || "Passenger"
+                                  )
+                                }
+                                className="px-2 py-0.5 rounded-md bg-rose-500/10 hover:bg-rose-500/20 text-rose-500 text-[10px] font-bold transition-colors flex items-center gap-1"
+                                title="Kick passenger from this cab split"
+                              >
+                                <UserX className="w-3 h-3" />
+                                <span>Kick</span>
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Price, Host & Action Button */}
@@ -284,7 +393,9 @@ export default function RideSharePage() {
                       </p>
                       <p className="text-lg font-extrabold text-indigo-600 dark:text-indigo-400">
                         {formatPaiseToRupees(ride.splitCostEstimate)}{" "}
-                        <span className="text-xs font-normal text-slate-400">/ seat</span>
+                        <span className="text-xs font-normal text-slate-400">
+                          / seat
+                        </span>
                       </p>
                     </div>
 
@@ -309,7 +420,12 @@ export default function RideSharePage() {
                         <span>Seat Booked & Confirmed</span>
                       </div>
                     ) : isFull ? (
-                      <Button variant="secondary" size="sm" disabled className="w-full text-xs">
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        disabled
+                        className="w-full text-xs"
+                      >
                         Cab is Full
                       </Button>
                     ) : (
@@ -349,8 +465,8 @@ export default function RideSharePage() {
               required
               value={origin}
               onChange={(e) => setOrigin(e.target.value)}
-              placeholder="e.g. Campus Main Gate / Hostel Block 4"
-              className="w-full px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              placeholder="e.g., YMCA Campus"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
           </div>
 
@@ -361,17 +477,11 @@ export default function RideSharePage() {
             <input
               type="text"
               required
-              list="destination-options"
               value={destination}
               onChange={(e) => setDestination(e.target.value)}
-              placeholder="e.g. Kempegowda International Airport (BLR)"
-              className="w-full px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              placeholder="e.g., Delhi Airport T3"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
-            <datalist id="destination-options">
-              {QUICK_DESTINATIONS.slice(1).map((d) => (
-                <option key={d} value={d} />
-              ))}
-            </datalist>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -453,7 +563,10 @@ export default function RideSharePage() {
             >
               Cancel
             </Button>
-            <SubmitButton isSubmitting={isSubmitting} loadingText="Publishing Split...">
+            <SubmitButton
+              isSubmitting={isSubmitting}
+              loadingText="Publishing Split..."
+            >
               Host Cab Split
             </SubmitButton>
           </div>

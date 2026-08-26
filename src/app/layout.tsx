@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { ThemeProvider } from "@/components/providers/ThemeProvider";
+import { SessionProvider } from "@/components/providers/SessionProvider";
 import { UserProvider } from "@/components/providers/UserContext";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
@@ -21,14 +22,16 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <body className="min-h-screen flex flex-col mesh-gradient-light dark:mesh-gradient-dark selection:bg-brand-500/30 selection:text-brand-900 dark:selection:text-brand-200">
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange={false}>
-          <UserProvider>
-            <Navbar />
-            <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
-              {children}
-            </main>
-            <Footer />
-            <Toaster position="top-right" richColors closeButton theme="system" />
-          </UserProvider>
+          <SessionProvider>
+            <UserProvider>
+              <Navbar />
+              <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+                {children}
+              </main>
+              <Footer />
+              <Toaster position="top-right" richColors closeButton theme="system" />
+            </UserProvider>
+          </SessionProvider>
         </ThemeProvider>
       </body>
     </html>

@@ -29,6 +29,9 @@ import {
   MessageSquare,
   Flame,
   Send,
+  Building2,
+  Globe,
+  MapPin,
 } from "lucide-react";
 import { ImageUploadDropzone } from "@/components/ui/ImageUploadDropzone";
 
@@ -45,6 +48,7 @@ export default function IncognitoWallPage() {
   const { user } = useUser();
   const [posts, setPosts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [feedScope, setFeedScope] = useState<"CAMPUS" | "GLOBAL">("CAMPUS");
   const [feedTypeFilter, setFeedTypeFilter] = useState("ALL");
   const [isPostModalOpen, setIsPostModalOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
@@ -65,7 +69,11 @@ export default function IncognitoWallPage() {
 
     const [profRes, postsRes] = await Promise.all([
       getIncognitoProfile(user.id),
-      getIncognitoPosts(feedTypeFilter === "ALL" ? undefined : feedTypeFilter),
+      getIncognitoPosts({
+        feedType: feedTypeFilter === "ALL" ? undefined : feedTypeFilter,
+        scope: feedScope,
+        collegeId: user.collegeId || undefined,
+      }),
     ]);
 
     if (profRes.success && profRes.data) {
@@ -81,7 +89,7 @@ export default function IncognitoWallPage() {
 
   useEffect(() => {
     fetchProfileAndFeed();
-  }, [user?.id, feedTypeFilter]);
+  }, [user?.id, user?.collegeId, feedScope, feedTypeFilter]);
 
   const handlePublishPost = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -97,6 +105,7 @@ export default function IncognitoWallPage() {
       content,
       mediaUrl: mediaUrl.trim() || undefined,
       feedType,
+      collegeId: user.collegeId,
     });
     setIsSubmitting(false);
 
@@ -166,7 +175,6 @@ export default function IncognitoWallPage() {
     if (!user) return;
     setLikeLoadingId(postId);
 
-    // Optimistic UI update
     setPosts(
       posts.map((p) => (p.id === postId ? { ...p, likesCount: p.likesCount + 1 } : p))
     );
@@ -192,7 +200,7 @@ export default function IncognitoWallPage() {
           <div className="space-y-2">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-accent-500/20 border border-accent-400/30 text-accent-300 text-xs font-semibold">
               <EyeOff className="w-3.5 h-3.5" />
-              <span>Zero-Knowledge Campus Wall & Confessions</span>
+              <span>Zero-Knowledge Multi-Campus Wall & Confessions</span>
             </div>
             <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight">
               Incognito Wall & Whispers
@@ -230,14 +238,42 @@ export default function IncognitoWallPage() {
         </div>
       </div>
 
-      {/* Feed Filters */}
-      <GlassCard className="p-4">
+      {/* Scope Selector: My Campus vs Global */}
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
+        {/* Campus Scope Tabs */}
+        <div className="inline-flex p-1 rounded-2xl bg-slate-200/60 dark:bg-slate-900/60 border border-slate-300 dark:border-slate-800 shadow-inner">
+          <button
+            onClick={() => setFeedScope("CAMPUS")}
+            className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold transition-all ${
+              feedScope === "CAMPUS"
+                ? "bg-brand-600 text-white shadow-md shadow-brand-600/30"
+                : "text-slate-500 hover:text-slate-200 hover:bg-slate-300/30 dark:hover:bg-slate-800/50"
+            }`}
+          >
+            <Building2 className="w-4 h-4" />
+            <span>My Campus</span>
+          </button>
+
+          <button
+            onClick={() => setFeedScope("GLOBAL")}
+            className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold transition-all ${
+              feedScope === "GLOBAL"
+                ? "bg-purple-600 text-white shadow-md shadow-purple-600/30"
+                : "text-slate-500 hover:text-slate-200 hover:bg-slate-300/30 dark:hover:bg-slate-800/50"
+            }`}
+          >
+            <Globe className="w-4 h-4" />
+            <span>Global Feed</span>
+          </button>
+        </div>
+
+        {/* Category Filters */}
         <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
           {FEED_TYPES.map((type) => (
             <button
               key={type.value}
               onClick={() => setFeedTypeFilter(type.value)}
-              className={`px-4 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
+              className={`px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
                 feedTypeFilter === type.value
                   ? "bg-accent-600 text-white shadow-md shadow-accent-600/30"
                   : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
@@ -247,7 +283,7 @@ export default function IncognitoWallPage() {
             </button>
           ))}
         </div>
-      </GlassCard>
+      </div>
 
       {/* Feed Stream */}
       {loading ? (
@@ -260,10 +296,12 @@ export default function IncognitoWallPage() {
         <GlassCard className="text-center py-16">
           <EyeOff className="w-12 h-12 mx-auto text-slate-400 mb-3 opacity-60" />
           <h3 className="text-lg font-bold text-slate-700 dark:text-slate-300">
-            The incognito wall is quiet right now
+            {feedScope === "CAMPUS"
+              ? "No whispers on your campus wall yet"
+              : "The global incognito feed is quiet right now"}
           </h3>
           <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
-            Drop the first anonymous whisper or exam tip to get the conversation going!
+            Drop the first anonymous confession or secret tip to get the conversation going!
           </p>
           <Button
             variant="brand"
@@ -288,7 +326,7 @@ export default function IncognitoWallPage() {
                 className="flex flex-col justify-between border-slate-200/80 dark:border-slate-800/80 hover:border-accent-500/50"
               >
                 <div className="space-y-3">
-                  {/* Header: Dicebear Avatar, Alias & Feed Type */}
+                  {/* Header: Dicebear Avatar, Alias, College & Feed Type */}
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex items-center gap-2.5">
                       <img
@@ -297,9 +335,17 @@ export default function IncognitoWallPage() {
                         className="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-800 p-0.5 ring-1 ring-accent-500/40"
                       />
                       <div>
-                        <p className="text-xs font-bold text-slate-900 dark:text-white">
-                          @{post.profile?.handle || "Anonymous"}
-                        </p>
+                        <div className="flex items-center gap-1.5">
+                          <p className="text-xs font-bold text-slate-900 dark:text-white">
+                            @{post.profile?.handle || "Anonymous"}
+                          </p>
+                          {post.college && (
+                            <span className="text-[10px] text-slate-400 font-medium flex items-center gap-0.5">
+                              • <Building2 className="w-2.5 h-2.5" />
+                              <span>{post.college.name}</span>
+                            </span>
+                          )}
+                        </div>
                         <p className="text-[10px] text-slate-400">
                           {formatDate(post.createdAt)}
                         </p>
@@ -326,6 +372,17 @@ export default function IncognitoWallPage() {
                   <p className="text-sm text-slate-800 dark:text-slate-200 leading-relaxed whitespace-pre-wrap">
                     {post.content}
                   </p>
+
+                  {/* Optional Media */}
+                  {post.mediaUrl && (
+                    <div className="rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 max-h-60 bg-slate-950">
+                      <img
+                        src={post.mediaUrl}
+                        alt="Post media"
+                        className="w-full h-full object-contain"
+                      />
+                    </div>
+                  )}
                 </div>
 
                 {/* Footer: Like Action & Anonymous DM */}
@@ -432,7 +489,7 @@ export default function IncognitoWallPage() {
                 Posting as @{incognitoProfile?.handle || "AnonRobot"}
               </p>
               <p className="text-[11px] text-slate-400">
-                Auto-generated robot avatar seed based on handle
+                Auto-tagged to your campus community
               </p>
             </div>
           </div>

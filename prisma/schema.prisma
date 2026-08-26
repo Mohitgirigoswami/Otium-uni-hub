@@ -3,13 +3,16 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 enum Role {
   STUDENT
-  ADMIN
+  PRINT_MANAGER
+  CAMPUS_MODERATOR
+  SUPER_ADMIN
 }
 
 enum TaskCategory {
@@ -25,8 +28,14 @@ enum TaskCategory {
 
 enum TaskStatus {
   OPEN
-  ASSIGNED
+  CLAIMED
+  PENDING_ADVANCE
+  ADVANCE_VERIFIED
+  WORK_WITH_ADMIN
+  PENDING_FINAL
+  FINAL_VERIFIED
   COMPLETED
+  BUYER_GHOSTED
   CANCELLED
 }
 
@@ -80,19 +89,38 @@ enum RideShareStatus {
   CANCELLED
 }
 
+enum TicketType {
+  FEEDBACK
+  BUG
+  REPORT_USER
+}
+
+enum TicketStatus {
+  OPEN
+  RESOLVED
+}
+
 model User {
   id                 String             @id @default(cuid())
   name               String?
   email              String?            @unique
+  emailVerified      DateTime?
   image              String?
+  bio                String?
   phone              String?
   department         String?
   year               Int?
   role               Role               @default(STUDENT)
+  collegeId          String?
+  college            College?           @relation(fields: [collegeId], references: [id], onDelete: SetNull)
   freelancerCooldown DateTime?
+  isBanned           Boolean            @default(false)
+  banReason          String?
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
 
+  accounts           Account[]
+  sessions           Session[]
   incognitoProfile   IncognitoProfile?
   postedTasks        TaskGig[]          @relation("TaskPoster")
   assignedTasks      TaskGig[]          @relation("TaskAssignee")
@@ -106,39 +134,132 @@ model User {
   conversationsAsP1  Conversation[]     @relation("ParticipantOne")
   conversationsAsP2  Conversation[]     @relation("ParticipantTwo")
   sentMessages       Message[]
+  tickets            Ticket[]
+  auditLogs          AuditLog[]         @relation("AdminAuditLogs")
+}
+
+model College {
+  id                String             @id @default(cuid())
+  name              String             @unique
+  city              String
+  createdAt         DateTime           @default(now())
+
+  users             User[]
+  marketplaceItems  MarketplaceItem[]
+  postedTasks       TaskGig[]
+  lostAndFoundItems LostAndFoundItem[]
+  incognitoPosts    IncognitoPost[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model PlatformSetting {
+  id        String   @id @default("global_config")
+  upiId     String   @default("admin@upi")
+  updatedAt DateTime @updatedAt
+}
+
+model PrintSetting {
+  id              String   @id @default("default")
+  singleSidedRate Int      @default(250) // price per page in Paise (e.g., 250 for ₹2.50)
+  doubleSidedRate Int      @default(200) // price per page in Paise (e.g., 200 for ₹2.00)
+  updatedAt       DateTime @updatedAt
+}
+
+model Ticket {
+  id        String       @id @default(cuid())
+  userId    String
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subject   String
+  message   String
+  type      TicketType   @default(FEEDBACK)
+  status    TicketStatus @default(OPEN)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
 }
 
 model Conversation {
-  id               String    @id @default(cuid())
-  participantOneId String
-  participantOne   User      @relation("ParticipantOne", fields: [participantOneId], references: [id], onDelete: Cascade)
-  participantTwoId String
-  participantTwo   User      @relation("ParticipantTwo", fields: [participantTwoId], references: [id], onDelete: Cascade)
-  isAnonymousChat  Boolean   @default(false)
-  messages         Message[]
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  id                    String            @id @default(cuid())
+  participantOneId      String?
+  participantOne        User?             @relation("ParticipantOne", fields: [participantOneId], references: [id], onDelete: Cascade)
+  participantTwoId      String?
+  participantTwo        User?             @relation("ParticipantTwo", fields: [participantTwoId], references: [id], onDelete: Cascade)
+  anonParticipantOneId  String?           // Cryptographic blind ID hash
+  anonParticipantTwoId  String?           // Cryptographic blind ID hash
+  incognitoProfileOneId String?
+  incognitoProfileOne   IncognitoProfile? @relation("AnonParticipantOne", fields: [incognitoProfileOneId], references: [id], onDelete: Cascade)
+  incognitoProfileTwoId String?
+  incognitoProfileTwo   IncognitoProfile? @relation("AnonParticipantTwo", fields: [incognitoProfileTwoId], references: [id], onDelete: Cascade)
+  isAnonymousChat       Boolean           @default(false)
+  messages              Message[]
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+
+  @@index([anonParticipantOneId])
+  @@index([anonParticipantTwoId])
 }
 
 model Message {
-  id             String       @id @default(cuid())
-  conversationId String
-  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  senderId       String
-  sender         User         @relation(fields: [senderId], references: [id], onDelete: Cascade)
-  content        String
-  createdAt      DateTime     @default(now())
+  id                 String            @id @default(cuid())
+  conversationId     String
+  conversation       Conversation      @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderId           String?
+  sender             User?             @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  anonSenderId       String?           // Cryptographic blind ID hash
+  incognitoProfileId String?
+  incognitoProfile   IncognitoProfile? @relation(fields: [incognitoProfileId], references: [id], onDelete: Cascade)
+  content            String
+  createdAt          DateTime          @default(now())
+
+  @@index([conversationId])
+  @@index([anonSenderId])
 }
 
 model IncognitoProfile {
-  id        String          @id @default(cuid())
-  handle    String          @unique
-  avatarUrl String
-  userId    String          @unique
-  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  posts     IncognitoPost[]
-  createdAt DateTime        @default(now())
-  updatedAt DateTime        @updatedAt
+  id                    String          @id @default(cuid())
+  handle                String          @unique
+  avatarUrl             String
+  userId                String          @unique
+  user                  User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  posts                 IncognitoPost[]
+  conversationsAsAnonP1 Conversation[]  @relation("AnonParticipantOne")
+  conversationsAsAnonP2 Conversation[]  @relation("AnonParticipantTwo")
+  messages              Message[]
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
 }
 
 model IncognitoPost {
@@ -148,6 +269,8 @@ model IncognitoPost {
   feedType   String           @default("GENERAL")
   profileId  String
   profile    IncognitoProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  collegeId  String?
+  college    College?         @relation(fields: [collegeId], references: [id], onDelete: SetNull)
   likesCount Int              @default(0)
   createdAt  DateTime         @default(now())
   updatedAt  DateTime         @updatedAt
@@ -164,26 +287,34 @@ model MarketplaceItem {
   images      String[]
   sellerId    String
   seller      User                @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  collegeId   String?
+  college     College?            @relation(fields: [collegeId], references: [id], onDelete: SetNull)
   createdAt   DateTime            @default(now())
   updatedAt   DateTime            @updatedAt
 }
 
 model TaskGig {
-  id           String       @id @default(cuid())
-  title        String
-  description  String
-  fileUrl      String?
-  budget       Int          // Strictly stored in Paise
-  category     TaskCategory
-  status       TaskStatus   @default(OPEN)
-  deadline     DateTime?
-  posterId     String
-  poster       User         @relation("TaskPoster", fields: [posterId], references: [id], onDelete: Cascade)
-  assignedToId String?
-  assignedTo   User?        @relation("TaskAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
-  completedAt  DateTime?
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
+  id                 String       @id @default(cuid())
+  title              String
+  description        String
+  fileUrl            String?
+  budget             Int          // Strictly stored in Paise
+  category           TaskCategory
+  status             TaskStatus   @default(OPEN)
+  isAnonymousWriter  Boolean      @default(false)
+  advanceUtr         String?
+  finalUtr           String?
+  payoutUtr          String?
+  deadline           DateTime?
+  posterId           String
+  poster             User         @relation("TaskPoster", fields: [posterId], references: [id], onDelete: Cascade)
+  assignedToId       String?
+  assignedTo         User?        @relation("TaskAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  collegeId          String?
+  college            College?     @relation(fields: [collegeId], references: [id], onDelete: SetNull)
+  completedAt        DateTime?
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
 }
 
 model Subject {
@@ -237,6 +368,8 @@ model LostAndFoundItem {
   status        LostAndFoundStatus @default(UNCLAIMED)
   claimNotes    String?
   claimedById   String?
+  collegeId     String?
+  college       College?           @relation(fields: [collegeId], references: [id], onDelete: SetNull)
   createdAt     DateTime           @default(now())
   updatedAt     DateTime           @updatedAt
 }
@@ -279,3 +412,13 @@ model SemesterCGPA {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 }
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  adminId   String
+  admin     User     @relation("AdminAuditLogs", fields: [adminId], references: [id], onDelete: Cascade)
+  action    String
+  details   String?
+  createdAt DateTime @default(now())
+}
+

@@ -3,129 +3,62 @@
 import { prisma } from "@/lib/prisma";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { ActionResponse } from "@/lib/types";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 
 /**
- * Get or automatically initialize a primary user session for the app
+ * Fetch default Super Admin user for automated testing / dev session fallback
  */
-export async function getOrCreateCurrentUser(
-  targetUserId?: string
-): Promise<ActionResponse<any>> {
+export async function getDevSuperAdminUser(): Promise<ActionResponse<any>> {
   try {
-    const rateCheck = await checkRateLimit(targetUserId || "user-auth");
-    if (!rateCheck.success) {
-      return { error: rateCheck.error };
-    }
-
-    if (targetUserId) {
-      let user = await prisma.user.findUnique({
-        where: { id: targetUserId },
-        include: {
-          incognitoProfile: true,
-          assignedTasks: {
-            where: { status: "ASSIGNED" },
-          },
-        },
-      });
-
-      if (user) {
-        return { success: true, data: user };
-      }
-
-      // If requested user is the admin operator, seed it
-      if (targetUserId === "usr_admin_operator") {
-        user = await prisma.user.create({
-          data: {
-            id: "usr_admin_operator",
-            name: "Campus Print Operator",
-            email: "admin.print@uni.edu",
-            role: "ADMIN" as any,
-            department: "Campus Printing & Operations",
-            year: 0,
-            image:
-              "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&auto=format&fit=crop&q=80",
-            phone: "+91 99999 00000",
-            incognitoProfile: {
-              create: {
-                handle: "AdminConsole",
-                avatarUrl:
-                  "https://api.dicebear.com/9.x/bottts/svg?seed=AdminConsole",
-              },
-            },
-          },
-          include: {
-            incognitoProfile: true,
-            assignedTasks: {
-              where: { status: "ASSIGNED" },
-            },
-          },
-        });
-        return { success: true, data: user };
-      }
-    }
-
-    // Default primary student
-    let user = await prisma.user.findFirst({
-      where: { role: "STUDENT" },
+    const user = await prisma.user.findFirst({
+      where: { email: "mohtigiri3021@gmail.com" },
       include: {
         incognitoProfile: true,
-        assignedTasks: {
-          where: { status: "ASSIGNED" },
-        },
+        college: true,
       },
     });
 
     if (!user) {
-      user = await prisma.user.create({
-        data: {
-          id: "usr_aarav_sharma",
-          name: "Aarav Sharma",
-          email: "aarav.sharma@uni.edu",
-          department: "Computer Science & Engineering",
-          year: 3,
-          role: "STUDENT" as any,
-          image:
-            "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80",
-          phone: "+91 98765 43210",
-          incognitoProfile: {
-            create: {
-              handle: "CyberHawk_99",
-              avatarUrl:
-                "https://api.dicebear.com/9.x/bottts/svg?seed=CyberHawk_99",
-            },
-          },
-        },
-        include: {
-          incognitoProfile: true,
-          assignedTasks: {
-            where: { status: "ASSIGNED" },
-          },
-        },
+      const fallback = await prisma.user.findFirst({
+        include: { incognitoProfile: true, college: true },
       });
+      return { success: true, data: fallback };
     }
 
-    return {
-      success: true,
-      data: user,
-    };
-  } catch (error: any) {
-    console.error("Error in getOrCreateCurrentUser:", error);
-    return {
-      error: error?.message || "Failed to retrieve user profile.",
-    };
+    return { success: true, data: user };
+  } catch (err: any) {
+    return { error: err.message };
   }
 }
 
 /**
- * Fetch user by ID
+ * Fetch user by ID with attached relations
  */
 export async function getUserById(userId: string): Promise<ActionResponse<any>> {
   try {
+    if (!userId) {
+      return { error: "User ID is required." };
+    }
+
     const user = await prisma.user.findUnique({
       where: { id: userId },
       include: {
         incognitoProfile: true,
+        college: true,
         assignedTasks: {
-          where: { status: "ASSIGNED" },
+          where: {
+            status: {
+              in: [
+                "CLAIMED",
+                "PENDING_ADVANCE",
+                "ADVANCE_VERIFIED",
+                "WORK_WITH_ADMIN",
+                "PENDING_FINAL",
+                "FINAL_VERIFIED",
+              ],
+            },
+          },
         },
       },
     });
@@ -147,10 +80,112 @@ export async function getUserById(userId: string): Promise<ActionResponse<any>> 
 }
 
 /**
- * Switch persona / user
+ * Update User Real Profile Information (Name, Bio, Phone, Department, Year)
  */
-export async function switchUserPersona(personaId: string): Promise<ActionResponse<any>> {
-  return getOrCreateCurrentUser(personaId);
+export async function updateUserProfile(data: {
+  userId: string;
+  name?: string;
+  bio?: string;
+  phone?: string;
+  department?: string;
+  year?: number;
+}): Promise<ActionResponse<any>> {
+  try {
+    const rateCheck = await checkRateLimit(data.userId);
+    if (!rateCheck.success) {
+      return { error: rateCheck.error };
+    }
+
+    const session = await getServerSession(authOptions);
+    // If authenticated via NextAuth, enforce that user is modifying their own record
+    if (session?.user?.id && session.user.id !== data.userId) {
+      return { error: "Unauthorized: You cannot edit another student's profile." };
+    }
+
+    const updatedUser = await prisma.user.update({
+      where: { id: data.userId },
+      data: {
+        ...(data.name !== undefined && { name: data.name.trim() }),
+        ...(data.bio !== undefined && { bio: data.bio.trim() }),
+        ...(data.phone !== undefined && { phone: data.phone.trim() }),
+        ...(data.department !== undefined && { department: data.department.trim() }),
+        ...(data.year !== undefined && { year: Number(data.year) }),
+      },
+      include: {
+        incognitoProfile: true,
+        college: true,
+      },
+    });
+
+    return {
+      success: true,
+      data: updatedUser,
+    };
+  } catch (error: any) {
+    console.error("Error in updateUserProfile:", error);
+    return {
+      error: error?.message || "Failed to update profile.",
+    };
+  }
+}
+
+/**
+ * Update or regenerate Incognito Handle & Avatar Seed
+ */
+export async function updateIncognitoProfile(data: {
+  userId: string;
+  handle: string;
+}): Promise<ActionResponse<any>> {
+  try {
+    const rateCheck = await checkRateLimit(data.userId);
+    if (!rateCheck.success) {
+      return { error: rateCheck.error };
+    }
+
+    const session = await getServerSession(authOptions);
+    if (session?.user?.id && session.user.id !== data.userId) {
+      return { error: "Unauthorized: You cannot edit another student's incognito profile." };
+    }
+
+    const cleanHandle = data.handle.trim().replace(/[^a-zA-Z0-9_]/g, "");
+    if (!cleanHandle || cleanHandle.length < 3) {
+      return { error: "Anonymous handle must be at least 3 alphanumeric characters." };
+    }
+
+    // Check handle collision
+    const existing = await prisma.incognitoProfile.findUnique({
+      where: { handle: cleanHandle },
+    });
+
+    if (existing && existing.userId !== data.userId) {
+      return { error: `The handle "@${cleanHandle}" is already taken. Pick another alias.` };
+    }
+
+    const avatarUrl = `https://api.dicebear.com/9.x/bottts/svg?seed=${encodeURIComponent(cleanHandle)}`;
+
+    const profile = await prisma.incognitoProfile.upsert({
+      where: { userId: data.userId },
+      create: {
+        userId: data.userId,
+        handle: cleanHandle,
+        avatarUrl,
+      },
+      update: {
+        handle: cleanHandle,
+        avatarUrl,
+      },
+    });
+
+    return {
+      success: true,
+      data: profile,
+    };
+  } catch (error: any) {
+    console.error("Error in updateIncognitoProfile:", error);
+    return {
+      error: error?.message || "Failed to update incognito profile.",
+    };
+  }
 }
 
 /**
@@ -170,11 +205,23 @@ export async function getUserDashboardStats(
       await Promise.all([
         prisma.user.findUnique({
           where: { id: userId },
-          include: { incognitoProfile: true },
+          include: { incognitoProfile: true, college: true },
         }),
         prisma.subject.findMany({ where: { userId } }),
         prisma.taskGig.count({
-          where: { assignedToId: userId, status: "ASSIGNED" },
+          where: {
+            assignedToId: userId,
+            status: {
+              in: [
+                "CLAIMED",
+                "PENDING_ADVANCE",
+                "ADVANCE_VERIFIED",
+                "WORK_WITH_ADMIN",
+                "PENDING_FINAL",
+                "FINAL_VERIFIED",
+              ],
+            },
+          },
         }),
         prisma.taskGig.count({
           where: { posterId: userId },

@@ -192,3 +192,63 @@ export async function bookRideSeats(
     };
   }
 }
+
+/**
+ * 4. CAB SPLIT: HOST KICK SYSTEM
+ * Remove a passenger from the cab split, increment availableSeats by 1, set status to OPEN
+ */
+export async function removePassengerAction(data: {
+  rideId: string;
+  passengerId: string;
+  hostUserId: string;
+}): Promise<ActionResponse<any>> {
+  try {
+    const rateCheck = await checkRateLimit(data.hostUserId || "host-kick");
+    if (!rateCheck.success) return { error: rateCheck.error };
+
+    const ride = await prisma.rideShare.findUnique({
+      where: { id: data.rideId },
+      include: { bookings: true },
+    });
+
+    if (!ride) {
+      return { error: "Ride share not found." };
+    }
+
+    if (ride.hostId !== data.hostUserId) {
+      return { error: "Unauthorized: Only the cab host can remove passengers." };
+    }
+
+    const booking = ride.bookings.find((b) => b.passengerId === data.passengerId);
+    if (!booking) {
+      return { error: "Passenger is not booked on this cab split." };
+    }
+
+    const freedSeats = booking.seatsBooked || 1;
+    const newAvailable = Math.min(ride.totalSeats, ride.availableSeats + freedSeats);
+
+    await prisma.$transaction([
+      prisma.rideShareBooking.delete({
+        where: { id: booking.id },
+      }),
+      prisma.rideShare.update({
+        where: { id: data.rideId },
+        data: {
+          availableSeats: newAvailable,
+          status: "OPEN",
+        },
+      }),
+    ]);
+
+    return {
+      success: true,
+      data: { message: "Passenger removed and seat released." },
+    };
+  } catch (error: any) {
+    console.error("Error in removePassengerAction:", error);
+    return {
+      error: error?.message || "Failed to remove passenger from cab split.",
+    };
+  }
+}
+

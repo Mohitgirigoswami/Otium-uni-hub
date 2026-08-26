@@ -1,21 +1,20 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Modal } from "@/components/ui/Modal";
 import { SubmitButton } from "@/components/ui/SubmitButton";
-import { useUser, AVAILABLE_PERSONAS } from "@/components/providers/UserContext";
+import { useUser } from "@/components/providers/UserContext";
 import {
   getGigs,
   createGig,
   claimGig,
-  dropGig,
-  completeGig,
 } from "@/actions/gigs.actions";
-import { getOrCreateConversation } from "@/actions/chat.actions";
-import { useRouter } from "next/navigation";
+import { calculateEscrow } from "@/lib/escrow-math";
 import { formatPaiseToRupees, formatDate } from "@/lib/utils";
 import { toast } from "sonner";
 import {
@@ -33,7 +32,9 @@ import {
   ExternalLink,
   ChevronRight,
   TrendingUp,
-  MessageSquare,
+  ShieldCheck,
+  EyeOff,
+  ArrowRight,
 } from "lucide-react";
 import { TaskCategoryType } from "@/lib/types";
 import { PdfUploadDropzone } from "@/components/ui/PdfUploadDropzone";
@@ -49,14 +50,14 @@ const CATEGORIES: { label: string; value: string }[] = [
 ];
 
 export default function GigsPage() {
-  const { user, activePersonaId, refreshUser, isOnCooldown, cooldownHoursRemaining } = useUser();
+  const router = useRouter();
+  const { user, refreshUser, isOnCooldown, cooldownHoursRemaining } = useUser();
   const [gigs, setGigs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [categoryFilter, setCategoryFilter] = useState("ALL");
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [searchQuery, setSearchQuery] = useState("");
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-  const [selectedGigForDetails, setSelectedGigForDetails] = useState<any | null>(null);
 
   // Form states
   const [title, setTitle] = useState("");
@@ -67,7 +68,6 @@ export default function GigsPage() {
   const [fileUrl, setFileUrl] = useState("");
   const [isUploadingMedia, setIsUploadingMedia] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
 
   const fetchGigsList = async () => {
     setLoading(true);
@@ -84,34 +84,9 @@ export default function GigsPage() {
     setLoading(false);
   };
 
-  const router = useRouter();
-  const [chatLoading, setChatLoading] = useState(false);
-
-  const handleDirectMessagePoster = async (posterId: string) => {
-    if (!user) {
-      toast.error("Please login to message the task poster.");
-      return;
-    }
-    if (user.id === posterId) {
-      toast.info("You are the poster of this gig!");
-      return;
-    }
-
-    setChatLoading(true);
-    const res = await getOrCreateConversation({
-      participantOneId: user.id,
-      participantTwoId: posterId,
-      isAnonymousChat: false,
-    });
-    setChatLoading(false);
-
-    if (res.success && res.data) {
-      toast.success("Opening chat with poster...");
-      router.push(`/messages?id=${res.data.id}`);
-    } else {
-      toast.error(res.error || "Failed to start chat.");
-    }
-  };
+  useEffect(() => {
+    fetchGigsList();
+  }, [categoryFilter, statusFilter]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -121,7 +96,7 @@ export default function GigsPage() {
   const handleCreateGig = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) {
-      toast.error("Please ensure you have an active student profile.");
+      toast.error("Please login to post an assignment.");
       return;
     }
     if (!title.trim() || !description.trim() || !budgetRupees) {
@@ -154,66 +129,19 @@ export default function GigsPage() {
       setFileUrl("");
       fetchGigsList();
       refreshUser();
-    }
-  };
-
-  const handleClaim = async (gigId: string) => {
-    if (!user) return;
-    setActionLoadingId(gigId);
-
-    const res = await claimGig(gigId, user.id);
-    setActionLoadingId(null);
-
-    if (res.error) {
-      toast.error(res.error);
-    } else {
-      toast.success("Gig successfully claimed! Check active tasks.");
-      fetchGigsList();
-      refreshUser();
-      if (selectedGigForDetails) setSelectedGigForDetails(null);
-    }
-  };
-
-  const handleDrop = async (gigId: string) => {
-    if (!user) return;
-    const confirmDrop = window.confirm(
-      "⚠️ ANTI-HOARDING WARNING: Dropping this task will apply a STRICT 24-hour cooldown penalty to your account, preventing you from claiming any new gigs. Are you sure?"
-    );
-    if (!confirmDrop) return;
-
-    setActionLoadingId(gigId);
-    const res = await dropGig(gigId, user.id);
-    setActionLoadingId(null);
-
-    if (res.error) {
-      toast.error(res.error);
-    } else {
-      toast.warning("Task dropped. 24-hour claiming cooldown applied.");
-      fetchGigsList();
-      refreshUser();
-      if (selectedGigForDetails) setSelectedGigForDetails(null);
-    }
-  };
-
-  const handleComplete = async (gigId: string) => {
-    if (!user) return;
-    setActionLoadingId(gigId);
-    const res = await completeGig(gigId, user.id);
-    setActionLoadingId(null);
-
-    if (res.error) {
-      toast.error(res.error);
-    } else {
-      toast.success("🎉 Task marked as completed!");
-      fetchGigsList();
-      refreshUser();
-      if (selectedGigForDetails) setSelectedGigForDetails(null);
+      if (res.data?.id) {
+        router.push(`/gigs/${res.data.id}`);
+      }
     }
   };
 
   // Filter assigned tasks for current user to compute concurrency count
   const myAssignedCount = gigs.filter(
-    (g) => g.assignedToId === user?.id && g.status === "ASSIGNED"
+    (g) =>
+      g.assignedToId === user?.id &&
+      ["CLAIMED", "PENDING_ADVANCE", "ADVANCE_VERIFIED", "WORK_WITH_ADMIN", "PENDING_FINAL", "FINAL_VERIFIED"].includes(
+        g.status
+      )
   ).length;
 
   return (
@@ -226,14 +154,14 @@ export default function GigsPage() {
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="space-y-2">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-brand-500/20 border border-brand-400/30 text-brand-300 text-xs font-semibold">
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>P2P Academic Freelance Economy</span>
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Managed Proxy Escrow & P2P Economy</span>
             </div>
             <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight">
               Assignments & Projects Hub
             </h1>
             <p className="text-sm text-slate-300 max-w-2xl leading-relaxed">
-              Earn peer bounties by solving coding challenges, designing presentations, and writing reports. Protected by automated anti-hoarding guardrails.
+              Earn peer bounties with guaranteed 50% advance escrow protection. Writers can claim anonymously with progressive tiered commission.
             </p>
           </div>
 
@@ -334,9 +262,11 @@ export default function GigsPage() {
               className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500"
             >
               <option value="ALL">All Statuses</option>
-              <option value="OPEN">Open Gigs Only</option>
-              <option value="ASSIGNED">In Progress</option>
-              <option value="COMPLETED">Completed</option>
+              <option value="OPEN">Open Bounties</option>
+              <option value="CLAIMED">Claimed (Pending Advance)</option>
+              <option value="ADVANCE_VERIFIED">Advance Verified (Writing)</option>
+              <option value="WORK_WITH_ADMIN">Work With Admin</option>
+              <option value="COMPLETED">Completed Payouts</option>
             </select>
 
             <form onSubmit={handleSearch} className="relative flex-1 sm:w-60">
@@ -384,158 +314,111 @@ export default function GigsPage() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {gigs.map((gig) => {
+            const price = gig.budget / 100;
+            const escrow = calculateEscrow(price);
+
             const isPoster = gig.posterId === user?.id;
             const isAssignee = gig.assignedToId === user?.id;
-            const canClaim = gig.status === "OPEN" && !isPoster && !isOnCooldown && myAssignedCount < 2;
+
+            const writerDisplay = gig.isAnonymousWriter && !isAssignee && user?.role !== "SUPER_ADMIN"
+              ? `@${gig.assignedTo?.incognitoProfile?.handle || "AnonWriter"}`
+              : gig.assignedTo?.name || "Unassigned";
 
             return (
-              <GlassCard
-                key={gig.id}
-                interactive
-                onClick={() => setSelectedGigForDetails(gig)}
-                className="flex flex-col justify-between h-full group border-slate-200/80 dark:border-slate-800/80 hover:border-brand-500/50"
-              >
-                <div className="space-y-4">
-                  {/* Card Header: Category & Status */}
-                  <div className="flex items-center justify-between gap-2">
-                    <Badge
-                      variant={
-                        gig.category === "CODING"
-                          ? "brand"
-                          : gig.category === "DESIGN"
-                          ? "purple"
-                          : gig.category === "ASSIGNMENT"
-                          ? "info"
-                          : "neutral"
-                      }
-                      size="sm"
-                    >
-                      {gig.category}
-                    </Badge>
+              <Link key={gig.id} href={`/gigs/${gig.id}`} className="block group">
+                <GlassCard
+                  interactive
+                  className="flex flex-col justify-between h-full border-slate-200/80 dark:border-slate-800/80 group-hover:border-brand-500/60"
+                >
+                  <div className="space-y-4">
+                    {/* Card Header: Category & Status */}
+                    <div className="flex items-center justify-between gap-2">
+                      <Badge
+                        variant={
+                          gig.category === "CODING"
+                            ? "brand"
+                            : gig.category === "DESIGN"
+                            ? "purple"
+                            : gig.category === "ASSIGNMENT"
+                            ? "info"
+                            : "neutral"
+                        }
+                        size="sm"
+                      >
+                        {gig.category}
+                      </Badge>
 
-                    <Badge
-                      variant={
-                        gig.status === "OPEN"
-                          ? "success"
-                          : gig.status === "ASSIGNED"
-                          ? "warning"
-                          : gig.status === "COMPLETED"
-                          ? "brand"
-                          : "danger"
-                      }
-                      size="sm"
-                    >
-                      {gig.status}
-                    </Badge>
-                  </div>
-
-                  {/* Title & Budget */}
-                  <div>
-                    <h3 className="text-base font-bold text-slate-900 dark:text-white line-clamp-2 group-hover:text-brand-500 transition-colors">
-                      {gig.title}
-                    </h3>
-                    <p className="mt-2 text-xs text-slate-600 dark:text-slate-400 line-clamp-3 leading-relaxed">
-                      {gig.description}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="mt-6 pt-4 border-t border-slate-100 dark:border-slate-800/80 space-y-4">
-                  {/* Budget & Deadline Row */}
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-[10px] uppercase font-bold text-slate-400">
-                        Bounty (INR)
-                      </p>
-                      <p className="text-lg font-extrabold text-brand-600 dark:text-brand-400">
-                        {formatPaiseToRupees(gig.budget)}
-                      </p>
+                      <Badge
+                        variant={
+                          gig.status === "OPEN"
+                            ? "info"
+                            : gig.status === "ADVANCE_VERIFIED"
+                            ? "success"
+                            : gig.status === "COMPLETED"
+                            ? "brand"
+                            : gig.status === "BUYER_GHOSTED"
+                            ? "danger"
+                            : "warning"
+                        }
+                        size="sm"
+                      >
+                        {gig.status.replace(/_/g, " ")}
+                      </Badge>
                     </div>
 
-                    {gig.deadline && (
-                      <div className="text-right">
-                        <p className="text-[10px] uppercase font-bold text-slate-400 flex items-center justify-end gap-1">
-                          <Clock className="w-3 h-3" />
-                          <span>Deadline</span>
-                        </p>
-                        <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-                          {formatDate(gig.deadline)}
+                    {/* Title & Description */}
+                    <div>
+                      <h3 className="text-base font-bold text-slate-900 dark:text-white line-clamp-2 group-hover:text-brand-500 transition-colors">
+                        {gig.title}
+                      </h3>
+                      <p className="mt-2 text-xs text-slate-600 dark:text-slate-400 line-clamp-3 leading-relaxed">
+                        {gig.description}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-6 pt-4 border-t border-slate-100 dark:border-slate-800/80 space-y-3">
+                    {/* Financial Escrow Breakdown Pill */}
+                    <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-100/80 dark:bg-slate-800/50 text-xs">
+                      <div>
+                        <span className="text-[10px] font-bold text-slate-400 uppercase">Total Bounty</span>
+                        <p className="text-base font-extrabold text-brand-600 dark:text-brand-400">
+                          ₹{price}
                         </p>
                       </div>
-                    )}
-                  </div>
 
-                  {/* Poster details */}
-                  <div className="flex items-center justify-between pt-1">
-                    <div className="flex items-center gap-2">
-                      <img
-                        src={
-                          gig.poster?.image ||
-                          `https://api.dicebear.com/9.x/bottts/svg?seed=${gig.poster?.name || "User"}`
-                        }
-                        alt="Poster"
-                        className="w-6 h-6 rounded-full object-cover ring-1 ring-slate-200 dark:ring-slate-700"
-                      />
-                      <span className="text-xs font-medium text-slate-600 dark:text-slate-400 truncate max-w-[120px]">
-                        {gig.poster?.name || "Student"}
+                      <div className="text-right">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase">Writer Net</span>
+                        <p className="font-bold text-emerald-500">
+                          ₹{escrow.writerPayout.toFixed(0)}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Poster and Status Footer */}
+                    <div className="flex items-center justify-between text-xs pt-1">
+                      <div className="flex items-center gap-2">
+                        <img
+                          src={
+                            gig.poster?.image ||
+                            `https://api.dicebear.com/9.x/bottts/svg?seed=${gig.poster?.name || "User"}`
+                          }
+                          alt="Poster"
+                          className="w-6 h-6 rounded-full object-cover ring-1 ring-slate-200 dark:ring-slate-700"
+                        />
+                        <span className="text-xs font-medium text-slate-600 dark:text-slate-400 truncate max-w-[120px]">
+                          {gig.poster?.name || "Student"}
+                        </span>
+                      </div>
+
+                      <span className="text-xs font-bold text-brand-600 dark:text-brand-400 flex items-center gap-1 group-hover:translate-x-1 transition-transform">
+                        <span>Escrow View</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
                       </span>
                     </div>
-
-                    {/* Action Quick Button */}
-                    <div onClick={(e) => e.stopPropagation()}>
-                      {gig.status === "OPEN" && (
-                        <Button
-                          variant="brand"
-                          size="sm"
-                          disabled={!canClaim}
-                          isLoading={actionLoadingId === gig.id}
-                          onClick={() => handleClaim(gig.id)}
-                          title={
-                            isPoster
-                              ? "You posted this task"
-                              : isOnCooldown
-                              ? "You are on a 24h drop cooldown"
-                              : myAssignedCount >= 2
-                              ? "Maximum 2 active gigs concurrency reached"
-                              : "Claim this task"
-                          }
-                        >
-                          Claim Gig
-                        </Button>
-                      )}
-
-                      {gig.status === "ASSIGNED" && isAssignee && (
-                        <div className="flex items-center gap-1.5">
-                          <Button
-                            variant="danger"
-                            size="sm"
-                            isLoading={actionLoadingId === gig.id}
-                            onClick={() => handleDrop(gig.id)}
-                            title="Drop gig (applies 24h cooldown)"
-                          >
-                            Drop
-                          </Button>
-                          <Button
-                            variant="primary"
-                            size="sm"
-                            isLoading={actionLoadingId === gig.id}
-                            onClick={() => handleComplete(gig.id)}
-                          >
-                            Done
-                          </Button>
-                        </div>
-                      )}
-
-                      {gig.status === "COMPLETED" && (
-                        <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-600 dark:text-emerald-400">
-                          <CheckCircle2 className="w-4 h-4" />
-                          <span>Paid</span>
-                        </span>
-                      )}
-                    </div>
                   </div>
-                </div>
-              </GlassCard>
+                </GlassCard>
+              </Link>
             );
           })}
         </div>
@@ -546,7 +429,7 @@ export default function GigsPage() {
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
         title="Post a Task or Assignment Bounty"
-        description="Fill out the requirements. Your bounty is held in peer escrow upon completion."
+        description="Fill out the requirements. Your bounty is held in Managed Proxy Escrow to ensure safe peer fulfillment."
         maxWidth="lg"
       >
         <form onSubmit={handleCreateGig} className="space-y-4 pt-2">
@@ -653,122 +536,11 @@ export default function GigsPage() {
               isSubmitting={isSubmitting || isUploadingMedia}
               loadingText={isUploadingMedia ? "Uploading document to Supabase..." : "Publishing Bounty..."}
             >
-              Post Gig Now
+              Post Escrow Gig
             </SubmitButton>
           </div>
         </form>
       </Modal>
-
-      {/* Gig Details Drawer Modal */}
-      {selectedGigForDetails && (
-        <Modal
-          isOpen={!!selectedGigForDetails}
-          onClose={() => setSelectedGigForDetails(null)}
-          title={selectedGigForDetails.title}
-          maxWidth="lg"
-        >
-          <div className="space-y-6">
-            <div className="flex flex-wrap items-center gap-3">
-              <Badge variant="brand">{selectedGigForDetails.category}</Badge>
-              <Badge
-                variant={
-                  selectedGigForDetails.status === "OPEN"
-                    ? "success"
-                    : selectedGigForDetails.status === "ASSIGNED"
-                    ? "warning"
-                    : "purple"
-                }
-              >
-                Status: {selectedGigForDetails.status}
-              </Badge>
-              <span className="text-xl font-extrabold text-brand-600 dark:text-brand-400">
-                {formatPaiseToRupees(selectedGigForDetails.budget)}
-              </span>
-            </div>
-
-            <div className="p-4 rounded-2xl bg-slate-100/70 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/60 space-y-2">
-              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                Specification & Requirements
-              </h4>
-              <p className="text-sm text-slate-800 dark:text-slate-200 whitespace-pre-wrap leading-relaxed">
-                {selectedGigForDetails.description}
-              </p>
-              {selectedGigForDetails.fileUrl && (
-                <div className="pt-2">
-                  <a
-                    href={selectedGigForDetails.fileUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-1.5 text-xs font-bold text-brand-600 dark:text-brand-400 hover:underline"
-                  >
-                    <FileText className="w-4 h-4" />
-                    <span>View Attached Brief Document</span>
-                    <ExternalLink className="w-3.5 h-3.5" />
-                  </a>
-                </div>
-              )}
-            </div>
-
-            <div className="grid grid-cols-2 gap-4 text-xs">
-              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/30 border border-slate-200 dark:border-slate-800">
-                <p className="text-slate-400 uppercase font-bold text-[10px]">Posted By</p>
-                <p className="font-semibold text-slate-800 dark:text-white mt-0.5">
-                  {selectedGigForDetails.poster?.name}
-                </p>
-                <p className="text-slate-500">{selectedGigForDetails.poster?.department}</p>
-              </div>
-
-              <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/30 border border-slate-200 dark:border-slate-800">
-                <p className="text-slate-400 uppercase font-bold text-[10px]">Assigned Freelancer</p>
-                <p className="font-semibold text-slate-800 dark:text-white mt-0.5">
-                  {selectedGigForDetails.assignedTo?.name || "Not yet claimed"}
-                </p>
-                <p className="text-slate-500">
-                  {selectedGigForDetails.assignedTo?.department || "Open for bids"}
-                </p>
-              </div>
-            </div>
-
-            {/* Anti-Hoarding Notice */}
-            <div className="p-3.5 rounded-xl bg-brand-500/10 border border-brand-500/20 text-xs text-slate-600 dark:text-slate-300 flex items-start gap-2.5">
-              <ShieldAlert className="w-4 h-4 text-brand-500 shrink-0 mt-0.5" />
-              <div>
-                <span className="font-bold text-brand-700 dark:text-brand-300">
-                  Anti-Hoarding Policy:
-                </span>{" "}
-                Each student may actively hold up to 2 tasks concurrently. Dropping an accepted task results in an immediate 24-hour claiming cooldown to guarantee student reliability.
-              </div>
-            </div>
-
-            <div className="pt-4 border-t border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-end gap-3">
-              <Button variant="outline" onClick={() => setSelectedGigForDetails(null)}>
-                Close
-              </Button>
-              {selectedGigForDetails.posterId !== user?.id && (
-                <Button
-                  variant="outline"
-                  disabled={chatLoading}
-                  onClick={() => handleDirectMessagePoster(selectedGigForDetails.posterId)}
-                  leftIcon={<MessageSquare className="w-4 h-4 text-brand-500" />}
-                >
-                  {chatLoading ? "Connecting..." : `Message ${selectedGigForDetails.poster?.name?.split(" ")[0] || "Poster"}`}
-                </Button>
-              )}
-              {selectedGigForDetails.status === "OPEN" &&
-                selectedGigForDetails.posterId !== user?.id && (
-                  <Button
-                    variant="brand"
-                    disabled={isOnCooldown || myAssignedCount >= 2}
-                    isLoading={actionLoadingId === selectedGigForDetails.id}
-                    onClick={() => handleClaim(selectedGigForDetails.id)}
-                  >
-                    Claim Task ({formatPaiseToRupees(selectedGigForDetails.budget)})
-                  </Button>
-                )}
-            </div>
-          </div>
-        </Modal>
-      )}
     </div>
   );
 }

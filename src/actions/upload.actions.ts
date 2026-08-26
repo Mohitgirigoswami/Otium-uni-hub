@@ -23,7 +23,6 @@ export interface CloudinarySignatureData {
 
 /**
  * 1. CLOUDINARY DIRECT UPLOAD SERVER ACTION
- * Generates cryptographic signature so client can upload directly to Cloudinary
  */
 export async function getCloudinarySignature(
   folder: string = "otium_campus"
@@ -45,12 +44,7 @@ export async function getCloudinarySignature(
     }
 
     const timestamp = Math.round(new Date().getTime() / 1000);
-
-    const paramsToSign = {
-      folder,
-      timestamp,
-    };
-
+    const paramsToSign = { folder, timestamp };
     const signature = cloudinary.utils.api_sign_request(paramsToSign, apiSecret);
 
     return {
@@ -77,9 +71,19 @@ export interface SupabaseUploadUrlData {
   path: string;
 }
 
+function getSupabaseAdmin() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://pjrpscknjjkhwfssxxwa.supabase.co";
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+  return createClient(supabaseUrl, serviceRoleKey, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+    },
+  });
+}
+
 /**
- * 2. SUPABASE SIGNED URL SERVER ACTION
- * Generates a signed upload URL using SUPABASE_SERVICE_ROLE_KEY for direct client PDF upload
+ * 2. SUPABASE SIGNED UPLOAD URL (Strictly using bucket 'documents')
  */
 export async function getSupabaseUploadUrl(
   fileName: string,
@@ -91,37 +95,22 @@ export async function getSupabaseUploadUrl(
       return { error: rateCheck.error };
     }
 
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-    if (!supabaseUrl || !serviceRoleKey) {
-      return {
-        error: "Supabase credentials are not properly configured in .env",
-      };
-    }
-
-    const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
-      auth: {
-        persistSession: false,
-        autoRefreshToken: false,
-      },
-    });
-
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://pjrpscknjjkhwfssxxwa.supabase.co";
+    const supabaseAdmin = getSupabaseAdmin();
     const bucketName = "documents";
 
-    // Ensure documents bucket exists
+    // Ensure documents bucket exists with public access
     try {
       const { data: buckets } = await supabaseAdmin.storage.listBuckets();
       const bucketExists = buckets?.some((b) => b.name === bucketName);
       if (!bucketExists) {
         await supabaseAdmin.storage.createBucket(bucketName, {
           public: true,
-          fileSizeLimit: 20 * 1024 * 1024, // 20MB
-          allowedMimeTypes: ["application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"],
+          fileSizeLimit: 50 * 1024 * 1024, // 50MB
         });
       }
     } catch (e) {
-      // Bucket check error ignored
+      // Ignored if bucket exists
     }
 
     const sanitizedName = fileName.replace(/[^a-zA-Z0-9.-]/g, "_");
@@ -137,7 +126,6 @@ export async function getSupabaseUploadUrl(
       .getPublicUrl(uniquePath);
 
     if (error || !data) {
-      // Fallback: use direct storage endpoint URL
       return {
         success: true,
         data: {
@@ -161,5 +149,61 @@ export async function getSupabaseUploadUrl(
     return {
       error: error?.message || "Failed to generate signed document upload URL.",
     };
+  }
+}
+
+/**
+ * 3. DIRECT SERVER-SIDE SUPABASE UPLOAD (Bucket 'documents')
+ */
+export async function uploadDocumentDirect(
+  formData: FormData
+): Promise<ActionResponse<{ publicUrl: string; fileName: string }>> {
+  try {
+    const file = formData.get("file") as File;
+    if (!file) return { error: "No file provided." };
+
+    const supabaseAdmin = getSupabaseAdmin();
+    const bucketName = "documents";
+
+    // Ensure bucket exists
+    try {
+      const { data: buckets } = await supabaseAdmin.storage.listBuckets();
+      const bucketExists = buckets?.some((b) => b.name === bucketName);
+      if (!bucketExists) {
+        await supabaseAdmin.storage.createBucket(bucketName, { public: true });
+      }
+    } catch (e) {}
+
+    const sanitizedName = file.name.replace(/[^a-zA-Z0-9.-]/g, "_");
+    const uniquePath = `uploads/${Date.now()}_${sanitizedName}`;
+    const arrayBuffer = await file.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+
+    const { error: uploadError } = await supabaseAdmin.storage
+      .from(bucketName)
+      .upload(uniquePath, buffer, {
+        contentType: file.type || "application/pdf",
+        upsert: true,
+      });
+
+    if (uploadError) {
+      console.error("Supabase direct upload error:", uploadError);
+      return { error: uploadError.message };
+    }
+
+    const { data: publicData } = supabaseAdmin.storage
+      .from(bucketName)
+      .getPublicUrl(uniquePath);
+
+    return {
+      success: true,
+      data: {
+        publicUrl: publicData.publicUrl,
+        fileName: file.name,
+      },
+    };
+  } catch (error: any) {
+    console.error("Error in uploadDocumentDirect:", error);
+    return { error: error?.message || "Direct upload to Supabase documents failed." };
   }
 }

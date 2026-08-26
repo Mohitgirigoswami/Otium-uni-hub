@@ -1,12 +1,14 @@
 "use client";
 
 import React, { useState, useRef } from "react";
-import { getSupabaseUploadUrl } from "@/actions/upload.actions";
+import { PDFDocument } from "pdf-lib";
+import { getSupabaseUploadUrl, uploadDocumentDirect } from "@/actions/upload.actions";
 import { FileText, UploadCloud, X, Loader2, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 
 interface PdfUploadDropzoneProps {
   onPdfUploaded: (url: string, fileName: string) => void;
+  onPageCountDetected?: (pages: number) => void;
   onUploadingChange?: (isUploading: boolean) => void;
   existingPdfUrl?: string;
   label?: string;
@@ -15,6 +17,7 @@ interface PdfUploadDropzoneProps {
 
 export function PdfUploadDropzone({
   onPdfUploaded,
+  onPageCountDetected,
   onUploadingChange,
   existingPdfUrl,
   label = "Upload PDF Document",
@@ -23,6 +26,7 @@ export function PdfUploadDropzone({
   const [isUploading, setIsUploading] = useState(false);
   const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
   const [fileSizeStr, setFileSizeStr] = useState<string | null>(null);
+  const [detectedPages, setDetectedPages] = useState<number | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -37,14 +41,14 @@ export function PdfUploadDropzone({
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
-  const uploadFile = async (file: File) => {
+  const processAndUploadFile = async (file: File) => {
     if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
       toast.error("Only PDF documents (application/pdf) are supported.");
       return;
     }
 
-    if (file.size > 20 * 1024 * 1024) {
-      toast.error("Document size must not exceed 20MB limit.");
+    if (file.size > 50 * 1024 * 1024) {
+      toast.error("Document size must not exceed 50MB limit.");
       return;
     }
 
@@ -53,34 +57,58 @@ export function PdfUploadDropzone({
     setUploading(true);
 
     try {
-      // 1. Get signed upload URL from Supabase Admin via Server Action
+      // 1. Exact PDF Page Calculation via pdf-lib
+      const arrayBuffer = await file.arrayBuffer();
+      try {
+        const pdfDoc = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
+        const count = pdfDoc.getPageCount();
+        setDetectedPages(count);
+        if (onPageCountDetected) {
+          onPageCountDetected(count);
+        }
+        toast.info(`Detected ${count} pages in "${file.name}"`);
+      } catch (pdfErr) {
+        console.warn("pdf-lib page count detection note:", pdfErr);
+      }
+
+      // 2. Direct Signed Upload to Supabase bucket 'documents'
+      let finalPublicUrl = "";
       const signRes = await getSupabaseUploadUrl(file.name, file.type || "application/pdf");
-      if (!signRes.success || !signRes.data) {
-        throw new Error(signRes.error || "Failed to generate Supabase signed URL.");
+
+      if (signRes.success && signRes.data?.signedUrl) {
+        const { signedUrl, publicUrl } = signRes.data;
+        const uploadRes = await fetch(signedUrl, {
+          method: "PUT",
+          headers: {
+            "Content-Type": file.type || "application/pdf",
+          },
+          body: file,
+        });
+
+        if (uploadRes.ok) {
+          finalPublicUrl = publicUrl;
+        }
       }
 
-      const { signedUrl, publicUrl } = signRes.data;
-
-      // 2. Direct-to-Cloud Upload: Client executes direct PUT request with raw binary to Supabase
-      const uploadRes = await fetch(signedUrl, {
-        method: "PUT",
-        headers: {
-          "Content-Type": file.type || "application/pdf",
-        },
-        body: file,
-      });
-
-      if (!uploadRes.ok) {
-        // Fallback check if already uploaded or network notice
-        console.warn("Signed URL PUT response status:", uploadRes.status);
+      // Fallback: If signed PUT failed, upload via direct Server Action to documents bucket
+      if (!finalPublicUrl) {
+        const formData = new FormData();
+        formData.append("file", file);
+        const directRes = await uploadDocumentDirect(formData);
+        if (directRes.success && directRes.data) {
+          finalPublicUrl = directRes.data.publicUrl;
+        } else {
+          throw new Error(directRes.error || "Failed to upload document to Supabase storage.");
+        }
       }
 
-      onPdfUploaded(publicUrl, file.name);
-      toast.success(`PDF "${file.name}" uploaded directly to cloud!`);
+      onPdfUploaded(finalPublicUrl, file.name);
+      toast.success(`PDF "${file.name}" uploaded to Supabase documents!`);
     } catch (err: any) {
-      console.error("Direct Supabase signed upload error:", err);
+      console.error("Supabase upload error:", err);
       toast.error(err.message || "Failed to upload document.");
       setUploadedFileName(null);
+      setDetectedPages(null);
       onPdfUploaded("", "");
     } finally {
       setUploading(false);
@@ -90,7 +118,7 @@ export function PdfUploadDropzone({
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      uploadFile(file);
+      processAndUploadFile(file);
     }
   };
 
@@ -99,7 +127,7 @@ export function PdfUploadDropzone({
     setIsDragOver(false);
     const file = e.dataTransfer.files?.[0];
     if (file) {
-      uploadFile(file);
+      processAndUploadFile(file);
     }
   };
 
@@ -107,6 +135,7 @@ export function PdfUploadDropzone({
     e.stopPropagation();
     setUploadedFileName(null);
     setFileSizeStr(null);
+    setDetectedPages(null);
     onPdfUploaded("", "");
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
@@ -156,10 +185,16 @@ export function PdfUploadDropzone({
                 </p>
                 <div className="flex items-center gap-2 text-[11px] text-slate-400 mt-0.5">
                   {fileSizeStr && <span>{fileSizeStr}</span>}
+                  {detectedPages !== null && (
+                    <>
+                      <span>•</span>
+                      <span className="font-bold text-brand-500">{detectedPages} Pages Calculated</span>
+                    </>
+                  )}
                   <span>•</span>
                   <span className="text-emerald-500 font-semibold flex items-center gap-1">
                     <CheckCircle2 className="w-3 h-3" />
-                    <span>Uploaded to Supabase</span>
+                    <span>Supabase Documents</span>
                   </span>
                 </div>
               </div>
@@ -188,7 +223,7 @@ export function PdfUploadDropzone({
                 Click or drag & drop PDF here
               </p>
               <p className="text-[11px] text-slate-400 mt-0.5">
-                Direct Supabase signed upload (Max 20MB, application/pdf)
+                Auto-calculates exact page count via pdf-lib & uploads to Supabase (Max 50MB)
               </p>
             </div>
           </div>

@@ -8,7 +8,6 @@ import {
   sendMessage,
 } from "@/actions/chat.actions";
 import { supabase } from "@/lib/supabase-client";
-import { formatDate } from "@/lib/utils";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -19,12 +18,11 @@ import {
   EyeOff,
   User,
   Search,
-  Sparkles,
   Bot,
   ShieldCheck,
-  Clock,
-  ArrowLeft,
   Circle,
+  Lock,
+  Sparkles,
 } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 
@@ -102,7 +100,6 @@ function MessagesContent() {
         },
         async (payload: any) => {
           if (payload.new) {
-            // Append if not already in state
             setMessages((prev) => {
               const exists = prev.some((m) => m.id === payload.new.id);
               if (exists) return prev;
@@ -114,7 +111,7 @@ function MessagesContent() {
       )
       .subscribe();
 
-    // Secondary 3s polling fallback for resilience
+    // 3s polling fallback for resilience
     const interval = setInterval(() => {
       if (activeConversationId && user) {
         getConversationMessages(activeConversationId, user.id).then((res) => {
@@ -165,7 +162,9 @@ function MessagesContent() {
 
   // Helper to get other participant details
   const getOtherParticipant = (conv: any) => {
-    if (!conv || !user) return null;
+    if (!conv) return null;
+    if (conv.otherParticipant) return conv.otherParticipant;
+    if (!user) return null;
     return conv.participantOneId === user.id
       ? conv.participantTwo
       : conv.participantOne;
@@ -199,11 +198,11 @@ function MessagesContent() {
               <span>Campus Direct Messages</span>
               <span className="flex items-center gap-1 text-[11px] font-bold text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded-full">
                 <Circle className="w-2 h-2 fill-current animate-pulse" />
-                <span>Supabase Live</span>
+                <span>Encrypted Live Channel</span>
               </span>
             </h1>
             <p className="text-xs text-slate-400">
-              Encrypted student direct messaging & incognito confessions DM
+              Isolated Public Peer Chats & Zero-Knowledge Incognito DMs
             </p>
           </div>
         </div>
@@ -233,7 +232,9 @@ function MessagesContent() {
                   onClick={() => setFilterType(f)}
                   className={`flex-1 py-1 text-[10px] font-bold rounded-lg transition-all ${
                     filterType === f
-                      ? "bg-brand-600 text-white shadow-sm"
+                      ? f === "ANONYMOUS"
+                        ? "bg-purple-700 text-white shadow-sm"
+                        : "bg-brand-600 text-white shadow-sm"
                       : "text-slate-400 hover:text-slate-200 hover:bg-slate-200/50 dark:hover:bg-slate-800"
                   }`}
                 >
@@ -256,7 +257,7 @@ function MessagesContent() {
                 <MessageSquare className="w-8 h-8 mx-auto text-slate-500 opacity-40" />
                 <p>No conversations found.</p>
                 <p className="text-[10px] text-slate-500">
-                  Click "Message" on Marketplace, Gigs, or Lost & Found items to start a chat!
+                  Message a peer from Marketplace, Gigs, or the Incognito Wall!
                 </p>
               </div>
             ) : (
@@ -272,7 +273,7 @@ function MessagesContent() {
 
                 const avatarUrl = isAnon
                   ? other?.incognitoProfile?.avatarUrl ||
-                    `https://api.dicebear.com/9.x/bottts/svg?seed=${displayName}`
+                    `https://api.dicebear.com/9.x/bottts/svg?seed=${encodeURIComponent(displayName)}`
                   : other?.image ||
                     "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&auto=format&fit=crop&q=80";
 
@@ -282,7 +283,9 @@ function MessagesContent() {
                     onClick={() => setActiveConversationId(conv.id)}
                     className={`p-3.5 flex items-center gap-3 cursor-pointer transition-all ${
                       isSelected
-                        ? "bg-brand-500/10 dark:bg-brand-500/20 border-l-4 border-brand-500"
+                        ? isAnon
+                          ? "bg-purple-950/30 dark:bg-purple-950/50 border-l-4 border-purple-500"
+                          : "bg-brand-500/10 dark:bg-brand-500/20 border-l-4 border-brand-500"
                         : "hover:bg-slate-100/60 dark:hover:bg-slate-800/40"
                     }`}
                   >
@@ -291,11 +294,11 @@ function MessagesContent() {
                         src={avatarUrl}
                         alt={displayName}
                         className={`w-10 h-10 rounded-full object-cover bg-slate-800 ${
-                          isAnon ? "p-0.5 ring-2 ring-accent-500" : ""
+                          isAnon ? "p-0.5 ring-2 ring-purple-500" : ""
                         }`}
                       />
                       {isAnon && (
-                        <div className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-accent-600 text-white flex items-center justify-center text-[9px]">
+                        <div className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-purple-700 text-white flex items-center justify-center text-[9px] shadow">
                           <EyeOff className="w-2.5 h-2.5" />
                         </div>
                       )}
@@ -321,9 +324,9 @@ function MessagesContent() {
                           {lastMsg ? lastMsg.content : "Started conversation"}
                         </p>
                         {isAnon ? (
-                          <Badge variant="warning" size="sm" className="text-[9px] px-1 py-0">
-                            Anon
-                          </Badge>
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-md bg-purple-950 border border-purple-600/50 text-[9px] font-black text-purple-300 tracking-wider">
+                            INCOGNITO DM
+                          </span>
                         ) : null}
                       </div>
                     </div>
@@ -345,26 +348,29 @@ function MessagesContent() {
                     src={
                       activeConv.isAnonymousChat
                         ? otherParticipant?.incognitoProfile?.avatarUrl ||
-                          `https://api.dicebear.com/9.x/bottts/svg?seed=${otherParticipant?.incognitoProfile?.handle}`
+                          `https://api.dicebear.com/9.x/bottts/svg?seed=${encodeURIComponent(
+                            otherParticipant?.incognitoProfile?.handle || "Anon"
+                          )}`
                         : otherParticipant?.image ||
                           "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&auto=format&fit=crop&q=80"
                     }
                     alt="Recipient"
                     className={`w-9 h-9 rounded-full object-cover bg-slate-800 ${
-                      activeConv.isAnonymousChat ? "p-0.5 ring-2 ring-accent-500" : ""
+                      activeConv.isAnonymousChat ? "p-0.5 ring-2 ring-purple-500" : ""
                     }`}
                   />
                   <div>
                     <div className="flex items-center gap-2">
                       <p className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white">
                         {activeConv.isAnonymousChat
-                          ? `@${otherParticipant?.incognitoProfile?.handle || "AnonRobot"}`
+                          ? `@${otherParticipant?.incognitoProfile?.handle || "AnonStudent"}`
                           : otherParticipant?.name || "Student"}
                       </p>
                       {activeConv.isAnonymousChat ? (
-                        <Badge variant="warning" size="sm">
-                          Anonymous Incognito Encrypted
-                        </Badge>
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-purple-950 border border-purple-500/60 text-[10px] font-black text-purple-200 tracking-wide shadow-sm">
+                          <EyeOff className="w-3 h-3 text-purple-400" />
+                          <span>INCOGNITO DM</span>
+                        </span>
                       ) : (
                         <span className="text-[10px] text-slate-400">
                           ({otherParticipant?.department || "Campus Student"})
@@ -373,27 +379,40 @@ function MessagesContent() {
                     </div>
                     <p className="text-[10px] text-emerald-500 font-semibold flex items-center gap-1">
                       <Circle className="w-1.5 h-1.5 fill-current" />
-                      <span>Live WebSocket Connected</span>
+                      <span>End-to-End WebSocket Stream</span>
                     </p>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <Badge variant="brand" size="sm">
-                    {activeConv.isAnonymousChat ? "Incognito Thread" : "Direct Student Chat"}
-                  </Badge>
+                  {activeConv.isAnonymousChat ? (
+                    <span className="text-[10px] font-bold text-purple-400 bg-purple-500/10 px-2 py-1 rounded-lg border border-purple-500/20 flex items-center gap-1">
+                      <Lock className="w-3 h-3" />
+                      <span>Zero-Knowledge Mode</span>
+                    </span>
+                  ) : (
+                    <Badge variant="brand" size="sm">
+                      Direct Student Chat
+                    </Badge>
+                  )}
                 </div>
               </div>
 
               {/* Message Feed */}
               <div className="flex-1 p-4 overflow-y-auto space-y-3">
                 {/* Security Announcement Banner */}
-                <div className="max-w-md mx-auto p-2.5 rounded-xl bg-slate-200/50 dark:bg-slate-800/40 border border-slate-300 dark:border-slate-700/60 text-center">
-                  <p className="text-[10px] text-slate-400 flex items-center justify-center gap-1">
-                    <ShieldCheck className="w-3 h-3 text-brand-500" />
+                <div
+                  className={`max-w-md mx-auto p-2.5 rounded-xl border text-center ${
+                    activeConv.isAnonymousChat
+                      ? "bg-purple-950/40 border-purple-500/30 text-purple-300"
+                      : "bg-slate-200/50 dark:bg-slate-800/40 border-slate-300 dark:border-slate-700/60 text-slate-400"
+                  }`}
+                >
+                  <p className="text-[10px] flex items-center justify-center gap-1.5 font-medium">
+                    <ShieldCheck className="w-3.5 h-3.5 text-brand-400 shrink-0" />
                     <span>
                       {activeConv.isAnonymousChat
-                        ? "Zero-knowledge anonymous chat. Real names and student emails are completely masked."
+                        ? "Zero-knowledge anonymous chat: Real student names, emails, and profile photos are never stored or transmitted in this thread."
                         : "Direct student chat powered by Supabase Realtime."}
                     </span>
                   </p>
@@ -420,13 +439,16 @@ function MessagesContent() {
                   </div>
                 ) : (
                   messages.map((msg) => {
-                    const isMyMessage = msg.senderId === user?.id;
+                    const isMyMessage =
+                      msg.isMine !== undefined
+                        ? msg.isMine
+                        : msg.senderId === user?.id;
                     const isAnon = activeConv.isAnonymousChat;
 
                     const senderDisplayName = isMyMessage
                       ? "You"
                       : isAnon
-                      ? `@${msg.sender?.incognitoProfile?.handle || "AnonRobot"}`
+                      ? `@${msg.sender?.incognitoProfile?.handle || "AnonStudent"}`
                       : msg.sender?.name || "Student";
 
                     return (
@@ -443,9 +465,11 @@ function MessagesContent() {
                         <div
                           className={`max-w-[75%] sm:max-w-md px-3.5 py-2.5 rounded-2xl text-xs sm:text-sm leading-relaxed shadow-sm ${
                             isMyMessage
-                              ? "bg-brand-600 text-white rounded-tr-none"
+                              ? isAnon
+                                ? "bg-purple-700 text-white rounded-tr-none"
+                                : "bg-brand-600 text-white rounded-tr-none"
                               : isAnon
-                              ? "bg-slate-800 text-slate-100 border border-accent-500/30 rounded-tl-none"
+                              ? "bg-slate-900 text-slate-100 border border-purple-500/30 rounded-tl-none"
                               : "bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 border border-slate-200 dark:border-slate-700/60 rounded-tl-none"
                           }`}
                         >
@@ -453,7 +477,7 @@ function MessagesContent() {
                           <p
                             className={`text-[9px] mt-1 text-right ${
                               isMyMessage
-                                ? "text-brand-200"
+                                ? "text-purple-200 dark:text-purple-300"
                                 : "text-slate-400"
                             }`}
                           >
@@ -479,8 +503,8 @@ function MessagesContent() {
                   type="text"
                   placeholder={
                     activeConv.isAnonymousChat
-                      ? "Type anonymous whisper message..."
-                      : "Type message to peer student..."
+                      ? "Send anonymous whisper..."
+                      : "Type message to student..."
                   }
                   value={inputMessage}
                   onChange={(e) => setInputMessage(e.target.value)}
@@ -491,7 +515,11 @@ function MessagesContent() {
                   type="submit"
                   size="sm"
                   disabled={sending || !inputMessage.trim()}
-                  className="bg-brand-600 hover:bg-brand-500 px-4 py-2 h-auto"
+                  className={`px-4 py-2 h-auto font-bold ${
+                    activeConv.isAnonymousChat
+                      ? "bg-purple-600 hover:bg-purple-500"
+                      : "bg-brand-600 hover:bg-brand-500"
+                  }`}
                 >
                   <Send className="w-4 h-4" />
                 </Button>
@@ -506,7 +534,7 @@ function MessagesContent() {
                 Select a Conversation
               </h3>
               <p className="text-xs max-w-sm">
-                Choose a peer thread from the sidebar or click "Message" on any Marketplace item, Gig bounty, or Found item.
+                Choose a peer thread from the sidebar or initiate a direct chat from Marketplace, Gig bounty, or the Incognito Wall.
               </p>
             </div>
           )}

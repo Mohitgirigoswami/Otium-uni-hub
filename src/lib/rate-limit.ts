@@ -21,9 +21,10 @@ function getRateLimiter() {
       token,
     });
 
+    // 10 requests per 10 seconds sliding window
     ratelimitInstance = new Ratelimit({
       redis,
-      limiter: Ratelimit.slidingWindow(5, "60 s"),
+      limiter: Ratelimit.slidingWindow(10, "10 s"),
       analytics: true,
       prefix: "@otium/ratelimit",
     });
@@ -39,9 +40,9 @@ function getRateLimiter() {
 const memoryStore = new Map<string, { count: number; resetAt: number }>();
 
 /**
- * Enforce strict 5 requests per minute rate limit across Server Actions
- * @param identifier Unique identifier (e.g., user IP or user ID)
- * @returns Object with success boolean and remaining count
+ * Enforce strict rate limit (10 requests per 10 seconds) across Server Actions
+ * @param identifier Unique identifier (e.g., user ID or session ID)
+ * @returns Object with success boolean, remaining count, and error message
  */
 export async function checkRateLimit(identifier: string = "anonymous-client") {
   const limiter = getRateLimiter();
@@ -54,7 +55,7 @@ export async function checkRateLimit(identifier: string = "anonymous-client") {
           success: false,
           remaining: result.remaining,
           reset: result.reset,
-          error: "Rate limit exceeded. You can only perform 5 actions per minute. Please try again shortly.",
+          error: "Rate limit exceeded: Maximum 10 requests per 10 seconds. Please slow down and try again.",
         };
       }
       return { success: true, remaining: result.remaining, reset: result.reset };
@@ -63,26 +64,26 @@ export async function checkRateLimit(identifier: string = "anonymous-client") {
     }
   }
 
-  // Fallback in-memory rate limiter (5 req / 60 sec)
+  // Fallback in-memory rate limiter (10 req / 10 sec)
   const now = Date.now();
-  const windowMs = 60 * 1000;
+  const windowMs = 10 * 1000;
   const entry = memoryStore.get(identifier);
 
   if (!entry || now > entry.resetAt) {
     memoryStore.set(identifier, { count: 1, resetAt: now + windowMs });
-    return { success: true, remaining: 4, reset: now + windowMs };
+    return { success: true, remaining: 9, reset: now + windowMs };
   }
 
-  if (entry.count >= 5) {
+  if (entry.count >= 10) {
     const waitSec = Math.ceil((entry.resetAt - now) / 1000);
     return {
       success: false,
       remaining: 0,
       reset: entry.resetAt,
-      error: `Rate limit exceeded. Maximum 5 requests per minute. Try again in ${waitSec}s.`,
+      error: `Rate limit exceeded: Maximum 10 requests per 10 seconds. Try again in ${waitSec}s.`,
     };
   }
 
   entry.count += 1;
-  return { success: true, remaining: 5 - entry.count, reset: entry.resetAt };
+  return { success: true, remaining: 10 - entry.count, reset: entry.resetAt };
 }

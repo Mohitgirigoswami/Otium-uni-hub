@@ -81,13 +81,26 @@ export async function setupIncognitoProfile(
 }
 
 /**
- * Fetch posts from the Incognito Wall
+ * Fetch posts from the Incognito Wall (Supports CAMPUS vs GLOBAL feeds)
  */
-export async function getIncognitoPosts(feedType?: string): Promise<ActionResponse<any[]>> {
+export async function getIncognitoPosts(params?: {
+  feedType?: string;
+  scope?: "CAMPUS" | "GLOBAL";
+  collegeId?: string | null;
+}): Promise<ActionResponse<any[]>> {
   try {
     const where: any = {};
+    const feedType = typeof params === "string" ? params : params?.feedType;
+    const scope = typeof params === "object" ? params?.scope : "CAMPUS";
+    const collegeId = typeof params === "object" ? params?.collegeId : null;
+
     if (feedType && feedType !== "ALL") {
       where.feedType = feedType;
+    }
+
+    // Campus vs Global Scoping
+    if (scope === "CAMPUS" && collegeId) {
+      where.collegeId = collegeId;
     }
 
     const posts = await prisma.incognitoPost.findMany({
@@ -98,6 +111,13 @@ export async function getIncognitoPosts(feedType?: string): Promise<ActionRespon
             id: true,
             handle: true,
             avatarUrl: true,
+          },
+        },
+        college: {
+          select: {
+            id: true,
+            name: true,
+            city: true,
           },
         },
       },
@@ -118,13 +138,14 @@ export async function getIncognitoPosts(feedType?: string): Promise<ActionRespon
 }
 
 /**
- * Publish anonymous whisper/post on the Incognito Wall
+ * Publish anonymous whisper/post on the Incognito Wall tagged with user's college
  */
 export async function createIncognitoPost(data: {
   userId: string;
   content: string;
   mediaUrl?: string;
   feedType?: string;
+  collegeId?: string | null;
 }): Promise<ActionResponse<any>> {
   try {
     const rateCheck = await checkRateLimit(data.userId);
@@ -135,6 +156,14 @@ export async function createIncognitoPost(data: {
     if (!data.content?.trim()) {
       return { error: "Post content cannot be empty." };
     }
+
+    // Look up user to get their collegeId if not provided
+    const userRecord = await prisma.user.findUnique({
+      where: { id: data.userId },
+      select: { collegeId: true },
+    });
+
+    const activeCollegeId = data.collegeId || userRecord?.collegeId || null;
 
     // Force incognito profile existence
     let profile = await prisma.incognitoProfile.findUnique({
@@ -159,9 +188,11 @@ export async function createIncognitoPost(data: {
         mediaUrl: data.mediaUrl || null,
         feedType: data.feedType || "GENERAL",
         profileId: profile.id,
+        collegeId: activeCollegeId,
       },
       include: {
         profile: true,
+        college: true,
       },
     });
 

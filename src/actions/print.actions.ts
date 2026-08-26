@@ -2,7 +2,26 @@
 
 import { prisma } from "@/lib/prisma";
 import { checkRateLimit } from "@/lib/rate-limit";
-import { ActionResponse, PrintTypeEnum, PRINT_RATES_PAISE } from "@/lib/types";
+import { ActionResponse, PrintTypeEnum } from "@/lib/types";
+import { getDynamicPrintRates, calculatePrintCostPaise, PrintRatesData } from "@/lib/services/print.service";
+
+/**
+ * Fetch dynamic print pricing rates
+ */
+export async function getPrintRatesAction(): Promise<ActionResponse<PrintRatesData>> {
+  try {
+    const rates = await getDynamicPrintRates();
+    return {
+      success: true,
+      data: rates,
+    };
+  } catch (error: any) {
+    console.error("Error in getPrintRatesAction:", error);
+    return {
+      error: error?.message || "Failed to load print rates.",
+    };
+  }
+}
 
 /**
  * Fetch all print orders for a user
@@ -28,7 +47,7 @@ export async function getPrintOrders(userId: string): Promise<ActionResponse<any
 }
 
 /**
- * Submit a cloud print order
+ * Submit a cloud print order using dynamic per-page pricing
  */
 export async function createPrintOrder(data: {
   userId: string;
@@ -53,8 +72,9 @@ export async function createPrintOrder(data: {
       return { error: "Delivery hostel/room/library location is required." };
     }
 
-    const ratePerUnit = PRINT_RATES_PAISE[data.printType] || 200;
-    const totalCostPaise = data.pageCount * ratePerUnit;
+    // Fetch dynamic rates from PrintSetting
+    const rates = await getDynamicPrintRates();
+    const totalCostPaise = calculatePrintCostPaise(data.pageCount, data.printType, rates);
 
     const order = await prisma.printOrder.create({
       data: {
@@ -64,7 +84,9 @@ export async function createPrintOrder(data: {
         pageCount: Number(data.pageCount),
         printType: data.printType as any,
         deliveryLocation: data.deliveryLocation.trim(),
-        expectedDelivery: data.expectedDelivery ? new Date(data.expectedDelivery) : new Date(Date.now() + 2 * 60 * 60 * 1000),
+        expectedDelivery: data.expectedDelivery
+          ? new Date(data.expectedDelivery)
+          : new Date(Date.now() + 2 * 60 * 60 * 1000),
         totalCost: totalCostPaise,
         status: "SUBMITTED",
       },

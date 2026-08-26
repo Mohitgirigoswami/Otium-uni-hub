@@ -1,106 +1,82 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useState } from "react";
-import { getOrCreateCurrentUser } from "@/actions/user.actions";
+import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
+import { useSession, signOut } from "next-auth/react";
+import { getUserById, getDevSuperAdminUser } from "@/actions/user.actions";
 
 interface UserContextType {
   user: any | null;
   loading: boolean;
-  activePersonaId: string;
-  setActivePersonaId: (id: string) => void;
   refreshUser: () => Promise<void>;
   isOnCooldown: boolean;
   cooldownHoursRemaining: number;
+  handleSignOut: () => Promise<void>;
 }
 
 const UserContext = createContext<UserContextType>({
   user: null,
   loading: true,
-  activePersonaId: "usr_aarav_sharma",
-  setActivePersonaId: () => {},
   refreshUser: async () => {},
   isOnCooldown: false,
   cooldownHoursRemaining: 0,
+  handleSignOut: async () => {},
 });
 
-export const AVAILABLE_PERSONAS = [
-  {
-    id: "usr_aarav_sharma",
-    name: "Aarav Sharma",
-    role: "CS Senior (Full-Stack Dev)",
-    userRole: "STUDENT",
-    year: "3rd Year",
-    department: "Computer Science",
-    avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80",
-    incognitoHandle: "CyberHawk_99",
-  },
-  {
-    id: "usr_priya_patel",
-    name: "Priya Patel",
-    role: "UI/UX Designer",
-    userRole: "STUDENT",
-    year: "4th Year",
-    department: "Design & Interaction",
-    avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80",
-    incognitoHandle: "PixelSorceress",
-  },
-  {
-    id: "usr_rohan_verma",
-    name: "Rohan Verma",
-    role: "Mechanical Enthusiast",
-    userRole: "STUDENT",
-    year: "2nd Year",
-    department: "Mechanical Engg",
-    avatar: "https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=150&auto=format&fit=crop&q=80",
-    incognitoHandle: "TurboMech_07",
-  },
-  {
-    id: "usr_sneha_reddy",
-    name: "Sneha Reddy",
-    role: "Data & Biotech Researcher",
-    userRole: "STUDENT",
-    year: "3rd Year",
-    department: "Biotech & Data",
-    avatar: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&auto=format&fit=crop&q=80",
-    incognitoHandle: "BioQuantum",
-  },
-  {
-    id: "usr_admin_operator",
-    name: "Campus Print Operator (Admin)",
-    role: "Campus Ops & Admin",
-    userRole: "ADMIN",
-    year: "Staff",
-    department: "Campus Printing & IT Services",
-    avatar: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&auto=format&fit=crop&q=80",
-    incognitoHandle: "AdminConsole",
-  },
-];
-
 export function UserProvider({ children }: { children: React.ReactNode }) {
+  const { data: session, status } = useSession();
   const [user, setUser] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activePersonaId, setActivePersonaId] = useState<string>("usr_aarav_sharma");
 
-  const loadUser = async (targetId?: string) => {
+  const loadUser = useCallback(async (userId?: string) => {
     try {
       setLoading(true);
-      const res = await getOrCreateCurrentUser(targetId || activePersonaId);
-      if (res.success && res.data) {
-        setUser(res.data);
+      const targetId = userId || session?.user?.id;
+      if (targetId) {
+        const res = await getUserById(targetId);
+        if (res.success && res.data) {
+          setUser(res.data);
+          setLoading(false);
+          return;
+        }
       }
+
+      // Dev environment fallback to Super Admin
+      if (process.env.NODE_ENV === "development") {
+        const devRes = await getDevSuperAdminUser();
+        if (devRes.success && devRes.data) {
+          setUser(devRes.data);
+          setLoading(false);
+          return;
+        }
+      }
+
+      setUser(null);
     } catch (e) {
       console.error("Failed to load user session:", e);
+      setUser(null);
     } finally {
       setLoading(false);
     }
-  };
+  }, [session?.user?.id]);
 
   useEffect(() => {
-    loadUser(activePersonaId);
-  }, [activePersonaId]);
+    if (status === "loading") {
+      setLoading(true);
+    } else if (session?.user?.id) {
+      loadUser(session.user.id);
+    } else {
+      loadUser();
+    }
+  }, [session?.user?.id, status, loadUser]);
 
   const refreshUser = async () => {
-    await loadUser(activePersonaId);
+    if (session?.user?.id) {
+      await loadUser(session.user.id);
+    }
+  };
+
+  const handleSignOut = async () => {
+    await signOut({ callbackUrl: "/login" });
   };
 
   // Check cooldown status
@@ -116,16 +92,24 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
+  // Automatic Ban Guardrail
+  useEffect(() => {
+    if (user?.isBanned && typeof window !== "undefined") {
+      if (!window.location.pathname.startsWith("/banned")) {
+        window.location.href = "/banned";
+      }
+    }
+  }, [user?.isBanned]);
+
   return (
     <UserContext.Provider
       value={{
         user,
-        loading,
-        activePersonaId,
-        setActivePersonaId,
+        loading: loading || status === "loading",
         refreshUser,
         isOnCooldown,
         cooldownHoursRemaining,
+        handleSignOut,
       }}
     >
       {children}

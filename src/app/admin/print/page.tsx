@@ -6,6 +6,8 @@ import {
   getAllPrintOrdersAdmin,
   updatePrintOrderStatus,
   getAdminDownloadUrl,
+  getPrintSettingsAdmin,
+  updatePrintRatesAction,
 } from "@/actions/admin.actions";
 import { formatPaiseToRupees, formatDate } from "@/lib/utils";
 import { GlassCard } from "@/components/ui/GlassCard";
@@ -26,6 +28,9 @@ import {
   ShieldCheck,
   User,
   Phone,
+  Settings,
+  IndianRupee,
+  Sparkles,
 } from "lucide-react";
 
 export default function AdminPrintQueuePage() {
@@ -36,6 +41,12 @@ export default function AdminPrintQueuePage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [downloadLoadingId, setDownloadLoadingId] = useState<string | null>(null);
   const [statusUpdatingId, setStatusUpdatingId] = useState<string | null>(null);
+
+  // Dynamic Pricing Settings Form
+  const [singleSidedRupees, setSingleSidedRupees] = useState<string>("2.50");
+  const [doubleSidedRupees, setDoubleSidedRupees] = useState<string>("2.00");
+  const [savingRates, setSavingRates] = useState(false);
+  const [loadingRates, setLoadingRates] = useState(true);
 
   const fetchOrders = async () => {
     if (!user) return;
@@ -49,9 +60,51 @@ export default function AdminPrintQueuePage() {
     setLoading(false);
   };
 
+  const fetchRates = async () => {
+    if (!user) return;
+    setLoadingRates(true);
+    const res = await getPrintSettingsAdmin(user.id);
+    if (res.success && res.data) {
+      setSingleSidedRupees(res.data.singleSidedRupees.toFixed(2));
+      setDoubleSidedRupees(res.data.doubleSidedRupees.toFixed(2));
+    }
+    setLoadingRates(false);
+  };
+
   useEffect(() => {
     fetchOrders();
+    fetchRates();
   }, [user]);
+
+  const handleUpdateRates = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+
+    const single = parseFloat(singleSidedRupees);
+    const double = parseFloat(doubleSidedRupees);
+
+    if (isNaN(single) || single <= 0 || isNaN(double) || double <= 0) {
+      toast.error("Please enter valid rates in Rupees.");
+      return;
+    }
+
+    setSavingRates(true);
+    const res = await updatePrintRatesAction({
+      singleSidedRupees: single,
+      doubleSidedRupees: double,
+      adminUserId: user.id,
+    });
+    setSavingRates(false);
+
+    if (res.error) {
+      toast.error(res.error);
+    } else {
+      toast.success(
+        `Print rates updated! Single: ₹${single.toFixed(2)}/pg, Double: ₹${double.toFixed(2)}/pg`
+      );
+      fetchRates();
+    }
+  };
 
   const handleUpdateStatus = async (orderId: string, newStatus: any) => {
     if (!user) return;
@@ -66,7 +119,7 @@ export default function AdminPrintQueuePage() {
     if (res.error) {
       toast.error(res.error);
     } else {
-      toast.success(`Order status updated to "${newStatus.replace("_", " ")}"`);
+      toast.success(`Order status updated to "${newStatus.replace(/_/g, " ")}"`);
       fetchOrders();
     }
   };
@@ -78,6 +131,13 @@ export default function AdminPrintQueuePage() {
       return;
     }
 
+    // If fileUrl is a valid public HTTP URL, open directly
+    if (order.fileUrl && (order.fileUrl.startsWith("http://") || order.fileUrl.startsWith("https://"))) {
+      window.open(order.fileUrl, "_blank");
+      toast.success("Opening document in new tab...");
+      return;
+    }
+
     setDownloadLoadingId(order.id);
     const res = await getAdminDownloadUrl({
       filePathOrUrl: order.fileUrl || order.fileName,
@@ -86,7 +146,7 @@ export default function AdminPrintQueuePage() {
     setDownloadLoadingId(null);
 
     if (res.success && res.data?.signedUrl) {
-      toast.success("Generated 60-second secure print token! Opening document...");
+      toast.success("Opening document...");
       window.open(res.data.signedUrl, "_blank");
     } else {
       toast.error(res.error || "Failed to generate document print URL.");
@@ -122,22 +182,97 @@ export default function AdminPrintQueuePage() {
         <div>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white flex items-center gap-2.5">
             <Printer className="w-7 h-7 text-amber-500" />
-            <span>Print Fulfillment Operator Hub</span>
+            <span>Print Fulfillment & Dynamic Pricing Operator Hub</span>
           </h1>
           <p className="text-xs sm:text-sm text-slate-400 mt-1">
-            Dispatch, fulfill, and monitor hostel print jobs. Secure 60-second signed document print access.
+            Dispatch, fulfill, and configure per-page print pricing in Paise. Secure 60-second signed document print access.
           </p>
         </div>
 
-        <Button
-          onClick={fetchOrders}
-          variant="outline"
-          size="sm"
-          leftIcon={<RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />}
-        >
-          Refresh Queue
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            onClick={() => {
+              fetchOrders();
+              fetchRates();
+            }}
+            variant="outline"
+            size="sm"
+            leftIcon={<RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />}
+          >
+            Refresh Queue
+          </Button>
+        </div>
       </div>
+
+      {/* Dynamic Print Pricing Control Panel */}
+      <GlassCard className="p-6 border-amber-500/30">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+          <div className="space-y-1">
+            <div className="inline-flex items-center gap-2 text-xs font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider">
+              <Settings className="w-4 h-4" />
+              <span>Dynamic Print Pricing Controls</span>
+            </div>
+            <h2 className="text-lg font-bold text-slate-900 dark:text-white">
+              Campus Print Rates (Stored as Paise in Database)
+            </h2>
+            <p className="text-xs text-slate-500 max-w-xl">
+              Updating these rates immediately applies to all new student orders placed through the Print Station.
+            </p>
+          </div>
+
+          <form onSubmit={handleUpdateRates} className="flex flex-wrap items-end gap-4">
+            <div>
+              <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                Single-Sided Rate (INR)
+              </label>
+              <div className="relative w-36">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs font-bold">
+                  ₹
+                </span>
+                <input
+                  type="number"
+                  step="0.10"
+                  min="0.5"
+                  required
+                  value={singleSidedRupees}
+                  onChange={(e) => setSingleSidedRupees(e.target.value)}
+                  className="w-full pl-7 pr-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-amber-500"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                Double-Sided Rate (INR)
+              </label>
+              <div className="relative w-36">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs font-bold">
+                  ₹
+                </span>
+                <input
+                  type="number"
+                  step="0.10"
+                  min="0.5"
+                  required
+                  value={doubleSidedRupees}
+                  onChange={(e) => setDoubleSidedRupees(e.target.value)}
+                  className="w-full pl-7 pr-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-amber-500"
+                />
+              </div>
+            </div>
+
+            <Button
+              type="submit"
+              disabled={savingRates || loadingRates}
+              size="sm"
+              className="bg-amber-600 hover:bg-amber-500 text-white font-bold h-[34px]"
+              leftIcon={<CheckCircle2 className="w-4 h-4" />}
+            >
+              {savingRates ? "Updating..." : "Save Rates"}
+            </Button>
+          </form>
+        </div>
+      </GlassCard>
 
       {/* Metrics Summary Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
@@ -195,7 +330,7 @@ export default function AdminPrintQueuePage() {
                   : "bg-slate-100 dark:bg-slate-800 text-slate-400 hover:text-slate-200"
               }`}
             >
-              {st.replace("_", " ")}
+              {st.replace(/_/g, " ")}
             </button>
           ))}
         </div>
@@ -279,7 +414,7 @@ export default function AdminPrintQueuePage() {
                             {ord.pageCount} Pages
                           </span>
                           <span>•</span>
-                          <span>{ord.printType.replace("_", " ")}</span>
+                          <span>{ord.printType.replace(/_/g, " ")}</span>
                         </div>
                       </div>
                     </td>
@@ -316,7 +451,7 @@ export default function AdminPrintQueuePage() {
                         }
                         size="sm"
                       >
-                        {ord.status.replace("_", " ")}
+                        {ord.status.replace(/_/g, " ")}
                       </Badge>
                     </td>
 

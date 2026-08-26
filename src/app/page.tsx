@@ -5,7 +5,7 @@ import Link from "next/link";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
-import { useUser, AVAILABLE_PERSONAS } from "@/components/providers/UserContext";
+import { useUser } from "@/components/providers/UserContext";
 import { getDashboardStats } from "@/actions/user.actions";
 import { getGigs } from "@/actions/gigs.actions";
 import { getRides } from "@/actions/rideshare.actions";
@@ -31,10 +31,12 @@ import {
   Clock,
   Heart,
   Plus,
+  LogIn,
+  Building2,
 } from "lucide-react";
 
 export default function HomePage() {
-  const { user, activePersonaId, isOnCooldown, cooldownHoursRemaining } = useUser();
+  const { user, isOnCooldown, cooldownHoursRemaining } = useUser();
   const [stats, setStats] = useState<any | null>(null);
   const [latestGigs, setLatestGigs] = useState<any[]>([]);
   const [upcomingRides, setUpcomingRides] = useState<any[]>([]);
@@ -42,16 +44,12 @@ export default function HomePage() {
   const [recentMarketplace, setRecentMarketplace] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const activePersona =
-    AVAILABLE_PERSONAS.find((p) => p.id === activePersonaId) || AVAILABLE_PERSONAS[0];
-
   useEffect(() => {
     async function loadHubData() {
-      if (!user) return;
       setLoading(true);
 
       const [statsRes, gigsRes, ridesRes, postsRes, marketRes] = await Promise.all([
-        getDashboardStats(user.id),
+        user?.id ? getDashboardStats(user.id) : Promise.resolve({ success: false, data: null }),
         getGigs(),
         getRides(),
         getIncognitoPosts(),
@@ -68,7 +66,12 @@ export default function HomePage() {
     }
 
     loadHubData();
-  }, [user?.id, activePersonaId]);
+  }, [user?.id]);
+
+  const displayName = user?.name || "Student";
+  const departmentInfo = user?.department
+    ? `${user.department} • Year ${user.year || 1}`
+    : user?.college?.name || "University Hub";
 
   return (
     <div className="space-y-10">
@@ -87,12 +90,12 @@ export default function HomePage() {
             <h1 className="text-3xl sm:text-5xl font-extrabold tracking-tight font-sans">
               Welcome back,{" "}
               <span className="bg-gradient-to-r from-teal-300 via-brand-300 to-electric-300 bg-clip-text text-transparent">
-                {activePersona.name}
+                {displayName}
               </span>
             </h1>
 
             <p className="text-sm sm:text-base text-slate-300 max-w-2xl leading-relaxed">
-              {activePersona.department} • {activePersona.year}. Your academic guardrails, peer bounties, and campus collaboration hub are running live.
+              {departmentInfo}. Your academic guardrails, peer bounties, and campus collaboration hub are running live.
             </p>
           </div>
 
@@ -130,10 +133,10 @@ export default function HomePage() {
               <CalendarCheck className="w-4 h-4 text-emerald-400" />
             </div>
             <p className="text-2xl font-black text-emerald-400 mt-1">
-              {stats?.overallAttendance || 85}%
+              {stats?.stats?.attendancePercentage || 85}%
             </p>
             <p className="text-xs text-slate-300 mt-0.5">
-              {stats?.criticalSubjects ? `${stats.criticalSubjects} Subjects Critical` : "All Safe &gt; 75%"}
+              Guardrail calculated
             </p>
           </div>
 
@@ -145,7 +148,7 @@ export default function HomePage() {
               <Briefcase className="w-4 h-4 text-brand-400" />
             </div>
             <p className="text-2xl font-black text-brand-300 mt-1">
-              {stats?.activeTasksCount || 0} / 2 Active
+              {stats?.stats?.activeAssignedGigs || 0} / 2 Active
             </p>
             <p className="text-xs text-slate-300 mt-0.5">
               {isOnCooldown ? `Cooldown: ${cooldownHoursRemaining}h` : "Available to Claim"}
@@ -160,7 +163,7 @@ export default function HomePage() {
               <Car className="w-4 h-4 text-indigo-400" />
             </div>
             <p className="text-2xl font-black text-indigo-300 mt-1">
-              {stats?.activeRidesCount || 3} Live
+              {upcomingRides.length} Live
             </p>
             <p className="text-xs text-slate-300 mt-0.5">Airport & Station</p>
           </div>
@@ -173,7 +176,7 @@ export default function HomePage() {
               <ShoppingBag className="w-4 h-4 text-amber-400" />
             </div>
             <p className="text-2xl font-black text-amber-300 mt-1">
-              {stats?.marketplaceItemsCount || 4} Available
+              {recentMarketplace.length} Available
             </p>
             <p className="text-xs text-slate-300 mt-0.5">Books, Cycles, Tech</p>
           </div>
@@ -379,32 +382,38 @@ export default function HomePage() {
               href="/gigs"
               className="text-xs font-bold text-brand-600 dark:text-brand-400 hover:underline flex items-center gap-1"
             >
-              <span>View all ({stats?.openGigsCount || 0})</span>
+              <span>View all ({stats?.stats?.totalPostedGigs || latestGigs.length})</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </Link>
           </div>
 
           <div className="space-y-3">
-            {latestGigs.map((gig) => (
-              <Link key={gig.id} href="/gigs" className="block">
-                <div className="p-3.5 rounded-xl bg-slate-100/70 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/60 hover:border-brand-500/50 transition-colors space-y-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <Badge variant="brand" size="sm">
-                      {gig.category}
-                    </Badge>
-                    <span className="text-sm font-extrabold text-brand-600 dark:text-brand-400">
-                      {formatPaiseToRupees(gig.budget)}
-                    </span>
+            {latestGigs.length === 0 ? (
+              <p className="text-xs text-slate-400 py-6 text-center">
+                No active bounties posted yet. Be the first to post a gig!
+              </p>
+            ) : (
+              latestGigs.map((gig) => (
+                <Link key={gig.id} href="/gigs" className="block">
+                  <div className="p-3.5 rounded-xl bg-slate-100/70 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/60 hover:border-brand-500/50 transition-colors space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <Badge variant="brand" size="sm">
+                        {gig.category}
+                      </Badge>
+                      <span className="text-sm font-extrabold text-brand-600 dark:text-brand-400">
+                        {formatPaiseToRupees(gig.budget)}
+                      </span>
+                    </div>
+                    <p className="text-xs font-bold text-slate-800 dark:text-slate-200 line-clamp-1">
+                      {gig.title}
+                    </p>
+                    <p className="text-[11px] text-slate-500 line-clamp-1">
+                      {gig.description}
+                    </p>
                   </div>
-                  <p className="text-xs font-bold text-slate-800 dark:text-slate-200 line-clamp-1">
-                    {gig.title}
-                  </p>
-                  <p className="text-[11px] text-slate-500 line-clamp-1">
-                    {gig.description}
-                  </p>
-                </div>
-              </Link>
-            ))}
+                </Link>
+              ))
+            )}
           </div>
         </GlassCard>
 
@@ -427,37 +436,43 @@ export default function HomePage() {
           </div>
 
           <div className="space-y-3">
-            {trendingWhispers.map((whisper) => (
-              <Link key={whisper.id} href="/incognito" className="block">
-                <div className="p-3.5 rounded-xl bg-slate-100/70 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/60 hover:border-accent-500/50 transition-colors space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <img
-                        src={
-                          whisper.profile?.avatarUrl ||
-                          `https://api.dicebear.com/9.x/bottts/svg?seed=${whisper.profile?.handle || "Anon"}`
-                        }
-                        alt="Bot"
-                        className="w-5 h-5 rounded-full bg-slate-900 p-0.5"
-                      />
-                      <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                        @{whisper.profile?.handle || "Anon"}
-                      </span>
+            {trendingWhispers.length === 0 ? (
+              <p className="text-xs text-slate-400 py-6 text-center">
+                The incognito wall is quiet right now.
+              </p>
+            ) : (
+              trendingWhispers.map((whisper) => (
+                <Link key={whisper.id} href="/incognito" className="block">
+                  <div className="p-3.5 rounded-xl bg-slate-100/70 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/60 hover:border-accent-500/50 transition-colors space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <img
+                          src={
+                            whisper.profile?.avatarUrl ||
+                            `https://api.dicebear.com/9.x/bottts/svg?seed=${whisper.profile?.handle || "Anon"}`
+                          }
+                          alt="Bot"
+                          className="w-5 h-5 rounded-full bg-slate-900 p-0.5"
+                        />
+                        <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                          @{whisper.profile?.handle || "Anon"}
+                        </span>
+                      </div>
+                      <Badge variant="purple" size="sm">
+                        {whisper.feedType}
+                      </Badge>
                     </div>
-                    <Badge variant="purple" size="sm">
-                      {whisper.feedType}
-                    </Badge>
+                    <p className="text-xs text-slate-800 dark:text-slate-200 line-clamp-2 leading-relaxed">
+                      {whisper.content}
+                    </p>
+                    <div className="flex items-center gap-1 text-[11px] text-rose-500 font-semibold">
+                      <Heart className="w-3 h-3" />
+                      <span>{whisper.likesCount} upvotes</span>
+                    </div>
                   </div>
-                  <p className="text-xs text-slate-800 dark:text-slate-200 line-clamp-2 leading-relaxed">
-                    {whisper.content}
-                  </p>
-                  <div className="flex items-center gap-1 text-[11px] text-rose-500 font-semibold">
-                    <Heart className="w-3 h-3" />
-                    <span>{whisper.likesCount} upvotes</span>
-                  </div>
-                </div>
-              </Link>
-            ))}
+                </Link>
+              ))
+            )}
           </div>
         </GlassCard>
       </div>
