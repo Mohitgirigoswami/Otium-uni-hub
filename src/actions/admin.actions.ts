@@ -10,6 +10,10 @@ import { logAdminAction } from "@/lib/logger";
 import { getDynamicPrintRates, PrintRatesData } from "@/lib/services/print.service";
 import { Role } from "@prisma/client";
 import { revalidatePath } from "next/cache";
+import React from "react";
+import { render } from "@react-email/render";
+import { PrintStatusEmail } from "@/emails/PrintStatusEmail";
+import { sendEmail } from "@/lib/mail";
 
 /**
  * Helper to verify Print Operator / Admin permissions
@@ -117,12 +121,13 @@ export async function getAllPrintOrdersAdmin(
 }
 
 /**
- * 2. Update Print Order Status (SUBMITTED, PRINTING, OUT_FOR_DELIVERY, READY, DELIVERED, COMPLETED)
+ * 2. Update Print Order Status & Trigger Transactional Email Notifications
  */
 export async function updatePrintOrderStatus(data: {
   orderId: string;
-  status: "SUBMITTED" | "PRINTING" | "OUT_FOR_DELIVERY" | "READY" | "DELIVERED" | "COMPLETED";
+  status: "SUBMITTED" | "PRINTING" | "OUT_FOR_DELIVERY" | "READY" | "DELIVERED" | "COMPLETED" | "REJECTED";
   adminUserId: string;
+  rejectionReason?: string;
 }): Promise<ActionResponse<any>> {
   try {
     const session = await getServerSession(authOptions);
@@ -139,10 +144,26 @@ export async function updatePrintOrderStatus(data: {
       return { success: false, error: rateCheck.error };
     }
 
+    // Fetch existing order to retain location details if rejected
+    const existing = await prisma.printOrder.findUnique({
+      where: { id: data.orderId },
+      include: { user: true },
+    });
+
+    if (!existing) {
+      return { success: false, error: "Print order not found." };
+    }
+
+    let updatedLocation = existing.deliveryLocation;
+    if (data.status === "REJECTED" && data.rejectionReason) {
+      updatedLocation = `${existing.deliveryLocation} | REJECTED: ${data.rejectionReason.trim()}`;
+    }
+
     const updated = await prisma.printOrder.update({
       where: { id: data.orderId },
       data: {
         status: data.status as any,
+        deliveryLocation: updatedLocation,
       },
       include: {
         user: true,
@@ -152,8 +173,48 @@ export async function updatePrintOrderStatus(data: {
     await logAdminAction(
       session.user.id,
       "UPDATED_PRINT_STATUS",
-      `Type: PRINT_ORDER, Order: ${data.orderId}, Status: ${data.status}`
+      `Type: PRINT_ORDER, Order: ${data.orderId}, Status: ${data.status}${
+        data.rejectionReason ? `, Reason: ${data.rejectionReason}` : ""
+      }`
     );
+
+    // Asynchronously send transactional email notification
+    if (updated.user?.email) {
+      try {
+        const emailHtml = await render(
+          React.createElement(PrintStatusEmail, {
+            userName: updated.user.name || "Student",
+            status: data.status as any,
+            documentName: updated.fileName,
+            rejectionReason: data.rejectionReason,
+            deliveryLocation: updated.deliveryLocation,
+            orderId: updated.id,
+          })
+        );
+
+        let subject = `Print Order Update: ${updated.fileName} (${data.status})`;
+        if (data.status === "REJECTED") {
+          subject = `⚠️ Action Required: Your print order for ${updated.fileName} was rejected`;
+        } else if (data.status === "PRINTING") {
+          subject = `🖨️ Your print job for ${updated.fileName} is now printing!`;
+        } else if (data.status === "OUT_FOR_DELIVERY") {
+          subject = `🚚 Your print job for ${updated.fileName} is out for delivery!`;
+        } else if (data.status === "COMPLETED" || data.status === "DELIVERED") {
+          subject = `✅ Your print job for ${updated.fileName} has been delivered!`;
+        }
+
+        // Fire and forget email delivery without blocking response
+        sendEmail({
+          to: updated.user.email,
+          subject,
+          html: emailHtml,
+        }).catch((err) => {
+          console.error("[Transactional Email Error]:", err);
+        });
+      } catch (mailErr) {
+        console.error("[React Email Render Error]:", mailErr);
+      }
+    }
 
     return {
       success: true,
