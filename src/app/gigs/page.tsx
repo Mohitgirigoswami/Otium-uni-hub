@@ -49,6 +49,8 @@ const CATEGORIES: { label: string; value: string }[] = [
   { label: "Tutoring & Doubts", value: "TUTORING" },
 ];
 
+import { getPlatformSettingsAction } from "@/actions/platform.actions";
+
 export default function GigsPage() {
   const { user } = useUser();
   const [gigs, setGigs] = useState<any[]>([]);
@@ -56,6 +58,7 @@ export default function GigsPage() {
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [categoryFilter, setCategoryFilter] = useState("ALL");
   const [searchQuery, setSearchQuery] = useState("");
+  const [buyerDiscountPct, setBuyerDiscountPct] = useState(5);
   const [isPending, startTransition] = useTransition();
 
   // Create Modal State
@@ -67,6 +70,14 @@ export default function GigsPage() {
   const [deadline, setDeadline] = useState("");
   const [fileUrl, setFileUrl] = useState<string | undefined>(undefined);
   const [isUploadingMedia, setIsUploadingMedia] = useState(false);
+
+  useEffect(() => {
+    getPlatformSettingsAction().then((res) => {
+      if (res.success && res.data) {
+        setBuyerDiscountPct(res.data.buyerDiscountPct ?? 5);
+      }
+    });
+  }, []);
 
   const fetchGigsList = async () => {
     setLoading(true);
@@ -309,25 +320,36 @@ export default function GigsPage() {
 
                     <div className="mt-6 pt-4 border-t border-slate-100 dark:border-slate-800/80 space-y-3">
                       {/* Earner-First Positive Take-Home Pricing (Loss Aversion Eliminator) */}
-                      <div className="flex items-center justify-between p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-xs">
-                        <div>
-                          <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 uppercase tracking-wider block">
-                            {isPoster ? "Your Total Budget" : "Estimated Earning"}
-                          </span>
-                          <p className="text-lg font-black text-emerald-600 dark:text-emerald-400">
-                            ₹{isPoster ? price : escrow.writerPayout.toFixed(0)}
-                          </p>
+                      <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 space-y-2">
+                        <div className="flex items-center justify-between text-xs">
+                          <div>
+                            <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 uppercase tracking-wider block">
+                              {isPoster ? "Your Total Budget" : "Take-Home Earning"}
+                            </span>
+                            <p className="text-xl font-black text-emerald-600 dark:text-emerald-400">
+                              {isPoster ? `₹${price}` : `Earn ₹${escrow.writerPayout.toFixed(0)}`}
+                            </p>
+                          </div>
+
+                          <div className="text-right">
+                            <span className="text-[10px] font-medium text-slate-500 dark:text-slate-400 block">
+                              Escrow Protected
+                            </span>
+                            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
+                              <ShieldCheck className="w-3.5 h-3.5" />
+                              <span>50% Upfront</span>
+                            </span>
+                          </div>
                         </div>
 
-                        <div className="text-right">
-                          <span className="text-[10px] font-medium text-slate-500 dark:text-slate-400 block">
-                            Escrow Protected
-                          </span>
-                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
-                            <ShieldCheck className="w-3.5 h-3.5" />
-                            <span>50% Upfront</span>
-                          </span>
-                        </div>
+                        {!isPoster && (
+                          <div className="pt-2 border-t border-emerald-500/20 flex items-center gap-1.5 text-[10px] text-emerald-700 dark:text-emerald-300 font-medium">
+                            <ShieldCheck className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                            <span>
+                              🛡️ 60% Anti-Ghosting Guarantee: Guaranteed at least ₹{escrow.ghostedGuarantee.toFixed(0)} if buyer abandons
+                            </span>
+                          </div>
+                        )}
                       </div>
 
                       {/* Poster and Status Footer */}
@@ -403,9 +425,16 @@ export default function GigsPage() {
             </div>
 
             <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
-                Total Task Cost (₹ INR) *
-              </label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">
+                  Total Task Cost (₹ INR) *
+                </label>
+                {buyerDiscountPct > 0 && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-500 text-[10px] font-extrabold border border-emerald-500/30">
+                    🚀 Launch Promo: {buyerDiscountPct}% Off
+                  </span>
+                )}
+              </div>
               <div className="relative">
                 <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 font-bold">
                   ₹
@@ -420,9 +449,39 @@ export default function GigsPage() {
                   className="w-full pl-8 pr-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-brand-500"
                 />
               </div>
-              <p className="text-[10px] text-slate-400 mt-1">
-                Total inclusive price paid in two 50% milestone releases.
-              </p>
+
+              {/* Dynamic Price Strikethrough & Milestone Breakdown */}
+              {Number(budgetRupees) > 0 && (() => {
+                const rawNum = Number(budgetRupees);
+                const modalMath = calculateEscrow(rawNum, buyerDiscountPct);
+                return (
+                  <div className="mt-2.5 p-3 rounded-2xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-500">Effective Total Cost:</span>
+                      <div className="flex items-center gap-1.5">
+                        {buyerDiscountPct > 0 && (
+                          <del className="text-slate-400 font-semibold">
+                            ₹{rawNum}
+                          </del>
+                        )}
+                        <span className="text-emerald-500 font-black text-sm">
+                          ₹{modalMath.finalBuyerTotal.toFixed(0)}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-200 dark:border-slate-700/80 text-[11px]">
+                      <div className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-amber-500/30">
+                        <span className="text-slate-400 block text-[10px]">Pay Now (50% Advance):</span>
+                        <span className="font-bold text-amber-500">₹{modalMath.advanceRequired.toFixed(0)}</span>
+                      </div>
+                      <div className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-teal-500/30">
+                        <span className="text-slate-400 block text-[10px]">Pay Later (Upon Delivery):</span>
+                        <span className="font-bold text-teal-400">₹{modalMath.finalSettlement.toFixed(0)}</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           </div>
 

@@ -511,7 +511,7 @@ export async function updateUserRoleAdmin(data: {
 
 const STANDARD_CAMPUS_SERVICES = [
   { key: "PRINT_STATION", name: "Hostel Cloud Print Station" },
-  { key: "INCOGNITO_WALL", name: "Incognito Wall & Whispers" },
+  { key: "INCOGNITO_WALL", name: "Whisper Wall & Confessions" },
   { key: "GIG_HUB", name: "Peer Assignments & Task Bounties" },
   { key: "MARKETPLACE", name: "Student Peer Marketplace" },
   { key: "CAB_SPLIT", name: "Airport & Station Cab Split" },

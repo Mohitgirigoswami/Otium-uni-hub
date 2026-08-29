@@ -323,7 +323,7 @@ export default function HomePage() {
             </GlassCard>
           </Link>
 
-          {/* Module 7: Incognito Wall */}
+          {/* Module 7: Whisper Wall */}
           <Link href="/incognito">
             <GlassCard
               interactive
@@ -334,7 +334,7 @@ export default function HomePage() {
               </div>
               <div className="flex items-center justify-between mb-1">
                 <h3 className="text-base font-bold text-slate-900 dark:text-white group-hover:text-accent-500 transition-colors">
-                  Incognito Wall
+                  Whisper Wall
                 </h3>
                 <ArrowRight className="w-4 h-4 text-slate-400 group-hover:translate-x-1 transition-transform" />
               </div>
@@ -417,13 +417,13 @@ export default function HomePage() {
           </div>
         </GlassCard>
 
-        {/* Right: Trending Incognito Whispers */}
+        {/* Right: Trending Campus Whispers */}
         <GlassCard className="p-6 space-y-4">
           <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
             <div className="flex items-center gap-2">
               <EyeOff className="w-5 h-5 text-accent-500" />
               <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                Trending Incognito Whispers
+                Trending Campus Whispers
               </h3>
             </div>
             <Link
@@ -438,7 +438,7 @@ export default function HomePage() {
           <div className="space-y-3">
             {trendingWhispers.length === 0 ? (
               <p className="text-xs text-slate-400 py-6 text-center">
-                The incognito wall is quiet right now.
+                The whisper wall is quiet right now.
               </p>
             ) : (
               trendingWhispers.map((whisper) => (

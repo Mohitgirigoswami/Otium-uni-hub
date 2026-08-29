@@ -11,7 +11,7 @@ import { logAdminAction } from "@/lib/logger";
  * 1. Fetch Global Platform Settings (Public / Client readable)
  */
 export async function getPlatformSettingsAction(): Promise<
-  ActionResponse<{ upiId: string; updatedAt: Date }>
+  ActionResponse<{ upiId: string; buyerDiscountPct: number; updatedAt: Date }>
 > {
   try {
     const setting = await prisma.platformSetting.findUnique({
@@ -29,6 +29,7 @@ export async function getPlatformSettingsAction(): Promise<
         success: true,
         data: {
           upiId: created.upiId,
+          buyerDiscountPct: (created as any).buyerDiscountPct ?? 5,
           updatedAt: created.updatedAt,
         },
       };
@@ -38,6 +39,7 @@ export async function getPlatformSettingsAction(): Promise<
       success: true,
       data: {
         upiId: setting.upiId,
+        buyerDiscountPct: (setting as any).buyerDiscountPct ?? 5,
         updatedAt: setting.updatedAt,
       },
     };
@@ -47,6 +49,7 @@ export async function getPlatformSettingsAction(): Promise<
       success: true,
       data: {
         upiId: "otium.escrow@okhdfcbank",
+        buyerDiscountPct: 5,
         updatedAt: new Date(),
       },
     };

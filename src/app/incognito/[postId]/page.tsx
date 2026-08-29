@@ -216,7 +216,7 @@ export default function PostDetailPage() {
             size="sm"
             leftIcon={<ArrowLeft className="w-4 h-4" />}
           >
-            Back to Incognito Wall
+            Back to Whisper Wall
           </Button>
         </Link>
 

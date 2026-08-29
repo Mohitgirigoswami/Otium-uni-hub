@@ -67,13 +67,15 @@ export default function GigEscrowDetailsPage() {
   const [finalUtrInput, setFinalUtrInput] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
 
-  // Platform Master UPI ID
+  // Platform Master UPI ID & Launch Discount
   const [platformUpiId, setPlatformUpiId] = useState("otium.escrow@okhdfcbank");
+  const [buyerDiscountPct, setBuyerDiscountPct] = useState(5);
 
   useEffect(() => {
     getPlatformSettingsAction().then((res) => {
-      if (res.success && res.data?.upiId) {
-        setPlatformUpiId(res.data.upiId);
+      if (res.success && res.data) {
+        if (res.data.upiId) setPlatformUpiId(res.data.upiId);
+        if (res.data.buyerDiscountPct !== undefined) setBuyerDiscountPct(res.data.buyerDiscountPct);
       }
     });
   }, []);
@@ -122,9 +124,9 @@ export default function GigEscrowDetailsPage() {
     );
   }
 
-  // Escrow Math
+  // Escrow Math with Zero-Trust Server Verified Discount
   const priceInRupees = gig.budget / 100;
-  const escrowMath = calculateEscrow(priceInRupees);
+  const escrowMath = calculateEscrow(priceInRupees, buyerDiscountPct);
 
   const isBuyer = user?.id === gig.posterId;
   const isWriter = user?.id === gig.assignedToId;
@@ -476,7 +478,7 @@ export default function GigEscrowDetailsPage() {
                 <div className="p-4 rounded-xl bg-amber-500/15 border border-amber-500/30 text-xs text-amber-300 flex items-start gap-2.5">
                   <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
                   <div>
-                    <span className="font-bold">Writer Guardrail:</span> Waiting for Admin to verify advance. Do not start working yet.
+                    <span className="font-bold">Awaiting Admin Verification:</span> Awaiting Admin to verify the buyer's 50% advance payment. Do not start writing yet.
                   </div>
                 </div>
               )}
@@ -564,7 +566,7 @@ export default function GigEscrowDetailsPage() {
                   </h3>
                   <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
                     {isWriter
-                      ? "🎉 Advance secured! Start writing. When you have completed the assignment, physically deliver it to the Admin Station and click below."
+                      ? "Advance verified! You may now begin writing. When you have completed the assignment, physically deliver it to the Admin Station and click below."
                       : "The 50% advance has been verified and locked in escrow. The writer is actively preparing your assignment."}
                   </p>
                 </div>
@@ -761,35 +763,48 @@ export default function GigEscrowDetailsPage() {
                     Milestone Payment Plan
                   </h3>
                 </div>
-                <Badge variant="brand" size="sm">50/50 Escrow</Badge>
+                {buyerDiscountPct > 0 ? (
+                  <Badge variant="success" size="sm">
+                    {buyerDiscountPct}% Launch Discount
+                  </Badge>
+                ) : (
+                  <Badge variant="brand" size="sm">50/50 Escrow</Badge>
+                )}
               </div>
 
               <div className="space-y-3 text-xs">
                 <div className="flex items-center justify-between">
                   <span className="text-slate-500">Total Task Cost:</span>
-                  <span className="font-black text-slate-900 dark:text-white text-base">
-                    ₹{priceInRupees}
-                  </span>
+                  <div className="flex items-center gap-1.5">
+                    {buyerDiscountPct > 0 && (
+                      <del className="text-slate-400 font-semibold text-xs">
+                        ₹{priceInRupees}
+                      </del>
+                    )}
+                    <span className="font-black text-slate-900 dark:text-white text-base">
+                      ₹{escrowMath.finalBuyerTotal.toFixed(0)}
+                    </span>
+                  </div>
                 </div>
 
                 <div className="flex items-center justify-between text-slate-400">
-                  <span>50% Advance Required:</span>
+                  <span>Pay Now (50% Advance):</span>
                   <span className="font-bold text-amber-500">
-                    ₹{escrowMath.advanceRequired}
+                    ₹{escrowMath.advanceRequired.toFixed(0)}
                   </span>
                 </div>
 
                 <div className="flex items-center justify-between text-slate-400">
-                  <span>50% Final Settlement:</span>
+                  <span>Pay Later (Upon Delivery):</span>
                   <span className="font-bold text-slate-300">
-                    ₹{escrowMath.advanceRequired}
+                    ₹{escrowMath.finalSettlement.toFixed(0)}
                   </span>
                 </div>
 
                 <div className="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800/60 text-[10px] text-slate-400 space-y-1">
                   <p className="font-semibold text-slate-300">Escrow Guarantee:</p>
                   <p>
-                    Your payments are held in proxy escrow and released only after physical verification.
+                    Your payments are held in proxy escrow and released only after physical verification by Admin.
                   </p>
                 </div>
               </div>
@@ -822,14 +837,14 @@ export default function GigEscrowDetailsPage() {
                 <div className="flex items-center justify-between text-slate-300">
                   <span>50% Advance Escrowed:</span>
                   <span className="font-bold text-amber-400">
-                    ₹{escrowMath.advanceRequired} (Secured Upfront)
+                    ₹{escrowMath.advanceRequired.toFixed(0)} (Secured Upfront)
                   </span>
                 </div>
 
                 <div className="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800/60 text-[10px] text-slate-400 space-y-1">
-                  <p className="font-semibold text-emerald-400">Anti-Ghosting Protection:</p>
+                  <p className="font-semibold text-emerald-400">🛡️ 60% Anti-Ghosting Guarantee:</p>
                   <p>
-                    You are guaranteed at least ₹{escrowMath.ghostedGuarantee.toFixed(0)} even if the buyer disappears after you complete the work.
+                    You are guaranteed at least ₹{escrowMath.ghostedGuarantee.toFixed(0)} if the buyer abandons the task.
                   </p>
                 </div>
               </div>
@@ -958,9 +973,9 @@ export default function GigEscrowDetailsPage() {
           </div>
 
           <div className="p-3 rounded-xl bg-brand-500/10 border border-brand-500/20 text-xs text-slate-600 dark:text-slate-300 space-y-1">
-            <p className="font-bold text-brand-400">Escrow Security:</p>
+            <p className="font-bold text-brand-400">🛡️ 60% Anti-Ghosting Guarantee & Escrow Security:</p>
             <p>
-              Once you accept this deal, the buyer is required to deposit the 50% advance (₹{escrowMath.advanceRequired}) before you start writing.
+              Once you accept this deal, the buyer must deposit the 50% advance (₹{escrowMath.advanceRequired.toFixed(0)}) and have it verified by Admin before you start. You are guaranteed ₹{escrowMath.ghostedGuarantee.toFixed(0)} if the buyer abandons the task.
             </p>
           </div>
 

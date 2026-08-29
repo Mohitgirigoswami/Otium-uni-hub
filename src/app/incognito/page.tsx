@@ -274,10 +274,10 @@ export default function IncognitoWallPage() {
             <div className="space-y-2">
               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-500/20 border border-purple-400/30 text-purple-300 text-xs font-semibold">
                 <EyeOff className="w-3.5 h-3.5" />
-                <span>Zero-Knowledge Multi-Campus Wall & Confessions</span>
+                <span>Zero-Knowledge Multi-Campus Wall & Whispers</span>
               </div>
               <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight">
-                Incognito Wall & Whispers
+                Whisper Wall
               </h1>
               <p className="text-sm text-slate-300 max-w-2xl leading-relaxed">
                 Express unfiltered opinions, share anonymous exam tips, memes, and campus banter. Identity is shielded behind cryptographic robot avatars.
@@ -306,7 +306,7 @@ export default function IncognitoWallPage() {
                 onClick={() => setIsPostModalOpen(true)}
                 className="shadow-lg shadow-purple-500/25 bg-gradient-to-r from-purple-600 to-electric-600"
               >
-                Post Anonymously
+                Post a Whisper
               </Button>
             </div>
           </div>

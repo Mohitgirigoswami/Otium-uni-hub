@@ -35,7 +35,7 @@ const NAV_ITEMS = [
   { href: "/cgpa", label: "CGPA", icon: GraduationCap },
   { href: "/lost-and-found", label: "Lost & Found", icon: Search },
   { href: "/rideshare", label: "RideSplit", icon: Car },
-  { href: "/incognito", label: "Incognito", icon: EyeOff, badge: "Anon" },
+  { href: "/incognito", label: "Whisper Wall", icon: EyeOff, badge: "Anon" },
   { href: "/marketplace", label: "Marketplace", icon: ShoppingBag },
   { href: "/print-station", label: "Print", icon: Printer },
   { href: "/messages", label: "Messages", icon: MessageSquare, badge: "Live" },
@@ -192,7 +192,7 @@ export function Navbar() {
                         className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-brand-500/10 hover:text-brand-600 transition-colors"
                       >
                         <User className="w-4 h-4 text-brand-500" />
-                        <span>Edit Profile & Incognito Alias</span>
+                        <span>Edit Profile & Whisper Alias</span>
                       </Link>
 
                       <Link
