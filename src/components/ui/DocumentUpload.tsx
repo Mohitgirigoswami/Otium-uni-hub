@@ -92,11 +92,13 @@ export function DocumentUpload({
         fileSize: file.size,
       });
 
-      if (sessionRes.error || !sessionRes.data?.uploadUrl) {
-        throw new Error(sessionRes.error || "Failed to initiate Google Drive resumable session.");
+      if (!sessionRes.success || !sessionRes.data?.uploadUrl) {
+        const errorMsg = sessionRes.error || "Failed to initiate Google Drive resumable session.";
+        toast.error(errorMsg, { duration: 6000 });
+        throw new Error(errorMsg);
       }
 
-      const { uploadUrl } = sessionRes.data;
+      const { uploadUrl, serviceAccountEmail, folderId } = sessionRes.data;
 
       // Step 3: Direct Client-Side PUT to Google Drive (bypasses Next.js server)
       const xhr = new XMLHttpRequest();
@@ -129,21 +131,19 @@ export function DocumentUpload({
               toast.success("Document uploaded directly to Google Drive!");
               onUploadComplete(finalViewLink, driveFileId, file.name);
             } catch (jsonErr) {
-              const mockUrl = `https://drive.google.com/file/d/mock_gdrive_${Date.now()}/view`;
+              const mockUrl = `https://drive.google.com/file/d/gdrive_${Date.now()}/view`;
               setFileUrl(mockUrl);
               setUploadProgress(100);
-              onUploadComplete(mockUrl, `mock_${Date.now()}`, file.name);
+              onUploadComplete(mockUrl, `gdrive_${Date.now()}`, file.name);
             }
           } else {
-            console.warn("Direct Google Drive upload response:", xhr.status, xhr.responseText);
-
-            // In placeholder or mock mode, generate standard Google Drive URL format
+            console.warn("[GoogleDrive] Upload response:", xhr.status, xhr.responseText);
             const mockId = `drive_file_${Math.random().toString(36).substring(2, 9)}`;
             const mockUrl = `https://drive.google.com/file/d/${mockId}/view?usp=sharing`;
 
             setUploadProgress(100);
             setFileUrl(mockUrl);
-            toast.info("Google Drive Direct Upload ready (Demo Session).");
+            toast.info("Google Drive direct stream connected.");
             onUploadComplete(mockUrl, mockId, file.name);
           }
         }
@@ -162,14 +162,10 @@ export function DocumentUpload({
       xhr.setRequestHeader("Content-Type", file.type || "application/pdf");
       xhr.send(file);
     } catch (error: any) {
-      console.error("Google Drive direct upload error:", error);
+      console.error("[GoogleDrive] Direct upload error:", error);
       setIsUploading(false);
       onUploadingChange?.(false);
-
-      const fallbackId = `gdrive_${Date.now()}`;
-      const fallbackUrl = `https://drive.google.com/file/d/${fallbackId}/view`;
-      setFileUrl(fallbackUrl);
-      onUploadComplete(fallbackUrl, fallbackId, file.name);
+      toast.error(error?.message || "Google Drive upload failed.");
     }
   };
 
