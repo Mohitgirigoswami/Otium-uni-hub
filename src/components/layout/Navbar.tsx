@@ -26,10 +26,12 @@ import {
   LogOut,
   LogIn,
   LifeBuoy,
+  LayoutDashboard,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
+  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/gigs", label: "Gig Hub", icon: Briefcase, badge: "P2P" },
   { href: "/attendance", label: "Attendance", icon: CalendarCheck },
   { href: "/cgpa", label: "CGPA", icon: GraduationCap },
@@ -190,6 +192,15 @@ export function Navbar() {
 
                     {/* Primary Actions */}
                     <div className="py-2 space-y-1">
+                      <Link
+                        href="/dashboard"
+                        onClick={() => setUserMenuOpen(false)}
+                        className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-teal-600 dark:text-teal-400 hover:bg-teal-500/10 transition-colors"
+                      >
+                        <LayoutDashboard className="w-4 h-4 text-teal-500" />
+                        <span>Student Dashboard</span>
+                      </Link>
+
                       <Link
                         href="/profile"
                         onClick={() => setUserMenuOpen(false)}

@@ -212,7 +212,7 @@ export default function GigEscrowDetailsPage() {
       } else {
         toast.success(
           claimAnonymously
-            ? "Claimed anonymously! Buyer will only see your Incognito Alias."
+            ? "Claimed anonymously! Buyer will only see your Whisper pseudonym."
             : "Gig claimed successfully! Waiting for Buyer's 50% Advance."
         );
         setIsClaimModalOpen(false);
@@ -890,7 +890,7 @@ export default function GigEscrowDetailsPage() {
                 {gig.isAnonymousWriter && (
                   <Badge variant="purple" size="sm" className="gap-1">
                     <EyeOff className="w-2.5 h-2.5" />
-                    <span>Incognito</span>
+                    <span>Whisper Alias</span>
                   </Badge>
                 )}
               </div>
@@ -933,7 +933,7 @@ export default function GigEscrowDetailsPage() {
         isOpen={isClaimModalOpen}
         onClose={() => setIsClaimModalOpen(false)}
         title="Claim Assignment Bounty"
-        description="Select whether you want to write under your real identity or an anonymous incognito alias."
+        description="Select whether you want to write under your real profile or an anonymous Whisper pseudonym."
         maxWidth="md"
       >
         <form onSubmit={handleClaimSubmit} className="space-y-4 pt-2">
@@ -955,7 +955,7 @@ export default function GigEscrowDetailsPage() {
               <div className="flex items-center gap-2">
                 <EyeOff className="w-4 h-4 text-purple-500" />
                 <span className="text-xs font-bold text-slate-900 dark:text-white">
-                  Claim Anonymously (Incognito Writer)
+                  Claim Anonymously (Whisper Writer)
                 </span>
               </div>
               <input
@@ -967,7 +967,7 @@ export default function GigEscrowDetailsPage() {
             </div>
             <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
               {claimAnonymously
-                ? "🔒 Active: The buyer will ONLY see your Incognito Alias and Bot avatar. Your name, email, and department remain completely hidden."
+                ? "🔒 Active: The buyer will ONLY see your Whisper pseudonym and robot avatar. Your real name, email, and department remain completely hidden."
                 : "Standard: The buyer will see your registered student profile name and department."}
             </p>
           </div>

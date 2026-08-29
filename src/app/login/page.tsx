@@ -131,7 +131,7 @@ function LoginContent() {
 
                 <div className="flex items-center gap-2 justify-center text-[11px] text-slate-400">
                   <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
-                  <span>Secure JWT session & automatic Incognito alias generation</span>
+                  <span>Encrypted university single sign-on & instant access</span>
                 </div>
               </div>
 
