@@ -55,3 +55,14 @@
   * `SUPER_ADMIN` has global multi-campus oversight.
   * `PRINT_MANAGER` is scoped strictly to orders matching their `collegeId`.
   * `getAllPrintOrdersAdmin` automatically applies `where: { collegeId: user.collegeId }` for non-super admins.
+
+---
+
+## ADR-006: Supabase Storage for Print Station Documents
+* **Status:** Accepted
+* **Context:** Google Drive personal account service account quotas (0MB) and browser OAuth popup flows created unnecessary friction and failures for student print submissions.
+* **Decision:** Completely replaced Google Drive with Supabase Storage bucket `print-documents` (with automatic fallback to Cloudinary raw stream).
+* **Consequences:**
+  * Clean, seamless drag-and-drop file upload with progress feedback and zero external OAuth popups.
+  * Server-side auto-calculation of PDF page count via `pdf-lib`.
+  * Embedded PDF viewer modal in Admin Print Queue with 1-click Ctrl+P printing for operators.

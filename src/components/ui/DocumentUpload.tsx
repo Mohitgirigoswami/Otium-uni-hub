@@ -10,19 +10,19 @@ import {
   CheckCircle2,
   RefreshCw,
   ExternalLink,
-  FileCode,
   HardDrive,
+  FileCheck,
+  Sparkles,
 } from "lucide-react";
-import {
-  getGoogleDriveResumableUploadUrl,
-  makeDriveFilePublicAction,
-  uploadPdfDirectToGoogleDriveAction,
-} from "@/actions/drive-upload.actions";
+import { uploadPrintDocument } from "@/actions/print-upload.actions";
+import { Badge } from "@/components/ui/Badge";
 
 interface DocumentUploadProps {
   onUploadComplete: (fileUrl: string, fileId?: string, fileName?: string) => void;
   onPageCountDetected?: (pageCount: number) => void;
   onUploadingChange?: (isUploading: boolean) => void;
+  campusId?: string;
+  userId?: string;
   existingFileUrl?: string;
   existingFileName?: string;
   label?: string;
@@ -35,15 +35,17 @@ export function DocumentUpload({
   onUploadComplete,
   onPageCountDetected,
   onUploadingChange,
-  existingFileUrl,
-  existingFileName,
-  label = "Upload Document (Direct Google Drive Resumable Stream)",
-  acceptedFileTypes = ".pdf,.doc,.docx,.zip,.txt",
+  campusId = "global",
+  userId = "student",
+  existingFileUrl = "",
+  existingFileName = "",
+  label = "Upload Document (Supabase Storage Direct)",
+  acceptedFileTypes = "application/pdf,.pdf",
   maxSizeBytes = 50 * 1024 * 1024, // 50MB
   className = "",
 }: DocumentUploadProps) {
-  const [fileUrl, setFileUrl] = useState<string | null>(existingFileUrl || null);
-  const [fileName, setFileName] = useState<string | null>(existingFileName || null);
+  const [fileUrl, setFileUrl] = useState<string>(existingFileUrl || "");
+  const [fileName, setFileName] = useState<string>(existingFileName || "");
   const [pageCount, setPageCount] = useState<number | null>(null);
   const [fileSizeBytes, setFileSizeBytes] = useState<number | null>(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -51,7 +53,8 @@ export function DocumentUpload({
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const calculatePdfPages = async (file: File): Promise<number | null> => {
+  // Client-side quick page count preview using pdf-lib
+  const calculatePdfPagesClient = async (file: File): Promise<number | null> => {
     if (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")) {
       try {
         const arrayBuffer = await file.arrayBuffer();
@@ -61,7 +64,7 @@ export function DocumentUpload({
         onPageCountDetected?.(count);
         return count;
       } catch (err) {
-        console.warn("Could not parse PDF page count with pdf-lib:", err);
+        console.warn("[Client PDF-Lib] Client parse preview skipped:", err);
       }
     }
     return null;
@@ -71,46 +74,60 @@ export function DocumentUpload({
     if (!file) return;
 
     if (file.size > maxSizeBytes) {
-      toast.error(`File exceeds maximum size limit of ${(maxSizeBytes / (1024 * 1024)).toFixed(0)}MB.`);
+      toast.error(
+        `File exceeds the ${(maxSizeBytes / (1024 * 1024)).toFixed(0)}MB limit.`
+      );
       return;
     }
 
     setFileName(file.name);
     setFileSizeBytes(file.size);
     setIsUploading(true);
-    setUploadProgress(10);
+    setUploadProgress(20);
     onUploadingChange?.(true);
 
-    // Step 1: Calculate PDF page count in parallel
-    await calculatePdfPages(file);
+    // Step 1: Client-side quick page calculation
+    await calculatePdfPagesClient(file);
 
     try {
-      // Step 2: Upload PDF directly to Google Drive via server action stream
-      setUploadProgress(35);
+      setUploadProgress(45);
+
+      // Step 2: Upload to Supabase Storage via server action
       const formData = new FormData();
       formData.append("file", file);
+      formData.append("campusId", campusId);
+      formData.append("userId", userId);
 
-      const res = await uploadPdfDirectToGoogleDriveAction(formData);
+      setUploadProgress(70);
+      const res = await uploadPrintDocument(formData);
+
       setIsUploading(false);
       onUploadingChange?.(false);
 
-      if (res?.success && res.data) {
+      if (res.success && res.data) {
         setUploadProgress(100);
-        setFileUrl(res.data.webViewLink);
-        toast.success("Document saved to Google Drive!");
-        onUploadComplete(res.data.webViewLink, res.data.driveFileId, file.name);
+        setFileUrl(res.data.fileUrl);
+        setFileName(res.data.fileName);
+        setPageCount(res.data.pageCount);
+        onPageCountDetected?.(res.data.pageCount);
+
+        toast.success(
+          `Document uploaded successfully! (${res.data.pageCount} page${
+            res.data.pageCount === 1 ? "" : "s"
+          })`
+        );
+        onUploadComplete(res.data.fileUrl, res.data.filePath, res.data.fileName);
       } else {
-        const errorMsg =
-          res?.error || "Google Drive upload failed. Please check folder permissions.";
-        toast.error(errorMsg, { duration: 10000 });
+        const errorMsg = res.error || "Failed to upload document.";
+        toast.error(errorMsg);
         setFileUrl("");
         setFileName("");
       }
-    } catch (error: any) {
-      console.error("[GoogleDrive] Upload error:", error);
+    } catch (err: any) {
+      console.error("[Upload error]:", err);
       setIsUploading(false);
       onUploadingChange?.(false);
-      toast.error(error?.message || "Google Drive upload failed.", { duration: 8000 });
+      toast.error(err?.message || "Document upload failed.");
     }
   };
 
@@ -124,136 +141,141 @@ export function DocumentUpload({
 
   const handleReset = (e: React.MouseEvent) => {
     e.stopPropagation();
-    setFileUrl(null);
-    setFileName(null);
+    setFileUrl("");
+    setFileName("");
     setPageCount(null);
     setFileSizeBytes(null);
     setUploadProgress(0);
     if (fileInputRef.current) fileInputRef.current.value = "";
-    onUploadComplete("");
+    onUploadComplete("", "", "");
   };
 
   return (
-    <div className={`space-y-2 ${className}`}>
+    <div className={`space-y-3 ${className}`}>
       {label && (
-        <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
-          {label}
-        </label>
+        <div className="flex items-center justify-between">
+          <label className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+            <FileText className="w-3.5 h-3.5 text-teal-500" />
+            <span>{label}</span>
+          </label>
+          {pageCount && (
+            <Badge variant="brand" size="sm" className="gap-1">
+              <FileCheck className="w-3 h-3 text-teal-400" />
+              <span>
+                {pageCount} {pageCount === 1 ? "Page" : "Pages"} (Auto-Calculated)
+              </span>
+            </Badge>
+          )}
+        </div>
       )}
 
-      <div
-        onClick={() => !isUploading && fileInputRef.current?.click()}
-        onDragOver={(e) => {
-          e.preventDefault();
-          setIsDragging(true);
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept={acceptedFileTypes}
+        className="hidden"
+        onChange={(e) => {
+          if (e.target.files && e.target.files[0]) {
+            handleFileSelect(e.target.files[0]);
+          }
         }}
-        onDragLeave={() => setIsDragging(false)}
-        onDrop={handleDrop}
-        className={`relative overflow-hidden rounded-2xl border-2 border-dashed transition-all cursor-pointer group ${
-          isDragging
-            ? "border-brand-500 bg-brand-500/10 scale-[1.01]"
-            : fileUrl
-            ? "border-teal-500/40 bg-teal-500/5 hover:border-brand-500"
-            : "border-slate-300 dark:border-slate-700 hover:border-teal-400 bg-slate-100/60 dark:bg-slate-800/40"
-        } p-4 text-center`}
-      >
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept={acceptedFileTypes}
-          className="hidden"
-          onChange={(e) => {
-            if (e.target.files && e.target.files[0]) {
-              handleFileSelect(e.target.files[0]);
-            }
-          }}
-        />
+      />
 
-        {fileUrl ? (
-          <div className="p-2 space-y-3">
-            <div className="flex items-center justify-between gap-3 p-3 rounded-xl bg-white/60 dark:bg-slate-900/60 border border-teal-500/20 text-left">
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="w-10 h-10 rounded-xl bg-teal-500/15 text-teal-600 dark:text-teal-400 flex items-center justify-center shrink-0">
-                  <FileText className="w-5 h-5" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-xs font-bold text-slate-900 dark:text-white truncate max-w-[280px]">
-                    {fileName || "Uploaded Document"}
-                  </p>
-                  <div className="flex items-center gap-2 text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
-                    {pageCount !== null && (
-                      <span className="font-bold text-teal-600 dark:text-teal-400">
-                        {pageCount} Page{pageCount !== 1 ? "s" : ""}
-                      </span>
-                    )}
-                    {fileSizeBytes && (
-                      <span>{(fileSizeBytes / (1024 * 1024)).toFixed(2)} MB</span>
-                    )}
-                    <span className="text-slate-400 font-mono">Google Drive Direct</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-1.5 shrink-0">
+      {fileUrl ? (
+        /* Uploaded Success Card */
+        <div className="p-4 rounded-2xl bg-teal-500/10 border border-teal-500/30 flex items-center justify-between gap-4 transition-all">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-10 h-10 rounded-xl bg-teal-500/20 text-teal-400 flex items-center justify-center shrink-0">
+              <CheckCircle2 className="w-5 h-5" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-bold text-slate-900 dark:text-white truncate">
+                {fileName || "Document.pdf"}
+              </p>
+              <div className="flex items-center gap-2 text-[11px] text-slate-400 mt-0.5">
+                {fileSizeBytes && (
+                  <span>{(fileSizeBytes / (1024 * 1024)).toFixed(2)} MB</span>
+                )}
+                {pageCount && (
+                  <>
+                    <span>•</span>
+                    <span className="font-semibold text-teal-600 dark:text-teal-400">
+                      {pageCount} Page{pageCount === 1 ? "" : "s"}
+                    </span>
+                  </>
+                )}
+                <span>•</span>
                 <a
                   href={fileUrl}
                   target="_blank"
                   rel="noreferrer"
-                  onClick={(e) => e.stopPropagation()}
-                  className="p-1.5 rounded-lg bg-teal-500/10 text-teal-500 hover:bg-teal-500/20 text-xs transition-colors inline-flex items-center gap-1"
-                  title="View on Google Drive"
+                  className="text-teal-500 hover:underline flex items-center gap-0.5 font-semibold"
                 >
-                  <HardDrive className="w-3.5 h-3.5" />
-                  <ExternalLink className="w-3 h-3" />
+                  <span>Preview PDF</span>
+                  <ExternalLink className="w-2.5 h-2.5" />
                 </a>
-
-                <button
-                  type="button"
-                  onClick={handleReset}
-                  className="p-1.5 rounded-lg bg-rose-500/10 text-rose-500 hover:bg-rose-500/20 text-xs transition-colors"
-                  title="Remove document"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
               </div>
             </div>
+          </div>
 
-            <div className="flex items-center justify-center gap-1.5 text-[11px] font-bold text-teal-600 dark:text-teal-400">
-              <CheckCircle2 className="w-3.5 h-3.5" />
-              <span>Resumable Upload Complete • Ready in Database</span>
+          <button
+            type="button"
+            onClick={handleReset}
+            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-500/10 transition-colors"
+            title="Remove document"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      ) : (
+        /* Drag and Drop Zone */
+        <div
+          onClick={() => !isUploading && fileInputRef.current?.click()}
+          onDragOver={(e) => {
+            e.preventDefault();
+            setIsDragging(true);
+          }}
+          onDragLeave={() => setIsDragging(false)}
+          onDrop={handleDrop}
+          className={`relative overflow-hidden p-6 sm:p-8 rounded-2xl border-2 border-dashed cursor-pointer transition-all text-center flex flex-col items-center justify-center gap-3 ${
+            isDragging
+              ? "border-teal-500 bg-teal-500/10 scale-[1.01]"
+              : "border-slate-300 dark:border-slate-700/80 hover:border-teal-500/50 hover:bg-slate-50 dark:hover:bg-slate-800/40"
+          }`}
+        >
+          {isUploading ? (
+            <div className="w-full max-w-xs space-y-3 py-2">
+              <div className="flex items-center justify-center gap-2 text-teal-600 dark:text-teal-400 text-xs font-bold">
+                <RefreshCw className="w-4 h-4 animate-spin" />
+                <span>Uploading document ({uploadProgress}%)...</span>
+              </div>
+              <div className="w-full h-2 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-teal-500 to-electric-500 transition-all duration-300 rounded-full"
+                  style={{ width: `${uploadProgress}%` }}
+                />
+              </div>
             </div>
-          </div>
-        ) : (
-          <div className="py-6 space-y-2">
-            <div className="w-12 h-12 rounded-2xl bg-teal-500/10 text-teal-500 flex items-center justify-center mx-auto group-hover:scale-110 transition-transform">
-              <UploadCloud className="w-6 h-6" />
-            </div>
-            <div>
-              <p className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                Click to browse or drag & drop PDF / Assignment
-              </p>
-              <p className="text-[10px] text-slate-400 mt-0.5">
-                PDF, DOCX, ZIP up to 50MB (Bypasses Vercel 4.5MB Payload Limit)
-              </p>
-            </div>
-          </div>
-        )}
-
-        {/* Upload Progress Bar */}
-        {isUploading && (
-          <div className="absolute inset-0 bg-slate-900/85 backdrop-blur-sm flex flex-col items-center justify-center p-4 space-y-2 text-white">
-            <RefreshCw className="w-6 h-6 text-teal-400 animate-spin" />
-            <p className="text-xs font-bold">Streaming directly to Google Drive Session URI...</p>
-            <div className="w-48 h-2 rounded-full bg-slate-700 overflow-hidden">
-              <div
-                className="h-full bg-gradient-to-r from-teal-500 to-electric-400 transition-all duration-200"
-                style={{ width: `${uploadProgress}%` }}
-              />
-            </div>
-            <span className="text-[10px] font-mono text-slate-300">{uploadProgress}%</span>
-          </div>
-        )}
-      </div>
+          ) : (
+            <>
+              <div className="w-12 h-12 rounded-2xl bg-teal-500/10 text-teal-500 flex items-center justify-center">
+                <UploadCloud className="w-6 h-6" />
+              </div>
+              <div className="space-y-1">
+                <p className="text-sm font-bold text-slate-800 dark:text-slate-200">
+                  Click to select PDF or drag & drop here
+                </p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Direct Cloud Storage • Auto-calculates exact page count
+                </p>
+              </div>
+              <Badge variant="neutral" size="sm" className="mt-1">
+                PDF up to 50MB
+              </Badge>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }

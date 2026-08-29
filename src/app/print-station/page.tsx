@@ -31,7 +31,6 @@ import {
 } from "lucide-react";
 import { PrintTypeEnum } from "@/lib/types";
 import { DocumentUpload } from "@/components/ui/DocumentUpload";
-import { GoogleDriveOAuthUpload } from "@/components/ui/GoogleDriveOAuthUpload";
 import { PrintRatesData, calculatePrintCostPaise } from "@/lib/services/print.service";
 import { ClientServiceGuard } from "@/components/ClientServiceGuard";
 
@@ -223,13 +222,13 @@ export default function PrintStationPage() {
             <div className="space-y-2">
               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-teal-500/20 border border-teal-400/30 text-teal-300 text-xs font-semibold">
                 <Printer className="w-3.5 h-3.5" />
-                <span>Hostel Cloud Print Station • Direct Google Drive Integration</span>
+                <span>Hostel Cloud Print Station • Supabase Storage</span>
               </div>
               <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight">
                 Hostel Print Station & Express Delivery
               </h1>
               <p className="text-sm text-slate-300 max-w-2xl leading-relaxed">
-                Direct client-to-cloud upload to Google Drive. Page counts are auto-calculated using pdf-lib to prevent cost manipulation. Express dispatch to your hostel block within 2 hours.
+                Direct secure document upload to Cloud Storage. Page counts are auto-calculated using pdf-lib to prevent cost manipulation. Express dispatch to your hostel block within 2 hours.
               </p>
             </div>
           </div>
@@ -245,8 +244,8 @@ export default function PrintStationPage() {
               </h2>
 
               <form onSubmit={handleCreateOrder} className="space-y-6">
-                {/* Step 1: Direct Google Drive OAuth Upload with pdf-lib Page Auto-Detection */}
-                <GoogleDriveOAuthUpload
+                {/* Step 1: Direct Cloud Document Upload with pdf-lib Page Auto-Detection */}
+                <DocumentUpload
                   onUploadComplete={(url, id, name) => {
                     setFileUrl(url);
                     if (id) setDriveFileId(id);
@@ -257,9 +256,11 @@ export default function PrintStationPage() {
                     toast.info(`Auto-detected ${count} pages in document.`);
                   }}
                   onUploadingChange={(up) => setIsUploadingMedia(up)}
+                  campusId={user?.collegeId || "global"}
+                  userId={user?.id || "student"}
                   existingFileUrl={fileUrl}
                   existingFileName={fileName}
-                  label="Step 1: Upload Document PDF (Google Drive Direct)"
+                  label="Step 1: Upload Document PDF (Auto-Calculates Exact Page Count)"
                 />
 
                 {/* Detected Page Count Status Card (Prevents User Manipulation) */}

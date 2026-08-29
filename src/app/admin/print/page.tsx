@@ -34,6 +34,8 @@ import {
   Copy,
   XCircle,
   AlertCircle,
+  Eye,
+  X,
 } from "lucide-react";
 
 export default function AdminPrintQueuePage() {
@@ -44,6 +46,8 @@ export default function AdminPrintQueuePage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [downloadLoadingId, setDownloadLoadingId] = useState<string | null>(null);
   const [statusUpdatingId, setStatusUpdatingId] = useState<string | null>(null);
+  const [previewPdfUrl, setPreviewPdfUrl] = useState<string | null>(null);
+  const [previewPdfName, setPreviewPdfName] = useState<string>("");
 
   // Dynamic Pricing Settings Form
   const [singleSidedRupees, setSingleSidedRupees] = useState<string>("2.50");
@@ -336,7 +340,7 @@ export default function AdminPrintQueuePage() {
             <thead className="bg-slate-100/80 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700/60 uppercase font-bold text-slate-400">
               <tr>
                 <th className="py-3.5 px-4">Student</th>
-                <th className="py-3.5 px-4">Document & Drive Link</th>
+                <th className="py-3.5 px-4">Document & Print File</th>
                 <th className="py-3.5 px-4">Delivery & UTR</th>
                 <th className="py-3.5 px-4">Cost</th>
                 <th className="py-3.5 px-4">Status</th>
@@ -405,7 +409,7 @@ export default function AdminPrintQueuePage() {
                         </div>
                       </td>
 
-                      {/* Document & Google Drive Verification Link */}
+                      {/* Document & Print Viewer */}
                       <td className="py-3.5 px-4">
                         <div className="space-y-1">
                           <p
@@ -422,18 +426,31 @@ export default function AdminPrintQueuePage() {
                             <span>{ord.printType?.replace(/_/g, " ")}</span>
                           </div>
 
-                          {/* Direct Google Drive File Link */}
+                          {/* Direct Document View & Print Buttons */}
                           {documentViewLink && (
-                            <a
-                              href={documentViewLink}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="inline-flex items-center gap-1 text-[11px] font-bold text-teal-600 dark:text-teal-400 hover:underline pt-0.5"
-                            >
-                              <FileText className="w-3 h-3" />
-                              <span>Open in Google Drive</span>
-                              <ExternalLink className="w-2.5 h-2.5" />
-                            </a>
+                            <div className="flex items-center gap-2 pt-0.5">
+                              <button
+                                onClick={() => {
+                                  setPreviewPdfUrl(documentViewLink);
+                                  setPreviewPdfName(ord.fileName);
+                                }}
+                                className="inline-flex items-center gap-1 text-[11px] font-bold text-teal-600 dark:text-teal-400 hover:underline"
+                              >
+                                <Eye className="w-3 h-3" />
+                                <span>View & Print</span>
+                              </button>
+                              <span className="text-slate-500">•</span>
+                              <a
+                                href={documentViewLink}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-slate-400 hover:text-slate-200 inline-flex items-center gap-0.5 text-[10px]"
+                                title="Open in new tab"
+                              >
+                                <span>Tab</span>
+                                <ExternalLink className="w-2.5 h-2.5" />
+                              </a>
+                            </div>
                           )}
                         </div>
                       </td>
@@ -550,6 +567,76 @@ export default function AdminPrintQueuePage() {
           </table>
         </div>
       </GlassCard>
+
+      {/* Embedded PDF Viewer Modal for Instant Ctrl+P Printing */}
+      {previewPdfUrl && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-5xl h-[85vh] flex flex-col overflow-hidden shadow-2xl">
+            {/* Modal Header */}
+            <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-900/90">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-teal-500/20 text-teal-400 flex items-center justify-center">
+                  <Printer className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white truncate max-w-md">
+                    {previewPdfName || "Document Viewer"}
+                  </h3>
+                  <p className="text-[11px] text-slate-400">
+                    Instant Print Preview • Use Ctrl+P or the print button below
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    const iframe = document.getElementById("admin-pdf-iframe") as HTMLIFrameElement;
+                    if (iframe?.contentWindow) {
+                      iframe.contentWindow.print();
+                    } else {
+                      window.open(previewPdfUrl, "_blank");
+                    }
+                  }}
+                  className="bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs"
+                  leftIcon={<Printer className="w-3.5 h-3.5" />}
+                >
+                  Print Document (Ctrl+P)
+                </Button>
+
+                <a
+                  href={previewPdfUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition-colors inline-flex items-center gap-1"
+                >
+                  <span>Open Tab</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+
+                <button
+                  onClick={() => setPreviewPdfUrl(null)}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                  title="Close preview"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Iframe Preview Container */}
+            <div className="flex-1 bg-slate-950 p-1 relative">
+              <iframe
+                id="admin-pdf-iframe"
+                src={previewPdfUrl}
+                className="w-full h-full rounded-xl border-0"
+                title="PDF Preview"
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
