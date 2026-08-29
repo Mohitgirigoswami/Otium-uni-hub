@@ -13,6 +13,7 @@ import {
   getGigById,
   claimGig,
   dropGig,
+  cancelGig,
   submitAdvanceUtr,
   writerHandoverAction,
   submitFinalUtr,
@@ -44,6 +45,7 @@ import {
   ArrowRight,
   Send,
   Lock,
+  XCircle,
 } from "lucide-react";
 
 export default function GigEscrowDetailsPage() {
@@ -62,6 +64,17 @@ export default function GigEscrowDetailsPage() {
   const [advanceUtrInput, setAdvanceUtrInput] = useState("");
   const [finalUtrInput, setFinalUtrInput] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
+
+  // Platform Master UPI ID
+  const [platformUpiId, setPlatformUpiId] = useState("otium.escrow@okhdfcbank");
+
+  useEffect(() => {
+    getPlatformSettingsAction().then((res) => {
+      if (res.success && res.data?.upiId) {
+        setPlatformUpiId(res.data.upiId);
+      }
+    });
+  }, []);
 
   const loadGig = async () => {
     if (!gigId) return;
@@ -140,17 +153,6 @@ export default function GigEscrowDetailsPage() {
 
   const currentStepIndex = STATUS_STEPS.findIndex((s) => s.key === gig.status);
 
-  // Platform Master UPI ID
-  const [platformUpiId, setPlatformUpiId] = useState("otium.escrow@okhdfcbank");
-
-  useEffect(() => {
-    getPlatformSettingsAction().then((res) => {
-      if (res.success && res.data?.upiId) {
-        setPlatformUpiId(res.data.upiId);
-      }
-    });
-  }, []);
-
   // Dynamic Escrow Amount-Locked UPI QR URLs
   const advanceUpiUrl = generateUpiUrl(
     platformUpiId,
@@ -171,6 +173,24 @@ export default function GigEscrowDetailsPage() {
   const copyToClipboard = (text: string, label: string) => {
     navigator.clipboard.writeText(text);
     toast.success(`${label} copied to clipboard!`);
+  };
+
+  const handleCancelGig = async () => {
+    if (!user) return;
+    const confirm = window.confirm(
+      "Are you sure you want to cancel and close this gig bounty?"
+    );
+    if (!confirm) return;
+
+    startTransition(async () => {
+      const res = await cancelGig(gig.id, user.id);
+      if (res.error) {
+        toast.error(res.error);
+      } else {
+        toast.success("Gig has been cancelled.");
+        loadGig();
+      }
+    });
   };
 
   // Handlers
@@ -321,6 +341,21 @@ export default function GigEscrowDetailsPage() {
         </Link>
 
         <div className="flex items-center gap-2">
+          {/* Option to Cancel / Toggle Off Gig if Poster or Super Admin */}
+          {(gig.posterId === user?.id || user?.role === "SUPER_ADMIN") &&
+            gig.status !== "COMPLETED" &&
+            gig.status !== "CANCELLED" && (
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={handleCancelGig}
+                disabled={isPending}
+                leftIcon={<XCircle className="w-3.5 h-3.5" />}
+              >
+                {gig.status === "OPEN" ? "Cancel Bounty" : "Cancel & Close Gig"}
+              </Button>
+            )}
+
           {user?.role === "SUPER_ADMIN" && (
             <Link href="/admin/gigs">
               <Button variant="outline" size="sm" leftIcon={<ShieldCheck className="w-3.5 h-3.5 text-amber-500" />}>

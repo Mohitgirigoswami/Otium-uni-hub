@@ -816,3 +816,54 @@ export async function getAdminGigsEscrow(
   }
 }
 
+/**
+ * Cancel or close a task gig (by Poster or Admin)
+ */
+export async function cancelGig(
+  gigId: string,
+  userId: string
+): Promise<ActionResponse<any>> {
+  try {
+    const rateCheck = await checkRateLimit(userId);
+    if (!rateCheck.success) return { error: rateCheck.error };
+
+    const gig = await prisma.taskGig.findUnique({
+      where: { id: gigId },
+    });
+
+    if (!gig) return { error: "Gig not found." };
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { role: true },
+    });
+
+    const isPoster = gig.posterId === userId;
+    const isAdmin = user?.role === "SUPER_ADMIN" || user?.role === "CAMPUS_MODERATOR";
+
+    if (!isPoster && !isAdmin) {
+      return { error: "Unauthorized: Only the poster or admin can cancel this gig." };
+    }
+
+    if (gig.status === "COMPLETED" || gig.status === "FINAL_VERIFIED") {
+      return { error: "Completed gigs cannot be cancelled." };
+    }
+
+    const updated = await prisma.taskGig.update({
+      where: { id: gigId },
+      data: {
+        status: "CANCELLED",
+      },
+    });
+
+    return {
+      success: true,
+      data: updated,
+    };
+  } catch (error: any) {
+    console.error("Error in cancelGig:", error);
+    return { error: error?.message || "Failed to cancel gig." };
+  }
+}
+
+
