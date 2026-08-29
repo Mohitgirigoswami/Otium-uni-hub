@@ -71,15 +71,19 @@ export function Navbar() {
         <div className="flex items-center justify-between h-16">
           {/* Logo & Brand */}
           <div className="flex items-center gap-6">
-            <Link href="/" className="flex items-center gap-2.5 group">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-brand-600 via-teal-500 to-accent-500 flex items-center justify-center shadow-md shadow-brand-500/20 group-hover:scale-105 transition-transform">
-                <Sparkles className="w-5 h-5 text-white" />
+            <Link href="/" className="flex items-center gap-3 group">
+              <div className="w-10 h-10 rounded-2xl bg-black border border-white/15 p-1.5 flex items-center justify-center shadow-lg shadow-black/30 group-hover:scale-105 group-hover:border-brand-500/50 transition-all">
+                <img
+                  src="/logo.png"
+                  alt="Otium Uni Hub Logo"
+                  className="w-full h-full object-contain"
+                />
               </div>
               <div className="flex flex-col">
-                <span className="text-xl font-extrabold tracking-tight font-sans bg-gradient-to-r from-brand-600 via-teal-500 to-electric-600 bg-clip-text text-transparent">
+                <span className="text-xl font-black tracking-tight font-sans bg-gradient-to-r from-brand-600 via-teal-500 to-electric-600 bg-clip-text text-transparent">
                   OTIUM
                 </span>
-                <span className="text-[10px] font-semibold tracking-wider uppercase text-slate-500 dark:text-slate-400">
+                <span className="text-[10px] font-bold tracking-wider uppercase text-slate-500 dark:text-slate-400">
                   Uni Super App
                 </span>
               </div>

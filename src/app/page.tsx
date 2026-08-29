@@ -82,8 +82,8 @@ export default function HomePage() {
 
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-8">
           <div className="space-y-3">
-            <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-brand-500/20 border border-brand-400/30 text-brand-300 text-xs font-bold tracking-wide">
-              <Sparkles className="w-4 h-4" />
+            <div className="inline-flex items-center gap-2.5 px-3.5 py-1.5 rounded-full bg-black/60 border border-white/20 text-brand-300 text-xs font-bold tracking-wide backdrop-blur-md">
+              <img src="/logo.png" alt="Otium" className="w-4 h-4 object-contain" />
               <span>Otium University Super App Ecosystem</span>
             </div>
 

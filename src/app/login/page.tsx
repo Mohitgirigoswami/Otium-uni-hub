@@ -85,8 +85,12 @@ function LoginContent() {
 
             <div className="relative z-10 space-y-6">
               <div className="text-center space-y-2">
-                <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-brand-600 via-teal-500 to-accent-500 flex items-center justify-center mx-auto shadow-lg shadow-brand-500/20">
-                  <GraduationCap className="w-6 h-6 text-white" />
+                <div className="w-14 h-14 rounded-2xl bg-black border border-white/20 p-2 flex items-center justify-center mx-auto shadow-xl shadow-brand-500/20">
+                  <img
+                    src="/logo.png"
+                    alt="Otium Uni Hub Logo"
+                    className="w-full h-full object-contain"
+                  />
                 </div>
                 <h2 className="text-2xl font-black text-slate-900 dark:text-white">
                   Welcome to Otium

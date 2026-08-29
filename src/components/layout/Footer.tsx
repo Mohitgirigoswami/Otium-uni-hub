@@ -9,9 +9,13 @@ export function Footer() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
           {/* Col 1: Brand */}
           <div className="space-y-3">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-brand-600 via-teal-500 to-electric-600 flex items-center justify-center text-white shadow-md shadow-brand-500/20">
-                <Sparkles className="w-4 h-4" />
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-xl bg-black border border-white/15 p-1 flex items-center justify-center shadow-md">
+                <img
+                  src="/logo.png"
+                  alt="Otium Logo"
+                  className="w-full h-full object-contain"
+                />
               </div>
               <span className="text-lg font-black tracking-tight bg-gradient-to-r from-brand-600 via-teal-500 to-electric-600 bg-clip-text text-transparent">
                 OTIUM UNI HUB

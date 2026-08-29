@@ -10,7 +10,12 @@ import { Toaster } from "sonner";
 export const metadata: Metadata = {
   title: "Otium Uni Hub | University Student Super App",
   description:
-    "The all-in-one university Super App: P2P freelance gig hub, attendance guardrail calculator, weighted CGPA tracker, lost & found image directory, airport cab splits, anonymous incognito wall, and student peer marketplace.",
+    "The all-in-one university Super App: P2P freelance gig hub, attendance guardrail calculator, weighted CGPA tracker, lost & found image directory, airport cab splits, anonymous whisper wall, and student peer marketplace.",
+  icons: {
+    icon: "/logo.png",
+    shortcut: "/logo.png",
+    apple: "/logo.png",
+  },
 };
 
 export default function RootLayout({
