@@ -64,7 +64,7 @@ export default function PrintStationPage() {
   const [detectedPages, setDetectedPages] = useState<number>(0);
   const [copies, setCopies] = useState<number>(1);
   const [printType, setPrintType] = useState<PrintTypeEnum>("BW_DOUBLE");
-  const [deliveryLocation, setDeliveryLocation] = useState(DELIVERY_LOCATIONS[0]);
+  const [deliveryLocation, setDeliveryLocation] = useState("");
   const [utrNumber, setUtrNumber] = useState("");
   const [isUploadingMedia, setIsUploadingMedia] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -167,6 +167,11 @@ export default function PrintStationPage() {
       return;
     }
 
+    if (!deliveryLocation.trim() || deliveryLocation.trim().length < 3) {
+      toast.error("Please enter your specific in-campus room, hostel, or desk delivery location.");
+      return;
+    }
+
     const cleanUtr = utrNumber.trim();
     if (!cleanUtr || cleanUtr.length !== 12 || !/^\d{12}$/.test(cleanUtr)) {
       toast.error("Please enter a valid 12-digit numeric UPI transaction UTR number.");
@@ -174,7 +179,7 @@ export default function PrintStationPage() {
     }
 
     setIsSubmitting(true);
-    const enrichedLocation = `${deliveryLocation} | Copies: ${copies} | UTR: ${cleanUtr}`;
+    const enrichedLocation = `${deliveryLocation.trim()} | Copies: ${copies} | UTR: ${cleanUtr}`;
 
     const res = await createPrintOrder({
       userId: user.id,
@@ -347,20 +352,41 @@ export default function PrintStationPage() {
                   </div>
 
                   <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
-                      Step 4: Delivery Destination *
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5 flex items-center justify-between">
+                      <span>Step 4: In-Campus Delivery Destination *</span>
+                      <span className="text-[10px] text-teal-600 dark:text-teal-400 font-semibold lowercase">room / hostel / lab</span>
                     </label>
-                    <select
-                      value={deliveryLocation}
-                      onChange={(e) => setDeliveryLocation(e.target.value)}
-                      className="w-full px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-                    >
-                      {DELIVERY_LOCATIONS.map((loc) => (
-                        <option key={loc} value={loc}>
-                          {loc}
-                        </option>
+                    <div className="relative">
+                      <MapPin className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                      <input
+                        type="text"
+                        required
+                        placeholder="e.g. Hostel Block B, Room 304 / Library Desk 12"
+                        value={deliveryLocation}
+                        onChange={(e) => setDeliveryLocation(e.target.value)}
+                        className="w-full pl-10 pr-3.5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 font-medium"
+                      />
+                    </div>
+                    {/* In-Campus Location Presets */}
+                    <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                      <span className="text-[10px] text-slate-400 font-semibold">Presets:</span>
+                      {[
+                        "Hostel Block 1, Room ",
+                        "Hostel Block 4, Room ",
+                        "Library Ground Desk",
+                        "Cafeteria Pickup",
+                        "Department Lab ",
+                      ].map((preset) => (
+                        <button
+                          key={preset}
+                          type="button"
+                          onClick={() => setDeliveryLocation(preset)}
+                          className="px-2 py-0.5 rounded-lg bg-slate-200/70 dark:bg-slate-800 text-[10px] font-medium text-slate-600 dark:text-slate-300 hover:bg-teal-500/20 hover:text-teal-600 dark:hover:text-teal-400 transition-colors"
+                        >
+                          {preset.trim()}
+                        </button>
                       ))}
-                    </select>
+                    </div>
                   </div>
                 </div>
 
