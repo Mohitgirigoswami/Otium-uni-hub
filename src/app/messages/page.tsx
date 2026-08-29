@@ -23,8 +23,27 @@ import {
   Circle,
   Lock,
   Sparkles,
+  Check,
+  CheckCheck,
+  Clock,
+  AlertCircle,
+  RotateCcw,
+  Loader2,
 } from "lucide-react";
 import { useSearchParams } from "next/navigation";
+
+export interface ChatMessage {
+  id: string;
+  content: string;
+  senderId: string;
+  createdAt: string;
+  status?: "sending" | "sent" | "failed";
+  conversationId?: string;
+  anonSenderId?: string | null;
+  incognitoProfileId?: string | null;
+  isMine?: boolean;
+  sender?: any;
+}
 
 function MessagesContent() {
   const { user } = useUser();
@@ -35,11 +54,10 @@ function MessagesContent() {
   const [activeConversationId, setActiveConversationId] = useState<string | null>(
     initialConvId
   );
-  const [messages, setMessages] = useState<any[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputMessage, setInputMessage] = useState("");
   const [loadingConversations, setLoadingConversations] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
-  const [sending, setSending] = useState(false);
   const [filterType, setFilterType] = useState<"ALL" | "DIRECT" | "ANONYMOUS">("ALL");
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -72,7 +90,11 @@ function MessagesContent() {
     setLoadingMessages(true);
     const res = await getConversationMessages(convId, user.id);
     if (res.success && res.data) {
-      setMessages(res.data);
+      const serverMessages: ChatMessage[] = res.data.map((m: any) => ({
+        ...m,
+        status: "sent",
+      }));
+      setMessages(serverMessages);
     }
     setLoadingMessages(false);
     setTimeout(scrollToBottom, 100);
@@ -84,7 +106,7 @@ function MessagesContent() {
     }
   }, [activeConversationId, user]);
 
-  // 3. Supabase Realtime Subscription
+  // 3. Supabase Realtime Subscription with Deduplication
   useEffect(() => {
     if (!activeConversationId) return;
 
@@ -100,10 +122,31 @@ function MessagesContent() {
         },
         async (payload: any) => {
           if (payload.new) {
+            const incoming: ChatMessage = {
+              ...payload.new,
+              status: "sent",
+            };
+
             setMessages((prev) => {
-              const exists = prev.some((m) => m.id === payload.new.id);
+              // Check if already present by real ID
+              const exists = prev.some((m) => m.id === incoming.id);
               if (exists) return prev;
-              return [...prev, payload.new];
+
+              // Check if there is an optimistic pending message with same content and sender
+              const pendingIndex = prev.findIndex(
+                (m) =>
+                  m.status === "sending" &&
+                  m.content === incoming.content &&
+                  (m.senderId === incoming.senderId || m.isMine)
+              );
+
+              if (pendingIndex !== -1) {
+                const updated = [...prev];
+                updated[pendingIndex] = incoming;
+                return updated;
+              }
+
+              return [...prev, incoming];
             });
             setTimeout(scrollToBottom, 50);
           }
@@ -111,12 +154,31 @@ function MessagesContent() {
       )
       .subscribe();
 
-    // 3s polling fallback for resilience
+    // 3s fallback polling for resilience
     const interval = setInterval(() => {
       if (activeConversationId && user) {
         getConversationMessages(activeConversationId, user.id).then((res) => {
           if (res.success && res.data) {
-            setMessages(res.data);
+            setMessages((prev) => {
+              // Preserve any currently sending/failed optimistic messages
+              const pending = prev.filter((m) => m.status === "sending" || m.status === "failed");
+              const serverMsgs: ChatMessage[] = res.data.map((m: any) => ({
+                ...m,
+                status: "sent",
+              }));
+
+              const merged = [...serverMsgs];
+              pending.forEach((p) => {
+                const alreadySynced = serverMsgs.some(
+                  (s) => s.id === p.id || s.content === p.content
+                );
+                if (!alreadySynced) {
+                  merged.push(p);
+                }
+              });
+
+              return merged;
+            });
           }
         });
       }
@@ -128,33 +190,108 @@ function MessagesContent() {
     };
   }, [activeConversationId, user]);
 
-  // 4. Send Message
+  // 4. TASK 1: Optimistic UI & Latency Handling in Send Message
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || !activeConversationId || !inputMessage.trim() || sending) return;
+    if (!user || !activeConversationId || !inputMessage.trim()) return;
 
     const textToSend = inputMessage.trim();
+    const tempId = `temp-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+
+    // Instant zero-latency form reset
     setInputMessage("");
-    setSending(true);
 
-    const res = await sendMessage({
-      conversationId: activeConversationId,
-      senderId: user.id,
+    // Optimistic Message Construction
+    const optimisticMsg: ChatMessage = {
+      id: tempId,
       content: textToSend,
-    });
-    setSending(false);
+      senderId: user.id,
+      createdAt: new Date().toISOString(),
+      status: "sending",
+      isMine: true,
+      conversationId: activeConversationId,
+    };
 
-    if (res.error) {
-      toast.error(res.error);
-      setInputMessage(textToSend);
-    } else if (res.data) {
-      setMessages((prev) => {
-        const exists = prev.some((m) => m.id === res.data.id);
-        if (exists) return prev;
-        return [...prev, res.data];
+    // Instant local state update
+    setMessages((prev) => [...prev, optimisticMsg]);
+    setTimeout(scrollToBottom, 30);
+
+    // Send to Server in background
+    try {
+      const res = await sendMessage({
+        conversationId: activeConversationId,
+        senderId: user.id,
+        content: textToSend,
       });
-      setTimeout(scrollToBottom, 50);
-      fetchConversations();
+
+      if (res.error) {
+        // Mark optimistic message as failed
+        setMessages((prev) =>
+          prev.map((m) => (m.id === tempId ? { ...m, status: "failed" } : m))
+        );
+        toast.error(res.error || "Failed to deliver message.");
+      } else if (res.data) {
+        // Replace temporary ID with confirmed server record
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === tempId
+              ? {
+                  ...res.data,
+                  status: "sent",
+                  isMine: true,
+                }
+              : m
+          )
+        );
+        fetchConversations();
+      }
+    } catch (err: any) {
+      setMessages((prev) =>
+        prev.map((m) => (m.id === tempId ? { ...m, status: "failed" } : m))
+      );
+      toast.error("Network error: Message could not be sent.");
+    }
+  };
+
+  // Retry sending a failed message
+  const handleRetryMessage = async (failedMsg: ChatMessage) => {
+    if (!user || !activeConversationId) return;
+
+    // Set status back to sending
+    setMessages((prev) =>
+      prev.map((m) => (m.id === failedMsg.id ? { ...m, status: "sending" } : m))
+    );
+
+    try {
+      const res = await sendMessage({
+        conversationId: activeConversationId,
+        senderId: user.id,
+        content: failedMsg.content,
+      });
+
+      if (res.error) {
+        setMessages((prev) =>
+          prev.map((m) => (m.id === failedMsg.id ? { ...m, status: "failed" } : m))
+        );
+        toast.error(res.error || "Retry failed.");
+      } else if (res.data) {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === failedMsg.id
+              ? {
+                  ...res.data,
+                  status: "sent",
+                  isMine: true,
+                }
+              : m
+          )
+        );
+      }
+    } catch (err) {
+      setMessages((prev) =>
+        prev.map((m) => (m.id === failedMsg.id ? { ...m, status: "failed" } : m))
+      );
+      toast.error("Retry network error.");
     }
   };
 
@@ -198,7 +335,7 @@ function MessagesContent() {
               <span>Campus Direct Messages</span>
               <span className="flex items-center gap-1 text-[11px] font-bold text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded-full">
                 <Circle className="w-2 h-2 fill-current animate-pulse" />
-                <span>Encrypted Live Channel</span>
+                <span>Optimistic WebSocket Stream</span>
               </span>
             </h1>
             <p className="text-xs text-slate-400">
@@ -413,7 +550,7 @@ function MessagesContent() {
                     <span>
                       {activeConv.isAnonymousChat
                         ? "Zero-knowledge anonymous chat: Real student names, emails, and profile photos are never stored or transmitted in this thread."
-                        : "Direct student chat powered by Supabase Realtime."}
+                        : "Direct student chat powered by Supabase Realtime with Optimistic Delivery."}
                     </span>
                   </p>
                 </div>
@@ -463,10 +600,14 @@ function MessagesContent() {
                         </span>
 
                         <div
-                          className={`max-w-[75%] sm:max-w-md px-3.5 py-2.5 rounded-2xl text-xs sm:text-sm leading-relaxed shadow-sm ${
+                          className={`max-w-[75%] sm:max-w-md px-3.5 py-2.5 rounded-2xl text-xs sm:text-sm leading-relaxed shadow-sm transition-all ${
                             isMyMessage
                               ? isAnon
-                                ? "bg-purple-700 text-white rounded-tr-none"
+                                ? msg.status === "failed"
+                                  ? "bg-rose-700 text-white rounded-tr-none"
+                                  : "bg-purple-700 text-white rounded-tr-none"
+                                : msg.status === "failed"
+                                ? "bg-rose-600 text-white rounded-tr-none"
                                 : "bg-brand-600 text-white rounded-tr-none"
                               : isAnon
                               ? "bg-slate-900 text-slate-100 border border-purple-500/30 rounded-tl-none"
@@ -474,18 +615,42 @@ function MessagesContent() {
                           }`}
                         >
                           <p className="whitespace-pre-wrap break-words">{msg.content}</p>
-                          <p
-                            className={`text-[9px] mt-1 text-right ${
+
+                          {/* Message Delivery Status Indicator */}
+                          <div
+                            className={`text-[9px] mt-1 flex items-center justify-end gap-1.5 ${
                               isMyMessage
                                 ? "text-purple-200 dark:text-purple-300"
                                 : "text-slate-400"
                             }`}
                           >
-                            {new Date(msg.createdAt).toLocaleTimeString([], {
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })}
-                          </p>
+                            <span>
+                              {new Date(msg.createdAt).toLocaleTimeString([], {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}
+                            </span>
+
+                            {isMyMessage && (
+                              <span className="inline-flex items-center">
+                                {msg.status === "sending" ? (
+                                  <Loader2 className="w-2.5 h-2.5 animate-spin text-white/80" />
+                                ) : msg.status === "failed" ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRetryMessage(msg)}
+                                    className="inline-flex items-center gap-0.5 text-rose-200 hover:text-white underline font-bold"
+                                    title="Click to retry sending"
+                                  >
+                                    <RotateCcw className="w-2.5 h-2.5" />
+                                    <span>Failed (Retry)</span>
+                                  </button>
+                                ) : (
+                                  <CheckCheck className="w-3 h-3 text-emerald-300" />
+                                )}
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
                     );
@@ -494,7 +659,7 @@ function MessagesContent() {
                 <div ref={messagesEndRef} />
               </div>
 
-              {/* Message Input Bar */}
+              {/* Message Input Bar (Zero latency optimistic dispatch) */}
               <form
                 onSubmit={handleSendMessage}
                 className="p-3 border-t border-slate-200 dark:border-slate-800 bg-white/50 dark:bg-slate-900/50 backdrop-blur-md flex items-center gap-2"
@@ -508,13 +673,12 @@ function MessagesContent() {
                   }
                   value={inputMessage}
                   onChange={(e) => setInputMessage(e.target.value)}
-                  disabled={sending}
                   className="flex-1 px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
                 />
                 <Button
                   type="submit"
                   size="sm"
-                  disabled={sending || !inputMessage.trim()}
+                  disabled={!inputMessage.trim()}
                   className={`px-4 py-2 h-auto font-bold ${
                     activeConv.isAnonymousChat
                       ? "bg-purple-600 hover:bg-purple-500"
