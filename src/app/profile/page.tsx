@@ -27,6 +27,7 @@ import {
   ShoppingBag,
   FileText,
   Mail,
+  AlertCircle,
 } from "lucide-react";
 
 export default function ProfilePage() {
@@ -41,6 +42,7 @@ export default function ProfilePage() {
   const [department, setDepartment] = useState("");
   const [year, setYear] = useState<number>(3);
   const [savingProfile, setSavingProfile] = useState(false);
+  const [phoneTouched, setPhoneTouched] = useState(false);
 
   // Incognito Handle Form
   const [incognitoHandle, setIncognitoHandle] = useState("");
@@ -50,7 +52,7 @@ export default function ProfilePage() {
     if (user) {
       setName(user.name || "");
       setBio(user.bio || "");
-      setPhone(user.phone || "");
+      setPhone(user.phone ? user.phone.replace(/\D/g, "").slice(0, 10) : "");
       setDepartment(user.department || "");
       setYear(user.year || 3);
       setIncognitoHandle(user.incognitoProfile?.handle || "");
@@ -64,9 +66,22 @@ export default function ProfilePage() {
     }
   }, [user]);
 
+  const isPhoneValid = phone.length === 0 || phone.length === 10;
+
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value.replace(/\D/g, "").slice(0, 10);
+    setPhone(raw);
+    setPhoneTouched(true);
+  };
+
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
+
+    if (phone.length > 0 && phone.length !== 10) {
+      toast.error("Please enter a valid 10-digit mobile number.");
+      return;
+    }
 
     setSavingProfile(true);
     const res = await updateUserProfile({
@@ -158,45 +173,47 @@ export default function ProfilePage() {
                 <Mail className="w-3.5 h-3.5 text-brand-400" />
                 <span>{user?.email || ""}</span>
               </p>
-              {user?.department && (
-                <p className="text-xs text-slate-400">
-                  {user.department} • Year {user.year || 3}
+              {user?.college && (
+                <p className="text-xs text-brand-300 font-semibold flex items-center gap-1.5">
+                  <GraduationCap className="w-4 h-4" />
+                  <span>{user.college.name}</span>
                 </p>
               )}
             </div>
           </div>
 
-          {/* Cooldown Pill */}
-          {isOnCooldown && (
-            <div className="p-3 rounded-2xl bg-rose-500/20 border border-rose-500/40 text-rose-300 text-xs font-semibold flex items-center gap-2.5">
-              <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0 animate-pulse" />
-              <div>
-                <p className="font-bold text-rose-200">Anti-Hoarding Cooldown Active</p>
-                <p className="text-[11px] text-rose-300/80">{cooldownHoursRemaining}h remaining</p>
+          <div className="flex items-center gap-3">
+            {isOnCooldown && (
+              <div className="flex items-center gap-2 bg-amber-500/20 border border-amber-500/40 px-4 py-2 rounded-2xl text-amber-300 text-xs">
+                <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                <div>
+                  <p className="font-bold">Gig Cooldown Active</p>
+                  <p className="text-[10px] opacity-80">{cooldownHoursRemaining}h cooldown remaining</p>
+                </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Metrics Summary Strip */}
-      {statsData && (
+      {/* Dashboard Analytics & Summary */}
+      {!loadingStats && statsData && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           <GlassCard className="p-4 border-brand-500/20">
             <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold text-slate-400 uppercase">Avg Attendance</span>
-              <BookOpen className="w-4 h-4 text-brand-500" />
+              <span className="text-[11px] font-bold text-slate-400 uppercase">Posted Tasks</span>
+              <FileText className="w-4 h-4 text-brand-500" />
             </div>
             <p className="text-2xl font-black text-slate-900 dark:text-white mt-1">
-              {statsData.attendancePercentage}%
+              {statsData.totalPostedGigs}
             </p>
-            <p className="text-[10px] text-emerald-500 font-semibold mt-0.5">Guardrail tracked</p>
+            <p className="text-[10px] text-slate-400 mt-0.5">Tasks created by you</p>
           </GlassCard>
 
-          <GlassCard className="p-4 border-purple-500/20">
+          <GlassCard className="p-4 border-electric-500/20">
             <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold text-slate-400 uppercase">Assigned Gigs</span>
-              <Briefcase className="w-4 h-4 text-purple-500" />
+              <span className="text-[11px] font-bold text-slate-400 uppercase">Active Gigs</span>
+              <Briefcase className="w-4 h-4 text-electric-500" />
             </div>
             <p className="text-2xl font-black text-slate-900 dark:text-white mt-1">
               {statsData.activeAssignedGigs} / 2
@@ -274,20 +291,59 @@ export default function ProfilePage() {
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* TASK 1: Strict 10-Digit Mobile Input Polish */}
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
-                  Phone / WhatsApp
-                </label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">
+                    Phone / WhatsApp
+                  </label>
+                  {phone.length > 0 && (
+                    <span
+                      className={`text-[10px] font-bold ${
+                        phone.length === 10
+                          ? "text-emerald-500"
+                          : "text-rose-500"
+                      }`}
+                    >
+                      {phone.length}/10 digits
+                    </span>
+                  )}
+                </div>
                 <div className="relative">
-                  <Phone className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <div className="absolute left-3 top-1/2 -translate-y-1/2 flex items-center gap-1 text-slate-400">
+                    <Phone className="w-3.5 h-3.5" />
+                    <span className="text-xs font-bold text-slate-500">+91</span>
+                  </div>
                   <input
-                    type="text"
+                    type="tel"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    maxLength={10}
                     value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    placeholder="+91 98765 43210"
-                    className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-xs focus:outline-none focus:ring-2 focus:ring-brand-500"
+                    onChange={handlePhoneChange}
+                    onBlur={() => setPhoneTouched(true)}
+                    placeholder="9876543210"
+                    className={`w-full pl-16 pr-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border text-xs font-mono font-bold focus:outline-none focus:ring-2 ${
+                      phoneTouched && phone.length > 0 && phone.length !== 10
+                        ? "border-rose-500 focus:ring-rose-500 text-rose-600 dark:text-rose-400 bg-rose-500/5"
+                        : phone.length === 10
+                        ? "border-emerald-500/50 focus:ring-emerald-500"
+                        : "border-slate-300 dark:border-slate-700 focus:ring-brand-500"
+                    }`}
                   />
                 </div>
+                {phoneTouched && phone.length > 0 && phone.length !== 10 && (
+                  <p className="text-[11px] text-rose-500 font-semibold mt-1 flex items-center gap-1">
+                    <AlertCircle className="w-3 h-3" />
+                    <span>Please enter a valid 10-digit mobile number</span>
+                  </p>
+                )}
+                {phone.length === 10 && (
+                  <p className="text-[11px] text-emerald-500 font-semibold mt-1 flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3" />
+                    <span>10-digit number ready</span>
+                  </p>
+                )}
               </div>
 
               <div>
@@ -324,7 +380,8 @@ export default function ProfilePage() {
             <div className="pt-2">
               <Button
                 type="submit"
-                disabled={savingProfile}
+                isLoading={savingProfile}
+                disabled={savingProfile || (phone.length > 0 && phone.length !== 10)}
                 className="w-full bg-brand-600 hover:bg-brand-500 font-bold"
                 leftIcon={<CheckCircle2 className="w-4 h-4" />}
               >
@@ -417,6 +474,7 @@ export default function ProfilePage() {
             <div className="pt-2">
               <Button
                 type="submit"
+                isLoading={savingIncognito}
                 disabled={savingIncognito || !incognitoHandle.trim()}
                 className="w-full bg-purple-600 hover:bg-purple-500 font-bold"
                 leftIcon={<ShieldCheck className="w-4 h-4" />}

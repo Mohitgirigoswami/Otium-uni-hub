@@ -136,6 +136,7 @@ model User {
   sentMessages       Message[]
   tickets            Ticket[]
   auditLogs          AuditLog[]         @relation("AdminAuditLogs")
+  postLikes          PostLike[]
 }
 
 model College {
@@ -249,31 +250,35 @@ model Message {
 }
 
 model IncognitoProfile {
-  id                    String          @id @default(cuid())
-  handle                String          @unique
+  id                    String             @id @default(cuid())
+  handle                String             @unique
   avatarUrl             String
-  userId                String          @unique
-  user                  User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId                String             @unique
+  user                  User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   posts                 IncognitoPost[]
-  conversationsAsAnonP1 Conversation[]  @relation("AnonParticipantOne")
-  conversationsAsAnonP2 Conversation[]  @relation("AnonParticipantTwo")
+  comments              IncognitoComment[]
+  conversationsAsAnonP1 Conversation[]     @relation("AnonParticipantOne")
+  conversationsAsAnonP2 Conversation[]     @relation("AnonParticipantTwo")
   messages              Message[]
-  createdAt             DateTime        @default(now())
-  updatedAt             DateTime        @updatedAt
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
 }
 
 model IncognitoPost {
-  id         String           @id @default(cuid())
+  id         String             @id @default(cuid())
   content    String
   mediaUrl   String?
-  feedType   String           @default("GENERAL")
+  mediaUrls  String[]           @default([])
+  feedType   String             @default("GENERAL")
   profileId  String
-  profile    IncognitoProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  profile    IncognitoProfile   @relation(fields: [profileId], references: [id], onDelete: Cascade)
   collegeId  String?
-  college    College?         @relation(fields: [collegeId], references: [id], onDelete: SetNull)
-  likesCount Int              @default(0)
-  createdAt  DateTime         @default(now())
-  updatedAt  DateTime         @updatedAt
+  college    College?           @relation(fields: [collegeId], references: [id], onDelete: SetNull)
+  likesCount Int                @default(0)
+  likes      PostLike[]
+  comments   IncognitoComment[]
+  createdAt  DateTime           @default(now())
+  updatedAt  DateTime           @updatedAt
 }
 
 model MarketplaceItem {
@@ -421,4 +426,32 @@ model AuditLog {
   details   String?
   createdAt DateTime @default(now())
 }
+
+model PostLike {
+  id        String        @id @default(cuid())
+  postId    String
+  post      IncognitoPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime      @default(now())
+
+  @@unique([userId, postId])
+  @@index([postId])
+  @@index([userId])
+}
+
+model IncognitoComment {
+  id         String           @id @default(cuid())
+  content    String
+  postId     String
+  post       IncognitoPost    @relation(fields: [postId], references: [id], onDelete: Cascade)
+  profileId  String
+  profile    IncognitoProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+
+  @@index([postId])
+  @@index([profileId])
+}
+
 
