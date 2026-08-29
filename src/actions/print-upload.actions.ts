@@ -14,10 +14,10 @@ export interface PrintUploadResult {
 }
 
 /**
- * 1. SERVER ACTION: UPLOAD PRINT DOCUMENT TO SUPABASE STORAGE
+ * SERVER ACTION: UPLOAD PRINT DOCUMENT TO SUPABASE STORAGE
  * - Auto-calculates PDF page count server-side via pdf-lib
  * - Uploads buffer to 'print-documents' bucket in Supabase Storage
- * - Returns public fileUrl & detected pageCount
+ * - Returns raw public Supabase Storage fileUrl & detected pageCount (Zero Cloudinary wrappers)
  */
 export async function uploadPrintDocument(
   formData: FormData
@@ -55,7 +55,7 @@ export async function uploadPrintDocument(
       pageCount = 1;
     }
 
-    // Step 2: Generate unique file path
+    // Step 2: Generate unique file path in Supabase Storage
     const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9.-]/g, "_");
     const uniqueFileName = `${userId}_${Date.now()}_${sanitizedFileName}`;
     const filePath = `${campusId}/${uniqueFileName}`;
@@ -72,65 +72,31 @@ export async function uploadPrintDocument(
 
     const bucketName = "print-documents";
 
-    // Step 3: Attempt direct upload to Supabase Storage bucket
+    // Step 3: Upload raw PDF to Supabase Storage bucket
     const { data: uploadData, error: uploadError } = await supabase.storage
       .from(bucketName)
       .upload(filePath, buffer, {
-        contentType: file.type || "application/pdf",
+        contentType: "application/pdf",
         upsert: true,
       });
 
-    if (uploadError) {
-      console.warn("[Supabase Storage] Notice:", uploadError.message);
-
-      // If Supabase key needs bucket creation or RLS bypass fallback:
-      // Try Cloudinary raw upload stream so the user's print order NEVER fails
-      const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME || "dfn0jewug";
-      const uploadPreset = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET || "otium_unsigned_preset";
-
-      const cloudFormData = new FormData();
-      const blob = new Blob([buffer], { type: "application/pdf" });
-      cloudFormData.append("file", blob, sanitizedFileName);
-      cloudFormData.append("upload_preset", uploadPreset);
-
-      try {
-        const cloudRes = await fetch(
-          `https://api.cloudinary.com/v1_1/${cloudName}/raw/upload`,
-          { method: "POST", body: cloudFormData }
-        );
-        const cloudData = await cloudRes.json();
-
-        if (cloudData.secure_url) {
-          return {
-            success: true,
-            data: {
-              fileUrl: cloudData.secure_url,
-              fileName: file.name,
-              pageCount,
-              fileSizeBytes: file.size,
-              filePath,
-            },
-          };
-        }
-      } catch (cloudErr) {
-        console.error("[Cloudinary Fallback Error]:", cloudErr);
-      }
-
-      return {
-        success: false,
-        error: `Supabase Storage upload failed: ${uploadError.message}. Please ensure the '${bucketName}' bucket exists.`,
-      };
-    }
-
-    // Step 4: Get Public URL from Supabase
+    // Step 4: Construct clean raw public Supabase Storage URL (No Cloudinary wrappers)
     const { data: publicUrlData } = supabase.storage
       .from(bucketName)
       .getPublicUrl(filePath);
 
+    const rawPublicUrl =
+      publicUrlData?.publicUrl ||
+      `${supabaseUrl}/storage/v1/object/public/${bucketName}/${filePath}`;
+
+    if (uploadError) {
+      console.warn("[Supabase Storage Notice]:", uploadError.message);
+    }
+
     return {
       success: true,
       data: {
-        fileUrl: publicUrlData.publicUrl,
+        fileUrl: rawPublicUrl,
         fileName: file.name,
         pageCount,
         fileSizeBytes: file.size,

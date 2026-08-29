@@ -626,13 +626,30 @@ export default function AdminPrintQueuePage() {
             </div>
 
             {/* Iframe Preview Container */}
-            <div className="flex-1 bg-slate-950 p-1 relative">
+            <div className="flex-1 bg-slate-950 p-3 relative flex flex-col min-h-0 overflow-hidden">
               <iframe
                 id="admin-pdf-iframe"
                 src={previewPdfUrl}
-                className="w-full h-full rounded-xl border-0"
+                className="w-full flex-1 rounded-xl border border-slate-800 bg-white"
                 title="PDF Preview"
               />
+
+              {/* PDF Viewer Fallback Bar (Visible for mobile or blocked iframes) */}
+              <div className="mt-3 p-3 rounded-xl bg-slate-800/90 border border-slate-700/80 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
+                <p className="text-xs text-slate-300 flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-teal-400 shrink-0" />
+                  <span>Preview loading issues on mobile? Open raw PDF directly in a new tab:</span>
+                </p>
+                <a
+                  href={previewPdfUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold transition-all inline-flex items-center gap-2 shadow-lg shadow-teal-500/20 shrink-0"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                  <span>Open PDF in New Tab</span>
+                </a>
+              </div>
             </div>
           </div>
         </div>
