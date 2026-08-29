@@ -65,11 +65,7 @@ export default withAuth(
   },
   {
     callbacks: {
-      authorized: ({ token, req }) => {
-        // In local development test mode, allow navigation to pages for UI validation
-        if (process.env.NODE_ENV === "development") {
-          return true;
-        }
+      authorized: ({ token }) => {
         return !!token;
       },
     },

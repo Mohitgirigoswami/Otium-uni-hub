@@ -29,13 +29,14 @@ import {
   Sparkles,
   RefreshCw,
   Share2,
+  Loader2,
 } from "lucide-react";
 
 export default function PostDetailPage() {
   const params = useParams();
   const router = useRouter();
   const postId = params?.postId as string;
-  const { user } = useUser();
+  const { user, loading: userLoading } = useUser();
 
   const [post, setPost] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
@@ -48,33 +49,46 @@ export default function PostDetailPage() {
   const [userProfile, setUserProfile] = useState<any | null>(null);
   const [chatLoading, setChatLoading] = useState(false);
 
-  const fetchPostData = async () => {
-    if (!postId) return;
-    setLoading(true);
-    const res = await getIncognitoPostById(postId, user?.id);
-
-    if (res.success && res.data) {
-      setPost(res.data);
-      setComments(res.data.comments || []);
-      setLikesCount(res.data.likesCount || 0);
-
-      if (user && res.data.likes) {
-        const userHasLiked = res.data.likes.some(
-          (l: any) => l.userId === user.id
-        );
-        setIsLiked(userHasLiked);
-      }
-    } else {
-      toast.error(res.error || "Failed to load post.");
+  // Auth Guard
+  useEffect(() => {
+    if (!userLoading && !user) {
+      router.replace("/login");
     }
-    setLoading(false);
+  }, [user, userLoading, router]);
+
+  const fetchPostData = async () => {
+    if (!postId || !user?.id) return;
+    setLoading(true);
+    try {
+      const res = await getIncognitoPostById(postId, user.id);
+
+      if (res?.success && res.data) {
+        setPost(res.data);
+        setComments(res.data.comments || []);
+        setLikesCount(res.data.likesCount || 0);
+
+        if (res.data.likes) {
+          const userHasLiked = res.data.likes.some(
+            (l: any) => l.userId === user.id
+          );
+          setIsLiked(userHasLiked);
+        }
+      } else {
+        toast.error(res?.error || "Failed to load post.");
+      }
+    } catch (err) {
+      console.error("Error fetching post data:", err);
+      toast.error("Failed to load whisper.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
-    fetchPostData();
-    if (user?.id) {
+    if (user?.id && postId) {
+      fetchPostData();
       getIncognitoProfile(user.id).then((res) => {
-        if (res.success && res.data) {
+        if (res?.success && res.data) {
           setUserProfile(res.data);
         }
       });
@@ -82,7 +96,7 @@ export default function PostDetailPage() {
   }, [postId, user?.id]);
 
   const handleToggleLike = async () => {
-    if (!user) {
+    if (!user?.id) {
       toast.error("Please login to like whispers.");
       return;
     }
@@ -99,20 +113,20 @@ export default function PostDetailPage() {
     const res = await toggleLikeIncognitoPost(postId, user.id);
     setIsLiking(false);
 
-    if (res.success && res.data) {
+    if (res?.success && res.data) {
       setIsLiked(res.data.liked);
       setLikesCount(res.data.likesCount);
     } else {
       // Revert on error
       setIsLiked(previousLiked);
       setLikesCount(previousCount);
-      toast.error(res.error || "Failed to update like.");
+      toast.error(res?.error || "Failed to update like.");
     }
   };
 
   const handleAddComment = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) {
+    if (!user?.id) {
       toast.error("Please login to post a reply.");
       return;
     }
@@ -129,21 +143,21 @@ export default function PostDetailPage() {
     });
     setIsSubmittingComment(false);
 
-    if (res.success && res.data) {
+    if (res?.success && res.data) {
       toast.success("Anonymous reply posted!");
       setComments((prev) => [...prev, res.data]);
       setCommentContent("");
     } else {
-      toast.error(res.error || "Failed to post comment.");
+      toast.error(res?.error || "Failed to post comment.");
     }
   };
 
   const handleDirectMessage = async () => {
-    if (!user) {
+    if (!user?.id) {
       toast.error("Please login to start an anonymous chat.");
       return;
     }
-    if (post.profile?.userId === user.id) {
+    if (post?.profile?.userId === user.id) {
       toast.info("This is your own whisper!");
       return;
     }
@@ -156,20 +170,29 @@ export default function PostDetailPage() {
     });
     setChatLoading(false);
 
-    if (res.success && res.data) {
+    if (res?.success && res.data) {
       toast.success(`Opening anonymous chat with @${post.profile.handle}...`);
       router.push(`/messages?id=${res.data.id}`);
     } else {
-      toast.error(res.error || "Failed to start anonymous chat.");
+      toast.error(res?.error || "Failed to start anonymous chat.");
     }
   };
 
   const handleShare = () => {
-    if (navigator.clipboard) {
+    if (typeof window !== "undefined" && navigator.clipboard) {
       navigator.clipboard.writeText(window.location.href);
       toast.success("Post link copied to clipboard!");
     }
   };
+
+  if (userLoading || !user) {
+    return (
+      <div className="min-h-[60vh] flex flex-col items-center justify-center space-y-3">
+        <Loader2 className="w-10 h-10 text-purple-500 animate-spin" />
+        <p className="text-xs font-bold text-slate-400">Verifying campus session...</p>
+      </div>
+    );
+  }
 
   const imagesList = post
     ? post.mediaUrls && post.mediaUrls.length > 0
@@ -362,7 +385,7 @@ export default function PostDetailPage() {
                     isSubmitting={isSubmittingComment}
                     loadingText="Posting Reply..."
                     size="sm"
-                    className="bg-purple-600 hover:bg-purple-500 text-xs"
+                    className="bg-purple-600 hover:bg-purple-500 text-xs font-bold"
                     leftIcon={<Send className="w-3.5 h-3.5" />}
                   >
                     Post Anonymous Reply

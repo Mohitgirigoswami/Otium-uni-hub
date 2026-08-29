@@ -9,6 +9,9 @@ import { ActionResponse } from "@/lib/types";
  */
 export async function getIncognitoProfile(userId: string): Promise<ActionResponse<any>> {
   try {
+    if (!userId) {
+      return { success: false, error: "User ID is required." };
+    }
     const profile = await prisma.incognitoProfile.findUnique({
       where: { userId },
     });
@@ -20,6 +23,7 @@ export async function getIncognitoProfile(userId: string): Promise<ActionRespons
   } catch (error: any) {
     console.error("Error in getIncognitoProfile:", error);
     return {
+      success: false,
       error: error?.message || "Failed to load incognito profile.",
     };
   }
@@ -35,12 +39,12 @@ export async function setupIncognitoProfile(
   try {
     const rateCheck = await checkRateLimit(userId);
     if (!rateCheck.success) {
-      return { error: rateCheck.error };
+      return { success: false, error: rateCheck.error };
     }
 
     const cleanHandle = handle.trim().replace(/[^a-zA-Z0-9_]/g, "");
     if (!cleanHandle || cleanHandle.length < 3) {
-      return { error: "Handle must be at least 3 alphanumeric characters." };
+      return { success: false, error: "Handle must be at least 3 alphanumeric characters." };
     }
 
     // Auto-generate avatar with Dicebear bottts
@@ -52,7 +56,7 @@ export async function setupIncognitoProfile(
     });
 
     if (existing && existing.userId !== userId) {
-      return { error: `The alias "${cleanHandle}" is already claimed. Pick another pseudonym!` };
+      return { success: false, error: `The alias "${cleanHandle}" is already claimed. Pick another pseudonym!` };
     }
 
     const profile = await prisma.incognitoProfile.upsert({
@@ -75,6 +79,7 @@ export async function setupIncognitoProfile(
   } catch (error: any) {
     console.error("Error in setupIncognitoProfile:", error);
     return {
+      success: false,
       error: error?.message || "Failed to initialize incognito profile.",
     };
   }
@@ -144,6 +149,7 @@ export async function getIncognitoPosts(params?: {
   } catch (error: any) {
     console.error("Error in getIncognitoPosts:", error);
     return {
+      success: false,
       error: error?.message || "Failed to fetch incognito feed.",
       data: [],
     };
@@ -204,7 +210,7 @@ export async function getIncognitoPostById(
     });
 
     if (!post) {
-      return { error: "Post not found." };
+      return { success: false, error: "Post not found." };
     }
 
     return {
@@ -214,6 +220,7 @@ export async function getIncognitoPostById(
   } catch (error: any) {
     console.error("Error in getIncognitoPostById:", error);
     return {
+      success: false,
       error: error?.message || "Failed to load post detail.",
     };
   }
@@ -233,11 +240,11 @@ export async function createIncognitoPost(data: {
   try {
     const rateCheck = await checkRateLimit(data.userId);
     if (!rateCheck.success) {
-      return { error: rateCheck.error };
+      return { success: false, error: rateCheck.error };
     }
 
     if (!data.content?.trim()) {
-      return { error: "Post content cannot be empty." };
+      return { success: false, error: "Post content cannot be empty." };
     }
 
     // Look up user to get their collegeId if not provided
@@ -296,6 +303,7 @@ export async function createIncognitoPost(data: {
   } catch (error: any) {
     console.error("Error in createIncognitoPost:", error);
     return {
+      success: false,
       error: error?.message || "Failed to post anonymously.",
     };
   }
@@ -309,9 +317,13 @@ export async function toggleLikeIncognitoPost(
   userId: string
 ): Promise<ActionResponse<{ liked: boolean; likesCount: number }>> {
   try {
+    if (!userId || !postId) {
+      return { success: false, error: "User ID and Post ID are required." };
+    }
+
     const rateCheck = await checkRateLimit(userId);
     if (!rateCheck.success) {
-      return { error: rateCheck.error };
+      return { success: false, error: rateCheck.error };
     }
 
     // Check if like record already exists for this (userId, postId)
@@ -383,6 +395,7 @@ export async function toggleLikeIncognitoPost(
   } catch (error: any) {
     console.error("Error in toggleLikeIncognitoPost:", error);
     return {
+      success: false,
       error: error?.message || "Failed to update like status.",
     };
   }
@@ -402,11 +415,11 @@ export async function createIncognitoComment(data: {
   try {
     const rateCheck = await checkRateLimit(data.userId);
     if (!rateCheck.success) {
-      return { error: rateCheck.error };
+      return { success: false, error: rateCheck.error };
     }
 
     if (!data.content?.trim()) {
-      return { error: "Comment cannot be empty." };
+      return { success: false, error: "Comment cannot be empty." };
     }
 
     // Ensure incognito profile exists
@@ -451,6 +464,7 @@ export async function createIncognitoComment(data: {
   } catch (error: any) {
     console.error("Error in createIncognitoComment:", error);
     return {
+      success: false,
       error: error?.message || "Failed to post comment.",
     };
   }
@@ -485,6 +499,7 @@ export async function getIncognitoComments(
   } catch (error: any) {
     console.error("Error in getIncognitoComments:", error);
     return {
+      success: false,
       error: error?.message || "Failed to load comments.",
       data: [],
     };
