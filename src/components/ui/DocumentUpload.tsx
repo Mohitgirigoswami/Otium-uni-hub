@@ -16,6 +16,7 @@ import {
 import {
   getGoogleDriveResumableUploadUrl,
   makeDriveFilePublicAction,
+  uploadPdfDirectToGoogleDriveAction,
 } from "@/actions/drive-upload.actions";
 
 interface DocumentUploadProps {
@@ -84,88 +85,32 @@ export function DocumentUpload({
     await calculatePdfPages(file);
 
     try {
-      // Step 2: Request Resumable Session URI from Google Drive via Server Action
-      setUploadProgress(20);
-      const sessionRes = await getGoogleDriveResumableUploadUrl({
-        fileName: file.name,
-        mimeType: file.type || "application/pdf",
-        fileSize: file.size,
-      });
+      // Step 2: Upload PDF directly to Google Drive via server action stream
+      setUploadProgress(35);
+      const formData = new FormData();
+      formData.append("file", file);
 
-      if (!sessionRes.success || !sessionRes.data?.uploadUrl) {
-        const errorMsg = sessionRes.error || "Failed to initiate Google Drive resumable session.";
-        toast.error(errorMsg, { duration: 6000 });
-        throw new Error(errorMsg);
-      }
-
-      const { uploadUrl, serviceAccountEmail, folderId } = sessionRes.data;
-
-      // Step 3: Direct Client-Side PUT to Google Drive (bypasses Next.js server)
-      const xhr = new XMLHttpRequest();
-
-      xhr.upload.addEventListener("progress", (event) => {
-        if (event.lengthComputable) {
-          const percent = 20 + Math.round((event.loaded / event.total) * 75);
-          setUploadProgress(percent);
-        }
-      });
-
-      xhr.onreadystatechange = async () => {
-        if (xhr.readyState === XMLHttpRequest.DONE) {
-          setIsUploading(false);
-          onUploadingChange?.(false);
-
-          if (xhr.status === 200 || xhr.status === 201) {
-            try {
-              const driveData = JSON.parse(xhr.responseText);
-              const driveFileId = driveData.id;
-
-              // Ensure public viewable link
-              const permRes = await makeDriveFilePublicAction(driveFileId);
-              const finalViewLink =
-                permRes.data?.webViewLink ||
-                `https://drive.google.com/file/d/${driveFileId}/view?usp=sharing`;
-
-              setUploadProgress(100);
-              setFileUrl(finalViewLink);
-              toast.success("Document uploaded directly to Google Drive!");
-              onUploadComplete(finalViewLink, driveFileId, file.name);
-            } catch (jsonErr) {
-              const mockUrl = `https://drive.google.com/file/d/gdrive_${Date.now()}/view`;
-              setFileUrl(mockUrl);
-              setUploadProgress(100);
-              onUploadComplete(mockUrl, `gdrive_${Date.now()}`, file.name);
-            }
-          } else {
-            console.warn("[GoogleDrive] Upload response:", xhr.status, xhr.responseText);
-            const mockId = `drive_file_${Math.random().toString(36).substring(2, 9)}`;
-            const mockUrl = `https://drive.google.com/file/d/${mockId}/view?usp=sharing`;
-
-            setUploadProgress(100);
-            setFileUrl(mockUrl);
-            toast.info("Google Drive direct stream connected.");
-            onUploadComplete(mockUrl, mockId, file.name);
-          }
-        }
-      };
-
-      xhr.onerror = () => {
-        setIsUploading(false);
-        onUploadingChange?.(false);
-        const fallbackId = `gdrive_${Date.now()}`;
-        const fallbackUrl = `https://drive.google.com/file/d/${fallbackId}/view`;
-        setFileUrl(fallbackUrl);
-        onUploadComplete(fallbackUrl, fallbackId, file.name);
-      };
-
-      xhr.open("PUT", uploadUrl, true);
-      xhr.setRequestHeader("Content-Type", file.type || "application/pdf");
-      xhr.send(file);
-    } catch (error: any) {
-      console.error("[GoogleDrive] Direct upload error:", error);
+      const res = await uploadPdfDirectToGoogleDriveAction(formData);
       setIsUploading(false);
       onUploadingChange?.(false);
-      toast.error(error?.message || "Google Drive upload failed.");
+
+      if (res?.success && res.data) {
+        setUploadProgress(100);
+        setFileUrl(res.data.webViewLink);
+        toast.success("Document saved to Google Drive!");
+        onUploadComplete(res.data.webViewLink, res.data.driveFileId, file.name);
+      } else {
+        const errorMsg =
+          res?.error || "Google Drive upload failed. Please check folder permissions.";
+        toast.error(errorMsg, { duration: 10000 });
+        setFileUrl("");
+        setFileName("");
+      }
+    } catch (error: any) {
+      console.error("[GoogleDrive] Upload error:", error);
+      setIsUploading(false);
+      onUploadingChange?.(false);
+      toast.error(error?.message || "Google Drive upload failed.", { duration: 8000 });
     }
   };
 

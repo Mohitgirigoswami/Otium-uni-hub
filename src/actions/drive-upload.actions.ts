@@ -3,6 +3,7 @@
 import { google } from "googleapis";
 import { ActionResponse } from "@/lib/types";
 import { checkRateLimit } from "@/lib/rate-limit";
+import { Readable } from "stream";
 
 export interface DriveResumableSessionData {
   uploadUrl: string;
@@ -63,8 +64,143 @@ function parseGoogleCredentials() {
 }
 
 /**
- * 1. GOOGLE DRIVE RESUMABLE UPLOAD SESSION INITIATOR
- * Authenticates via Service Account & returns direct Resumable Session URI for client-side PUT
+ * 1. DIRECT SERVER-SIDE STREAM UPLOAD TO GOOGLE DRIVE (Recommended for 100% Reliability)
+ */
+export async function uploadPdfDirectToGoogleDriveAction(formData: FormData): Promise<
+  ActionResponse<{
+    driveFileId: string;
+    webViewLink: string;
+    fileName: string;
+    downloadUrl: string;
+  }>
+> {
+  const creds = parseGoogleCredentials();
+
+  try {
+    const file = formData.get("file") as File;
+    if (!file) {
+      return { success: false, error: "No document file provided for upload." };
+    }
+
+    console.log("--------------------------------------------------");
+    console.log("[GoogleDrive Direct] Uploading PDF:", file.name, `(${file.size} bytes)`);
+    console.log("[GoogleDrive Direct] Service Account Email:", creds.client_email);
+    console.log("[GoogleDrive Direct] Target Folder ID:", creds.parentFolderId || "(Root)");
+    console.log("--------------------------------------------------");
+
+    // Check placeholder demo mode
+    if (
+      creds.client_email.includes("placeholder") ||
+      creds.private_key.includes("placeholder")
+    ) {
+      const mockId = `gdrive_${Date.now()}`;
+      return {
+        success: true,
+        data: {
+          driveFileId: mockId,
+          webViewLink: `https://drive.google.com/file/d/${mockId}/view?usp=sharing`,
+          fileName: file.name,
+          downloadUrl: `https://drive.google.com/uc?export=download&id=${mockId}`,
+        },
+      };
+    }
+
+    const auth = new google.auth.JWT({
+      email: creds.client_email,
+      key: creds.private_key,
+      scopes: [
+        "https://www.googleapis.com/auth/drive",
+        "https://www.googleapis.com/auth/drive.file",
+      ],
+    });
+
+    const drive = google.drive({ version: "v3", auth });
+    const buffer = Buffer.from(await file.arrayBuffer());
+
+    const stream = new Readable();
+    stream.push(buffer);
+    stream.push(null);
+
+    const requestBody: Record<string, any> = {
+      name: file.name,
+      mimeType: file.type || "application/pdf",
+    };
+
+    if (creds.parentFolderId && !creds.parentFolderId.includes("placeholder")) {
+      requestBody.parents = [creds.parentFolderId];
+    }
+
+    const fileRes = await drive.files.create({
+      supportsAllDrives: true,
+      requestBody,
+      media: {
+        mimeType: file.type || "application/pdf",
+        body: stream,
+      },
+      fields: "id, name, webViewLink, webContentLink",
+    });
+
+    const driveFileId = fileRes.data.id!;
+    console.log("[GoogleDrive Direct] File successfully saved in Google Drive! ID:", driveFileId);
+
+    // Apply public reader permissions
+    try {
+      await drive.permissions.create({
+        fileId: driveFileId,
+        supportsAllDrives: true,
+        requestBody: {
+          role: "reader",
+          type: "anyone",
+        },
+      });
+      console.log(`[GoogleDrive Direct] Set public reader permission on file: ${driveFileId}`);
+    } catch (permErr: any) {
+      console.warn("[GoogleDrive Direct] Permission notice:", permErr?.message);
+    }
+
+    const webViewLink =
+      fileRes.data.webViewLink ||
+      `https://drive.google.com/file/d/${driveFileId}/view?usp=sharing`;
+    const downloadUrl =
+      fileRes.data.webContentLink ||
+      `https://drive.google.com/uc?export=download&id=${driveFileId}`;
+
+    return {
+      success: true,
+      data: {
+        driveFileId,
+        webViewLink,
+        fileName: file.name,
+        downloadUrl,
+      },
+    };
+  } catch (error: any) {
+    console.error("[GoogleDrive Direct] Error:", error);
+
+    const errMsg = error?.message || "";
+    if (errMsg.includes("File not found") || error?.code === 404) {
+      return {
+        success: false,
+        error: `Google Drive Folder '${creds.parentFolderId}' is NOT shared with '${creds.client_email}'. Open Google Drive, click Share on this folder, and add '${creds.client_email}' with Editor access.`,
+      };
+    }
+
+    if (errMsg.includes("storage quota") || error?.code === 403) {
+      return {
+        success: false,
+        error: `Google Drive Service Accounts have 0MB root storage quota. Please share folder '${creds.parentFolderId}' with '${creds.client_email}' as Editor.`,
+      };
+    }
+
+    return {
+      success: false,
+      error: error?.message || "Failed to upload PDF to Google Drive.",
+    };
+  }
+}
+
+/**
+ * 2. GOOGLE DRIVE RESUMABLE UPLOAD SESSION INITIATOR
  */
 export async function getGoogleDriveResumableUploadUrl(data: {
   fileName: string;
@@ -78,19 +214,11 @@ export async function getGoogleDriveResumableUploadUrl(data: {
 
     const creds = parseGoogleCredentials();
 
-    console.log("--------------------------------------------------");
-    console.log("[GoogleDrive] Initiating Resumable Upload Session");
-    console.log("[GoogleDrive] File Name:", data.fileName);
-    console.log("[GoogleDrive] Service Account Email:", creds.client_email);
-    console.log("[GoogleDrive] Target Folder ID:", creds.parentFolderId || "(Default Root)");
-    console.log("--------------------------------------------------");
-
     // Check for dummy placeholder mode
     if (
       creds.client_email.includes("placeholder") ||
       creds.private_key.includes("placeholder")
     ) {
-      console.info("[GoogleDrive] Running in placeholder demo mode.");
       return {
         success: true,
         data: {
@@ -105,7 +233,6 @@ export async function getGoogleDriveResumableUploadUrl(data: {
       };
     }
 
-    // Initialize JWT client with full drive permissions
     const auth = new google.auth.JWT({
       email: creds.client_email,
       key: creds.private_key,
@@ -121,11 +248,10 @@ export async function getGoogleDriveResumableUploadUrl(data: {
     if (!accessToken) {
       return {
         success: false,
-        error: `Failed to authenticate with Google Drive API for Service Account '${creds.client_email}'. Check private key format.`,
+        error: `Failed to authenticate with Google Drive API for Service Account '${creds.client_email}'. Check private key.`,
       };
     }
 
-    // Metadata payload for Google Drive v3 file creation
     const metadata: Record<string, any> = {
       name: data.fileName,
       mimeType: data.mimeType || "application/pdf",
@@ -145,33 +271,15 @@ export async function getGoogleDriveResumableUploadUrl(data: {
       headers["X-Upload-Content-Length"] = String(data.fileSize);
     }
 
-    // Step 1: Attempt to create resumable upload session with folder
-    let uploadEndpoint = "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&supportsAllDrives=true";
-    let response = await fetch(uploadEndpoint, {
+    const uploadEndpoint = "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&supportsAllDrives=true";
+    const response = await fetch(uploadEndpoint, {
       method: "POST",
       headers,
       body: JSON.stringify(metadata),
     });
 
-    // Step 2: Handle 404 Folder Not Shared / Not Found error
-    if (!response.ok && response.status === 404 && metadata.parents) {
-      console.warn(
-        `[GoogleDrive] 404 Folder '${creds.parentFolderId}' not accessible by '${creds.client_email}'. Retrying upload to Service Account root drive...`
-      );
-
-      // Retry without parent folder (uploads to service account root drive)
-      delete metadata.parents;
-      response = await fetch(uploadEndpoint, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(metadata),
-      });
-    }
-
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`[GoogleDrive] Resumable Session Error (${response.status}):`, errorText);
-
       let parsedMessage = errorText.slice(0, 180);
       try {
         const errorJson = JSON.parse(errorText);
@@ -180,7 +288,7 @@ export async function getGoogleDriveResumableUploadUrl(data: {
 
       return {
         success: false,
-        error: `Google Drive API (${response.status}): ${parsedMessage}. Ensure target folder '${creds.parentFolderId}' is shared with '${creds.client_email}' as Editor.`,
+        error: `Google Drive (${response.status}): ${parsedMessage}. Ensure folder '${creds.parentFolderId}' is shared with '${creds.client_email}' as Editor.`,
       };
     }
 
@@ -205,8 +313,6 @@ export async function getGoogleDriveResumableUploadUrl(data: {
     };
   } catch (error: any) {
     const creds = parseGoogleCredentials();
-    console.error("[GoogleDrive] Fatal Error in getGoogleDriveResumableUploadUrl:", error);
-
     return {
       success: false,
       error: `Google Drive upload session error: ${error?.message || "Internal error"}. Ensure Service Account '${creds.client_email}' has Editor access to folder '${creds.parentFolderId}'.`,
@@ -215,7 +321,7 @@ export async function getGoogleDriveResumableUploadUrl(data: {
 }
 
 /**
- * 2. Set Public Read Permissions for Uploaded Google Drive File
+ * 3. Set Public Read Permissions for Uploaded Google Drive File
  */
 export async function makeDriveFilePublicAction(fileId: string): Promise<
   ActionResponse<{ webViewLink: string; downloadUrl: string }>
@@ -231,7 +337,6 @@ export async function makeDriveFilePublicAction(fileId: string): Promise<
 
     const drive = google.drive({ version: "v3", auth });
 
-    // Grant anyone with link reader permission
     try {
       await drive.permissions.create({
         fileId,
@@ -243,7 +348,7 @@ export async function makeDriveFilePublicAction(fileId: string): Promise<
       });
       console.log(`[GoogleDrive] Set public reader permission on fileId: ${fileId}`);
     } catch (permErr: any) {
-      console.warn("[GoogleDrive] Could not set public permission (may already be shared):", permErr?.message);
+      console.warn("[GoogleDrive] Permission notice:", permErr?.message);
     }
 
     const webViewLink = `https://drive.google.com/file/d/${fileId}/view?usp=sharing`;
