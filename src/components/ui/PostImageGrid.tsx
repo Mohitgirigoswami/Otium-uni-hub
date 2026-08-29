@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState } from "react";
-import { Modal } from "./Modal";
 import { Maximize2, X } from "lucide-react";
 
 interface PostImageGridProps {
@@ -11,24 +10,36 @@ interface PostImageGridProps {
 
 export function PostImageGrid({ images, className = "" }: PostImageGridProps) {
   const [activeImageModal, setActiveImageModal] = useState<string | null>(null);
+  const [failedIndices, setFailedIndices] = useState<Record<number, boolean>>({});
 
   if (!images || images.length === 0) return null;
 
-  // Single Image: Dynamic height, object-contain, clean rounded preview
-  if (images.length === 1) {
+  // Filter out any images that failed to load (Graceful Error Collapse)
+  const validImages = images
+    .map((url, idx) => ({ url, originalIdx: idx }))
+    .filter(({ originalIdx }) => !failedIndices[originalIdx]);
+
+  if (validImages.length === 0) return null;
+
+  // Single Image: Clamped to max-h-[350px], w-full, object-contain, bg-neutral-900
+  if (validImages.length === 1) {
+    const item = validImages[0];
     return (
       <>
         <div
           onClick={(e) => {
             e.stopPropagation();
-            setActiveImageModal(images[0]);
+            setActiveImageModal(item.url);
           }}
-          className={`relative rounded-2xl overflow-hidden bg-black/40 border border-slate-200/50 dark:border-slate-800 flex items-center justify-center cursor-pointer group ${className}`}
+          className={`relative max-h-[350px] w-full overflow-hidden rounded-xl bg-neutral-900 border border-slate-200/50 dark:border-slate-800 flex items-center justify-center cursor-pointer group ${className}`}
         >
           <img
-            src={images[0]}
-            alt="Post attachment"
-            className="max-h-[480px] w-auto max-w-full object-contain mx-auto group-hover:scale-[1.01] transition-transform duration-200"
+            src={item.url}
+            alt="Feed attachment"
+            onError={() =>
+              setFailedIndices((prev) => ({ ...prev, [item.originalIdx]: true }))
+            }
+            className="max-h-[350px] w-full object-contain mx-auto group-hover:scale-[1.01] transition-transform duration-200"
           />
           <div className="absolute top-2 right-2 p-1.5 rounded-lg bg-black/60 text-white opacity-0 group-hover:opacity-100 transition-opacity">
             <Maximize2 className="w-3.5 h-3.5" />
@@ -61,23 +72,26 @@ export function PostImageGrid({ images, className = "" }: PostImageGridProps) {
     );
   }
 
-  // Two Images: 2 Column Grid
-  if (images.length === 2) {
+  // Two Images: 2-Column Grid
+  if (validImages.length === 2) {
     return (
       <>
-        <div className={`grid grid-cols-2 gap-2 rounded-2xl overflow-hidden ${className}`}>
-          {images.map((img, idx) => (
+        <div className={`grid grid-cols-2 gap-2 max-h-[350px] overflow-hidden rounded-xl ${className}`}>
+          {validImages.map((item, idx) => (
             <div
-              key={idx}
+              key={item.originalIdx}
               onClick={(e) => {
                 e.stopPropagation();
-                setActiveImageModal(img);
+                setActiveImageModal(item.url);
               }}
-              className="relative aspect-[4/3] sm:aspect-square rounded-xl overflow-hidden bg-black/30 border border-slate-200/50 dark:border-slate-800 cursor-pointer group"
+              className="relative max-h-[350px] h-full aspect-[4/3] sm:aspect-square rounded-xl overflow-hidden bg-neutral-900 border border-slate-200/50 dark:border-slate-800 cursor-pointer group"
             >
               <img
-                src={img}
+                src={item.url}
                 alt={`Photo ${idx + 1}`}
+                onError={() =>
+                  setFailedIndices((prev) => ({ ...prev, [item.originalIdx]: true }))
+                }
                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
               />
             </div>
@@ -86,9 +100,18 @@ export function PostImageGrid({ images, className = "" }: PostImageGridProps) {
 
         {activeImageModal && (
           <div
-            onClick={() => setActiveImageModal(null)}
+            onClick={(e) => {
+              e.stopPropagation();
+              setActiveImageModal(null);
+            }}
             className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4 cursor-zoom-out"
           >
+            <button
+              onClick={() => setActiveImageModal(null)}
+              className="absolute top-4 right-4 p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
+            >
+              <X className="w-6 h-6" />
+            </button>
             <img
               src={activeImageModal}
               alt="Enlarged view"
@@ -102,37 +125,49 @@ export function PostImageGrid({ images, className = "" }: PostImageGridProps) {
   }
 
   // Three Images: 1 Large on Left + 2 Stacked on Right
-  if (images.length === 3) {
+  if (validImages.length === 3) {
     return (
       <>
-        <div className={`grid grid-cols-3 gap-2 rounded-2xl overflow-hidden ${className}`}>
+        <div className={`grid grid-cols-3 gap-2 max-h-[350px] overflow-hidden rounded-xl ${className}`}>
           <div
             onClick={(e) => {
               e.stopPropagation();
-              setActiveImageModal(images[0]);
+              setActiveImageModal(validImages[0].url);
             }}
-            className="col-span-2 aspect-[4/3] sm:aspect-square rounded-xl overflow-hidden bg-black/30 border border-slate-200/50 dark:border-slate-800 cursor-pointer group"
+            className="col-span-2 max-h-[350px] rounded-xl overflow-hidden bg-neutral-900 border border-slate-200/50 dark:border-slate-800 cursor-pointer group"
           >
             <img
-              src={images[0]}
+              src={validImages[0].url}
               alt="Photo 1"
+              onError={() =>
+                setFailedIndices((prev) => ({
+                  ...prev,
+                  [validImages[0].originalIdx]: true,
+                }))
+              }
               className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
             />
           </div>
 
-          <div className="col-span-1 flex flex-col gap-2">
-            {images.slice(1).map((img, idx) => (
+          <div className="col-span-1 flex flex-col gap-2 max-h-[350px]">
+            {validImages.slice(1).map((item, idx) => (
               <div
-                key={idx}
+                key={item.originalIdx}
                 onClick={(e) => {
                   e.stopPropagation();
-                  setActiveImageModal(img);
+                  setActiveImageModal(item.url);
                 }}
-                className="relative flex-1 rounded-xl overflow-hidden bg-black/30 border border-slate-200/50 dark:border-slate-800 cursor-pointer group"
+                className="relative flex-1 rounded-xl overflow-hidden bg-neutral-900 border border-slate-200/50 dark:border-slate-800 cursor-pointer group"
               >
                 <img
-                  src={img}
+                  src={item.url}
                   alt={`Photo ${idx + 2}`}
+                  onError={() =>
+                    setFailedIndices((prev) => ({
+                      ...prev,
+                      [item.originalIdx]: true,
+                    }))
+                  }
                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
                 />
               </div>
@@ -142,9 +177,18 @@ export function PostImageGrid({ images, className = "" }: PostImageGridProps) {
 
         {activeImageModal && (
           <div
-            onClick={() => setActiveImageModal(null)}
+            onClick={(e) => {
+              e.stopPropagation();
+              setActiveImageModal(null);
+            }}
             className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4 cursor-zoom-out"
           >
+            <button
+              onClick={() => setActiveImageModal(null)}
+              className="absolute top-4 right-4 p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
+            >
+              <X className="w-6 h-6" />
+            </button>
             <img
               src={activeImageModal}
               alt="Enlarged view"
@@ -157,22 +201,28 @@ export function PostImageGrid({ images, className = "" }: PostImageGridProps) {
     );
   }
 
-  // Four Images: 2x2 Clean Grid
+  // Four Images: 2x2 Grid with max-h-[350px]
   return (
     <>
-      <div className={`grid grid-cols-2 gap-2 rounded-2xl overflow-hidden ${className}`}>
-        {images.slice(0, 4).map((img, idx) => (
+      <div className={`grid grid-cols-2 gap-2 max-h-[350px] overflow-hidden rounded-xl ${className}`}>
+        {validImages.slice(0, 4).map((item, idx) => (
           <div
-            key={idx}
+            key={item.originalIdx}
             onClick={(e) => {
               e.stopPropagation();
-              setActiveImageModal(img);
+              setActiveImageModal(item.url);
             }}
-            className="relative aspect-square rounded-xl overflow-hidden bg-black/30 border border-slate-200/50 dark:border-slate-800 cursor-pointer group"
+            className="relative aspect-square max-h-[170px] rounded-xl overflow-hidden bg-neutral-900 border border-slate-200/50 dark:border-slate-800 cursor-pointer group"
           >
             <img
-              src={img}
+              src={item.url}
               alt={`Photo ${idx + 1}`}
+              onError={() =>
+                setFailedIndices((prev) => ({
+                  ...prev,
+                  [item.originalIdx]: true,
+                }))
+              }
               className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
             />
           </div>
@@ -181,9 +231,18 @@ export function PostImageGrid({ images, className = "" }: PostImageGridProps) {
 
       {activeImageModal && (
         <div
-          onClick={() => setActiveImageModal(null)}
+          onClick={(e) => {
+            e.stopPropagation();
+            setActiveImageModal(null);
+          }}
           className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4 cursor-zoom-out"
         >
+          <button
+            onClick={() => setActiveImageModal(null)}
+            className="absolute top-4 right-4 p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
+          >
+            <X className="w-6 h-6" />
+          </button>
           <img
             src={activeImageModal}
             alt="Enlarged view"

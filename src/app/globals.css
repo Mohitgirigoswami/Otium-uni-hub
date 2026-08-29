@@ -71,3 +71,10 @@
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(100, 116, 139, 0.5);
 }
+
+/* Chat & Mobile Touch Scroll Containment */
+.chat-scroll-container {
+  overscroll-behavior-y: none;
+  -webkit-overflow-scrolling: touch;
+}
+

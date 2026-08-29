@@ -1,46 +1,41 @@
 import React from "react";
 import Link from "next/link";
-import { Sparkles, Shield, Zap, Heart } from "lucide-react";
+import { Sparkles, Shield, Lock, CheckCircle2, Heart, HelpCircle, FileText } from "lucide-react";
 
 export function Footer() {
   return (
-    <footer className="mt-20 border-t border-slate-200/60 dark:border-slate-800/80 bg-white/40 dark:bg-[#060911]/60 backdrop-blur-md">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+    <footer className="mt-20 border-t border-slate-200/60 dark:border-slate-800/80 bg-white/50 dark:bg-[#060911]/80 backdrop-blur-md">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
           {/* Col 1: Brand */}
           <div className="space-y-3">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-brand-600 to-electric-600 flex items-center justify-center text-white">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-brand-600 via-teal-500 to-electric-600 flex items-center justify-center text-white shadow-md shadow-brand-500/20">
                 <Sparkles className="w-4 h-4" />
               </div>
-              <span className="text-lg font-bold bg-gradient-to-r from-brand-600 to-electric-500 bg-clip-text text-transparent">
+              <span className="text-lg font-black tracking-tight bg-gradient-to-r from-brand-600 via-teal-500 to-electric-600 bg-clip-text text-transparent">
                 OTIUM UNI HUB
               </span>
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-              The high-performance Super App ecosystem engineered for modern campus life, student freelancing, academic tracking, and collaboration.
+              The all-in-one university Super App built to simplify academics, freelancing, peer commerce, and campus connectivity.
             </p>
           </div>
 
           {/* Col 2: Academic Suite */}
           <div>
-            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-3">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-slate-200 mb-3.5">
               Academic Suite
             </h4>
-            <ul className="space-y-2 text-xs text-slate-600 dark:text-slate-400">
+            <ul className="space-y-2.5 text-xs text-slate-600 dark:text-slate-400">
               <li>
                 <Link href="/attendance" className="hover:text-brand-500 transition-colors">
-                  75% Attendance Guardrail & Bunk Calculator
+                  Attendance & Bunk Calculator
                 </Link>
               </li>
               <li>
                 <Link href="/cgpa" className="hover:text-brand-500 transition-colors">
-                  Weighted Semester CGPA Tracker
-                </Link>
-              </li>
-              <li>
-                <Link href="/gigs" className="hover:text-brand-500 transition-colors">
-                  Assignment & Project Freelance Hub
+                  CGPA Tracker & Grade Predictor
                 </Link>
               </li>
               <li>
@@ -48,28 +43,28 @@ export function Footer() {
                   Hostel Cloud Print Station
                 </Link>
               </li>
+              <li>
+                <Link href="/gigs" className="hover:text-brand-500 transition-colors">
+                  Project & Assignment Hub
+                </Link>
+              </li>
             </ul>
           </div>
 
           {/* Col 3: Campus Life */}
           <div>
-            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-3">
-              Campus Collaboration
+            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-slate-200 mb-3.5">
+              Campus Life
             </h4>
-            <ul className="space-y-2 text-xs text-slate-600 dark:text-slate-400">
+            <ul className="space-y-2.5 text-xs text-slate-600 dark:text-slate-400">
+              <li>
+                <Link href="/incognito" className="hover:text-brand-500 transition-colors">
+                  Incognito Wall & Whispers
+                </Link>
+              </li>
               <li>
                 <Link href="/rideshare" className="hover:text-brand-500 transition-colors">
                   Airport & Station Cab Split
-                </Link>
-              </li>
-              <li>
-                <Link href="/lost-and-found" className="hover:text-brand-500 transition-colors">
-                  Lost & Found Image Directory
-                </Link>
-              </li>
-              <li>
-                <Link href="/incognito" className="hover:text-brand-500 transition-colors">
-                  Incognito Wall & Confessions
                 </Link>
               </li>
               <li>
@@ -77,41 +72,51 @@ export function Footer() {
                   Student Peer Marketplace
                 </Link>
               </li>
+              <li>
+                <Link href="/lost-and-found" className="hover:text-brand-500 transition-colors">
+                  Lost & Found Directory
+                </Link>
+              </li>
             </ul>
           </div>
 
-          {/* Col 4: Security & Guardrails */}
+          {/* Col 4: Trust & Safety */}
           <div>
-            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-3">
-              Security & Guardrails
+            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-slate-200 mb-3.5">
+              Trust & Safety
             </h4>
-            <div className="space-y-2 text-xs text-slate-500 dark:text-slate-400">
+            <div className="space-y-2.5 text-xs text-slate-600 dark:text-slate-400">
               <div className="flex items-center gap-2">
-                <Shield className="w-3.5 h-3.5 text-brand-500" />
-                <span>Anti-Hoarding & 24h Cooldown Engine</span>
+                <Lock className="w-3.5 h-3.5 text-purple-500 shrink-0" />
+                <span>100% Anonymous Whispers</span>
               </div>
               <div className="flex items-center gap-2">
-                <Zap className="w-3.5 h-3.5 text-brand-500" />
-                <span>Upstash 5-req/min Rate Limiting</span>
+                <Shield className="w-3.5 h-3.5 text-brand-500 shrink-0" />
+                <span>Auto-Purged Print Documents</span>
               </div>
               <div className="flex items-center gap-2">
-                <Shield className="w-3.5 h-3.5 text-brand-500" />
-                <span>Direct Cloudinary & Supabase Signed URLs</span>
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                <span>Verified Campus Members</span>
               </div>
             </div>
           </div>
         </div>
 
-        <div className="mt-8 pt-6 border-t border-slate-200/60 dark:border-slate-800/80 flex flex-col sm:flex-row items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 gap-4">
-          <p>© {new Date().getFullYear()} Otium University Super App. Crafted with precision for campus brilliance.</p>
-          <div className="flex items-center gap-4">
-            <span>Next.js 14 App Router</span>
+        {/* Footer Legal & Copyright Bar */}
+        <div className="mt-10 pt-6 border-t border-slate-200/60 dark:border-slate-800/80 flex flex-col sm:flex-row items-center justify-between text-xs text-slate-500 dark:text-slate-400 gap-4">
+          <p>© 2026 Otium Uni Hub. Built for students, by students.</p>
+          <div className="flex items-center gap-4 flex-wrap text-xs">
+            <Link href="/support" className="hover:text-brand-500 transition-colors">
+              Campus Support
+            </Link>
             <span>•</span>
-            <span>Server Actions</span>
+            <Link href="/support" className="hover:text-brand-500 transition-colors">
+              Privacy Policy
+            </Link>
             <span>•</span>
-            <span>Prisma</span>
-            <span>•</span>
-            <span>Tailwind CSS</span>
+            <Link href="/support" className="hover:text-brand-500 transition-colors">
+              Terms of Service
+            </Link>
           </div>
         </div>
       </div>
