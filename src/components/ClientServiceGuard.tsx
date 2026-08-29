@@ -8,7 +8,7 @@ import { getCampusServices } from "@/actions/admin.actions";
 
 interface ClientServiceGuardProps {
   campusId?: string | null;
-  serviceKey: "PRINT_STATION" | "INCOGNITO_WALL" | "MARKETPLACE" | "CAB_SPLIT";
+  serviceKey: "PRINT_STATION" | "INCOGNITO_WALL" | "GIG_HUB" | "MARKETPLACE" | "CAB_SPLIT";
   children: React.ReactNode;
 }
 

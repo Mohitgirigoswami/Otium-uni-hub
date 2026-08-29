@@ -512,6 +512,7 @@ export async function updateUserRoleAdmin(data: {
 const STANDARD_CAMPUS_SERVICES = [
   { key: "PRINT_STATION", name: "Hostel Cloud Print Station" },
   { key: "INCOGNITO_WALL", name: "Incognito Wall & Whispers" },
+  { key: "GIG_HUB", name: "Peer Assignments & Task Bounties" },
   { key: "MARKETPLACE", name: "Student Peer Marketplace" },
   { key: "CAB_SPLIT", name: "Airport & Station Cab Split" },
 ];
@@ -626,6 +627,7 @@ export async function toggleCampusService(
     revalidatePath("/");
     revalidatePath("/print-station");
     revalidatePath("/incognito");
+    revalidatePath("/gigs");
     revalidatePath("/marketplace");
     revalidatePath("/rideshare");
     revalidatePath("/admin/services");

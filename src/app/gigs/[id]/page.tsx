@@ -331,7 +331,7 @@ export default function GigEscrowDetailsPage() {
   };
 
   return (
-    <ClientServiceGuard campusId={user?.collegeId} serviceKey="MARKETPLACE">
+    <ClientServiceGuard campusId={user?.collegeId} serviceKey="GIG_HUB">
       <div className="space-y-8 max-w-5xl mx-auto pb-12">
       {/* Top Breadcrumb & Actions */}
       <div className="flex items-center justify-between">

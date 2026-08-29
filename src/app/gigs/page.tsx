@@ -134,7 +134,7 @@ export default function GigsPage() {
   };
 
   return (
-    <ClientServiceGuard campusId={user?.collegeId} serviceKey="MARKETPLACE">
+    <ClientServiceGuard campusId={user?.collegeId} serviceKey="GIG_HUB">
       <div className="space-y-8 max-w-7xl mx-auto pb-12">
         {/* Hero Header */}
         <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-slate-900/95 via-brand-950/90 to-electric-950/95 p-8 sm:p-10 border border-brand-500/30 text-white shadow-2xl backdrop-blur-2xl">

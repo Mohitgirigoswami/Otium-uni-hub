@@ -13,6 +13,7 @@ import {
   Building2,
   Printer,
   EyeOff,
+  Briefcase,
   ShoppingBag,
   Car,
   ToggleLeft,
@@ -29,6 +30,7 @@ import {
 const SERVICE_ICONS: Record<string, any> = {
   PRINT_STATION: Printer,
   INCOGNITO_WALL: EyeOff,
+  GIG_HUB: Briefcase,
   MARKETPLACE: ShoppingBag,
   CAB_SPLIT: Car,
 };
