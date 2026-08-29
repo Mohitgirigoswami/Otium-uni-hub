@@ -25,6 +25,9 @@ import {
   RotateCcw,
   Sparkles,
   Info,
+  Search,
+  CalendarCheck,
+  GraduationCap,
 } from "lucide-react";
 
 const SERVICE_ICONS: Record<string, any> = {
@@ -33,6 +36,9 @@ const SERVICE_ICONS: Record<string, any> = {
   GIG_HUB: Briefcase,
   MARKETPLACE: ShoppingBag,
   CAB_SPLIT: Car,
+  LOST_AND_FOUND: Search,
+  ATTENDANCE: CalendarCheck,
+  CGPA_CALCULATOR: GraduationCap,
 };
 
 export default function AdminServicesPage() {

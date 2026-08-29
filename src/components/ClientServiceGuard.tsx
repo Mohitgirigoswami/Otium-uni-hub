@@ -6,9 +6,19 @@ import Link from "next/link";
 import { Button } from "@/components/ui/Button";
 import { getCampusServices } from "@/actions/admin.actions";
 
+export type CampusServiceKey =
+  | "PRINT_STATION"
+  | "INCOGNITO_WALL"
+  | "GIG_HUB"
+  | "MARKETPLACE"
+  | "CAB_SPLIT"
+  | "LOST_AND_FOUND"
+  | "ATTENDANCE"
+  | "CGPA_CALCULATOR";
+
 interface ClientServiceGuardProps {
   campusId?: string | null;
-  serviceKey: "PRINT_STATION" | "INCOGNITO_WALL" | "GIG_HUB" | "MARKETPLACE" | "CAB_SPLIT";
+  serviceKey: CampusServiceKey;
   children: React.ReactNode;
 }
 

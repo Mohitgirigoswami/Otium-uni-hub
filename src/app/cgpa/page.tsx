@@ -24,6 +24,7 @@ import {
   Award,
 } from "lucide-react";
 import { CourseGradeItem } from "@/lib/types";
+import { ClientServiceGuard } from "@/components/ClientServiceGuard";
 
 const GRADE_OPTIONS = [
   { label: "O (Outstanding)", point: 10 },
@@ -196,7 +197,8 @@ export default function CgpaPage() {
       : 0;
 
   return (
-    <div className="space-y-8">
+    <ClientServiceGuard campusId={user?.collegeId} serviceKey="CGPA_CALCULATOR">
+      <div className="space-y-8">
       {/* Hero Header */}
       <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-electric-950/90 via-slate-900/90 to-accent-950/90 p-8 sm:p-10 border border-electric-500/30 text-white shadow-2xl backdrop-blur-2xl">
         <div className="absolute top-0 right-0 -mr-16 -mt-16 w-80 h-80 bg-electric-500/20 rounded-full blur-3xl pointer-events-none" />
@@ -528,5 +530,6 @@ export default function CgpaPage() {
         </div>
       </div>
     </div>
+    </ClientServiceGuard>
   );
 }

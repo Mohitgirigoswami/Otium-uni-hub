@@ -30,6 +30,7 @@ import {
   ExternalLink,
 } from "lucide-react";
 import { ImageUploadDropzone } from "@/components/ui/ImageUploadDropzone";
+import { ClientServiceGuard } from "@/components/ClientServiceGuard";
 
 const CATEGORIES = [
   { label: "All Items", value: "ALL" },
@@ -165,7 +166,8 @@ export default function LostAndFoundPage() {
   };
 
   return (
-    <div className="space-y-8">
+    <ClientServiceGuard campusId={user?.collegeId} serviceKey="LOST_AND_FOUND">
+      <div className="space-y-8">
       {/* Hero Header */}
       <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-sky-950/90 via-slate-900/90 to-brand-950/90 p-8 sm:p-10 border border-sky-500/30 text-white shadow-2xl backdrop-blur-2xl">
         <div className="absolute top-0 right-0 -mr-16 -mt-16 w-80 h-80 bg-sky-500/20 rounded-full blur-3xl pointer-events-none" />
@@ -464,5 +466,6 @@ export default function LostAndFoundPage() {
         </form>
       </Modal>
     </div>
+    </ClientServiceGuard>
   );
 }

@@ -515,6 +515,9 @@ const STANDARD_CAMPUS_SERVICES = [
   { key: "GIG_HUB", name: "Peer Assignments & Task Bounties" },
   { key: "MARKETPLACE", name: "Student Peer Marketplace" },
   { key: "CAB_SPLIT", name: "Airport & Station Cab Split" },
+  { key: "LOST_AND_FOUND", name: "Campus Lost & Found Hub" },
+  { key: "ATTENDANCE", name: "Smart Attendance & Bunk Tracker" },
+  { key: "CGPA_CALCULATOR", name: "Academic CGPA & Grade Forecaster" },
 ];
 
 /**
@@ -630,6 +633,9 @@ export async function toggleCampusService(
     revalidatePath("/gigs");
     revalidatePath("/marketplace");
     revalidatePath("/rideshare");
+    revalidatePath("/lost-and-found");
+    revalidatePath("/attendance");
+    revalidatePath("/cgpa");
     revalidatePath("/admin/services");
 
     if (session?.user?.id) {

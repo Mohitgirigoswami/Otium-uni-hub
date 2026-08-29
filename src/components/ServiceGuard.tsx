@@ -6,7 +6,15 @@ import { Button } from "@/components/ui/Button";
 
 interface ServiceGuardProps {
   campusId?: string | null;
-  serviceKey: "PRINT_STATION" | "INCOGNITO_WALL" | "GIG_HUB" | "MARKETPLACE" | "CAB_SPLIT";
+  serviceKey:
+    | "PRINT_STATION"
+    | "INCOGNITO_WALL"
+    | "GIG_HUB"
+    | "MARKETPLACE"
+    | "CAB_SPLIT"
+    | "LOST_AND_FOUND"
+    | "ATTENDANCE"
+    | "CGPA_CALCULATOR";
   children: React.ReactNode;
 }
 
