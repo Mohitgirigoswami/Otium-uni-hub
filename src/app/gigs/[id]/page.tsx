@@ -21,6 +21,8 @@ import {
 import { getOrCreateConversation } from "@/actions/chat.actions";
 import { getPlatformSettingsAction } from "@/actions/platform.actions";
 import { generateUpiUrl, getUpiQrImageUrl } from "@/lib/upi";
+import { TaskCategoryType } from "@/lib/types";
+import { ClientServiceGuard } from "@/components/ClientServiceGuard";
 import { calculateEscrow } from "@/lib/escrow-math";
 import { formatPaiseToRupees, formatDate } from "@/lib/utils";
 import { toast } from "sonner";
@@ -329,7 +331,8 @@ export default function GigEscrowDetailsPage() {
   };
 
   return (
-    <div className="space-y-8 max-w-5xl mx-auto pb-12">
+    <ClientServiceGuard campusId={user?.collegeId} serviceKey="MARKETPLACE">
+      <div className="space-y-8 max-w-5xl mx-auto pb-12">
       {/* Top Breadcrumb & Actions */}
       <div className="flex items-center justify-between">
         <Link
@@ -748,62 +751,90 @@ export default function GigEscrowDetailsPage() {
 
         {/* Right Column (1 Col): Financial Escrow Breakdown & Participant Cards */}
         <div className="space-y-6">
-          {/* Progressive Tiered Escrow Math Card */}
-          <GlassCard className="p-6 space-y-4 border-brand-500/30">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
-              <div className="flex items-center gap-2">
-                <DollarSign className="w-5 h-5 text-brand-500" />
-                <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                  Escrow Financial Breakdown
-                </h3>
-              </div>
-              <Badge variant="brand" size="sm">Tiered %</Badge>
-            </div>
-
-            <div className="space-y-3 text-xs">
-              <div className="flex items-center justify-between">
-                <span className="text-slate-500">Total Bounty:</span>
-                <span className="font-black text-slate-900 dark:text-white text-base">
-                  ₹{priceInRupees}
-                </span>
+          {/* Progressive Escrow Math Card - Tailored to Buyer vs Earner */}
+          {isBuyer ? (
+            <GlassCard className="p-6 space-y-4 border-brand-500/30">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
+                <div className="flex items-center gap-2">
+                  <DollarSign className="w-5 h-5 text-brand-500" />
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                    Milestone Payment Plan
+                  </h3>
+                </div>
+                <Badge variant="brand" size="sm">50/50 Escrow</Badge>
               </div>
 
-              <div className="flex items-center justify-between text-slate-400">
-                <span>50% Advance Required:</span>
-                <span className="font-bold text-amber-500">
-                  ₹{escrowMath.advanceRequired}
-                </span>
+              <div className="space-y-3 text-xs">
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500">Total Task Cost:</span>
+                  <span className="font-black text-slate-900 dark:text-white text-base">
+                    ₹{priceInRupees}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between text-slate-400">
+                  <span>50% Advance Required:</span>
+                  <span className="font-bold text-amber-500">
+                    ₹{escrowMath.advanceRequired}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between text-slate-400">
+                  <span>50% Final Settlement:</span>
+                  <span className="font-bold text-slate-300">
+                    ₹{escrowMath.advanceRequired}
+                  </span>
+                </div>
+
+                <div className="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800/60 text-[10px] text-slate-400 space-y-1">
+                  <p className="font-semibold text-slate-300">Escrow Guarantee:</p>
+                  <p>
+                    Your payments are held in proxy escrow and released only after physical verification.
+                  </p>
+                </div>
+              </div>
+            </GlassCard>
+          ) : (
+            <GlassCard className="p-6 space-y-4 border-emerald-500/30 bg-emerald-500/5">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="w-5 h-5 text-emerald-500" />
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                    Earner Payout & Protection
+                  </h3>
+                </div>
+                <Badge variant="success" size="sm">Guaranteed</Badge>
               </div>
 
-              <div className="flex items-center justify-between text-slate-400">
-                <span>Final 50% Settlement:</span>
-                <span className="font-bold text-slate-300">
-                  ₹{escrowMath.advanceRequired}
-                </span>
-              </div>
+              <div className="space-y-3 text-xs">
+                <div className="p-3.5 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-between">
+                  <div>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400 block">
+                      Your Take-Home Earning
+                    </span>
+                    <p className="text-2xl font-black text-emerald-600 dark:text-emerald-400">
+                      ₹{escrowMath.writerPayout.toFixed(0)}
+                    </p>
+                  </div>
+                  <ShieldCheck className="w-7 h-7 text-emerald-500" />
+                </div>
 
-              <div className="pt-2 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between">
-                <span className="text-slate-500">Platform Commission:</span>
-                <span className="font-bold text-slate-400">
-                  ₹{escrowMath.commission.toFixed(0)}
-                </span>
-              </div>
+                <div className="flex items-center justify-between text-slate-300">
+                  <span>50% Advance Escrowed:</span>
+                  <span className="font-bold text-amber-400">
+                    ₹{escrowMath.advanceRequired} (Secured Upfront)
+                  </span>
+                </div>
 
-              <div className="flex items-center justify-between text-emerald-600 dark:text-emerald-400 font-bold">
-                <span>Writer Net Payout:</span>
-                <span className="text-base font-black">
-                  ₹{escrowMath.writerPayout.toFixed(0)}
-                </span>
+                <div className="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800/60 text-[10px] text-slate-400 space-y-1">
+                  <p className="font-semibold text-emerald-400">Anti-Ghosting Protection:</p>
+                  <p>
+                    You are guaranteed at least ₹{escrowMath.ghostedGuarantee.toFixed(0)} even if the buyer disappears after you complete the work.
+                  </p>
+                </div>
               </div>
-
-              <div className="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800/60 text-[10px] text-slate-400 space-y-1">
-                <p className="font-semibold text-slate-300">Ghosted Guarantee:</p>
-                <p>
-                  If the buyer ghosts, writer receives 60% guarantee (₹{escrowMath.ghostedGuarantee.toFixed(0)}) from the advance.
-                </p>
-              </div>
-            </div>
-          </GlassCard>
+            </GlassCard>
+          )}
 
           {/* Participant Cards */}
           <GlassCard className="p-6 space-y-4">
@@ -891,6 +922,19 @@ export default function GigEscrowDetailsPage() {
         maxWidth="md"
       >
         <form onSubmit={handleClaimSubmit} className="space-y-4 pt-2">
+          {/* Positive Earner Reinforcement */}
+          <div className="p-3.5 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-between text-xs">
+            <div>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400 block">
+                Your Guaranteed Take-Home Pay
+              </span>
+              <p className="text-xl font-black text-emerald-600 dark:text-emerald-400">
+                ₹{escrowMath.writerPayout.toFixed(0)}
+              </p>
+            </div>
+            <ShieldCheck className="w-6 h-6 text-emerald-500" />
+          </div>
+
           <div className="p-4 rounded-2xl bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -914,9 +958,9 @@ export default function GigEscrowDetailsPage() {
           </div>
 
           <div className="p-3 rounded-xl bg-brand-500/10 border border-brand-500/20 text-xs text-slate-600 dark:text-slate-300 space-y-1">
-            <p className="font-bold text-brand-400">Escrow Guarantee:</p>
+            <p className="font-bold text-brand-400">Escrow Security:</p>
             <p>
-              Once claimed, you will wait for the 50% advance (₹{escrowMath.advanceRequired}) to be verified before starting.
+              Once you accept this deal, the buyer is required to deposit the 50% advance (₹{escrowMath.advanceRequired}) before you start writing.
             </p>
           </div>
 
@@ -925,11 +969,12 @@ export default function GigEscrowDetailsPage() {
               Cancel
             </Button>
             <SubmitButton isSubmitting={isPending} loadingText="Claiming...">
-              Confirm & Claim
+              Confirm & Claim Deal
             </SubmitButton>
           </div>
         </form>
       </Modal>
     </div>
+    </ClientServiceGuard>
   );
 }

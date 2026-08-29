@@ -169,6 +169,14 @@ export async function createGig(data: {
       return { error: "Valid budget in INR is required." };
     }
 
+    // Strictly verify platform escrow calculation integrity (takeHome + fee === totalCharge)
+    const totalChargeRupees = Number(data.budgetRupees);
+    const escrow = calculateEscrow(totalChargeRupees);
+    const calculatedTotal = escrow.writerPayout + escrow.commission;
+    if (Math.abs(calculatedTotal - totalChargeRupees) > 0.01) {
+      return { error: "Bounty financial integrity check failed (takeHome + fee !== totalCharge)." };
+    }
+
     // Auto-discover poster's college if not explicitly passed
     let assignedCollegeId = data.collegeId;
     if (!assignedCollegeId) {
@@ -179,7 +187,7 @@ export async function createGig(data: {
       assignedCollegeId = poster?.collegeId || undefined;
     }
 
-    const budgetPaise = rupeesToPaise(data.budgetRupees);
+    const budgetPaise = rupeesToPaise(totalChargeRupees);
 
     const newGig = await prisma.taskGig.create({
       data: {
