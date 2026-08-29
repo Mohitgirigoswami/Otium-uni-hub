@@ -31,6 +31,7 @@ import {
 } from "lucide-react";
 import { PrintTypeEnum } from "@/lib/types";
 import { DocumentUpload } from "@/components/ui/DocumentUpload";
+import { GoogleDriveOAuthUpload } from "@/components/ui/GoogleDriveOAuthUpload";
 import { PrintRatesData, calculatePrintCostPaise } from "@/lib/services/print.service";
 import { ClientServiceGuard } from "@/components/ClientServiceGuard";
 
@@ -244,8 +245,8 @@ export default function PrintStationPage() {
               </h2>
 
               <form onSubmit={handleCreateOrder} className="space-y-6">
-                {/* Step 1: Direct Google Drive Resumable Upload with pdf-lib Page Auto-Detection */}
-                <DocumentUpload
+                {/* Step 1: Direct Google Drive OAuth Upload with pdf-lib Page Auto-Detection */}
+                <GoogleDriveOAuthUpload
                   onUploadComplete={(url, id, name) => {
                     setFileUrl(url);
                     if (id) setDriveFileId(id);
@@ -258,7 +259,7 @@ export default function PrintStationPage() {
                   onUploadingChange={(up) => setIsUploadingMedia(up)}
                   existingFileUrl={fileUrl}
                   existingFileName={fileName}
-                  label="Step 1: Upload Document PDF (Auto-Calculates Exact Page Count)"
+                  label="Step 1: Upload Document PDF (Google Drive Direct)"
                 />
 
                 {/* Detected Page Count Status Card (Prevents User Manipulation) */}
