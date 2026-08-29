@@ -136,6 +136,19 @@ export default function AdminLayout({
                 </button>
               </Link>
 
+              <Link href="/admin/services">
+                <button
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+                    pathname === "/admin/services"
+                      ? "bg-indigo-600 text-white shadow-md"
+                      : "bg-slate-100 dark:bg-slate-800 text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  <span>Campus Services</span>
+                </button>
+              </Link>
+
               <Link href="/admin/users">
                 <button
                   className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${

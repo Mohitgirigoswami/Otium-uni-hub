@@ -34,6 +34,7 @@ import {
 } from "lucide-react";
 import { MarketplaceCategoryType, ItemConditionType } from "@/lib/types";
 import { ImageUploadDropzone } from "@/components/ui/ImageUploadDropzone";
+import { ClientServiceGuard } from "@/components/ClientServiceGuard";
 
 const CATEGORIES: { label: string; value: string }[] = [
   { label: "All Items", value: "ALL" },
@@ -194,7 +195,8 @@ export default function MarketplacePage() {
   };
 
   return (
-    <div className="space-y-8">
+    <ClientServiceGuard campusId={user?.collegeId} serviceKey="MARKETPLACE">
+      <div className="space-y-8">
       {/* Hero Header */}
       <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-amber-950/90 via-slate-900/90 to-brand-950/90 p-8 sm:p-10 border border-amber-500/30 text-white shadow-2xl backdrop-blur-2xl">
         <div className="absolute top-0 right-0 -mr-16 -mt-16 w-80 h-80 bg-amber-500/20 rounded-full blur-3xl pointer-events-none" />
@@ -614,6 +616,7 @@ export default function MarketplacePage() {
           </div>
         </Modal>
       )}
-    </div>
+      </div>
+    </ClientServiceGuard>
   );
 }

@@ -9,6 +9,7 @@ import { authOptions } from "@/lib/auth";
 import { logAdminAction } from "@/lib/logger";
 import { getDynamicPrintRates, PrintRatesData } from "@/lib/services/print.service";
 import { Role } from "@prisma/client";
+import { revalidatePath } from "next/cache";
 
 /**
  * Helper to verify Print Operator / Admin permissions
@@ -420,3 +421,132 @@ export async function updateUserRoleAdmin(data: {
     };
   }
 }
+
+const STANDARD_CAMPUS_SERVICES = [
+  { key: "PRINT_STATION", name: "Hostel Cloud Print Station" },
+  { key: "INCOGNITO_WALL", name: "Incognito Wall & Whispers" },
+  { key: "MARKETPLACE", name: "Student Peer Marketplace" },
+  { key: "CAB_SPLIT", name: "Airport & Station Cab Split" },
+];
+
+/**
+ * 13. Get all service toggle records for a specific campus.
+ * Automatically seeds/upserts default active states (isEnabled: true) if not yet configured.
+ */
+export async function getCampusServices(
+  campusId: string
+): Promise<ActionResponse<any[]>> {
+  try {
+    if (!campusId) {
+      return { error: "Campus ID is required." };
+    }
+
+    // Ensure all standard services exist for this campus
+    for (const std of STANDARD_CAMPUS_SERVICES) {
+      await (prisma as any).campusService.upsert({
+        where: {
+          campusId_serviceKey: {
+            campusId,
+            serviceKey: std.key,
+          },
+        },
+        create: {
+          campusId,
+          serviceKey: std.key,
+          serviceName: std.name,
+          isEnabled: true,
+          maintenanceMessage: "This service is temporarily paused for your campus.",
+        },
+        update: {},
+      });
+    }
+
+    const services = await (prisma as any).campusService.findMany({
+      where: { campusId },
+      orderBy: { serviceKey: "asc" },
+    });
+
+    return {
+      success: true,
+      data: services,
+    };
+  } catch (error: any) {
+    console.error("Error in getCampusServices:", error);
+    return {
+      error: error?.message || "Failed to fetch campus services.",
+    };
+  }
+}
+
+/**
+ * 14. Toggle campus-specific service status and update maintenance message
+ */
+export async function toggleCampusService(
+  campusId: string,
+  serviceKey: string,
+  isEnabled: boolean,
+  maintenanceMessage?: string
+): Promise<ActionResponse<any>> {
+  try {
+    const session = await getServerSession(authOptions);
+    if (
+      !session?.user ||
+      (session.user.role !== "SUPER_ADMIN" &&
+        session.user.role !== "PRINT_MANAGER" &&
+        session.user.role !== "CAMPUS_MODERATOR")
+    ) {
+      return { error: "UNAUTHORIZED: Admin or Moderator role required." };
+    }
+
+    const std = STANDARD_CAMPUS_SERVICES.find((s) => s.key === serviceKey);
+    const serviceName = std?.name || serviceKey;
+
+    const updated = await (prisma as any).campusService.upsert({
+      where: {
+        campusId_serviceKey: {
+          campusId,
+          serviceKey,
+        },
+      },
+      create: {
+        campusId,
+        serviceKey,
+        serviceName,
+        isEnabled,
+        maintenanceMessage:
+          maintenanceMessage || "This service is temporarily paused for your campus.",
+      },
+      update: {
+        isEnabled,
+        ...(maintenanceMessage !== undefined && { maintenanceMessage }),
+      },
+    });
+
+    // Flush cache for all relevant student & admin routes
+    revalidatePath("/");
+    revalidatePath("/print-station");
+    revalidatePath("/incognito");
+    revalidatePath("/marketplace");
+    revalidatePath("/rideshare");
+    revalidatePath("/admin/services");
+
+    if (session?.user?.id) {
+      await logAdminAction(
+        session.user.id,
+        isEnabled ? "ENABLED_CAMPUS_SERVICE" : "PAUSED_CAMPUS_SERVICE",
+        `Campus: ${campusId}, Service: ${serviceKey}, Message: ${maintenanceMessage || "Default"}`
+      );
+    }
+
+    return {
+      success: true,
+      data: updated,
+    };
+  } catch (error: any) {
+    console.error("Error in toggleCampusService:", error);
+    return {
+      error: error?.message || "Failed to toggle campus service.",
+    };
+  }
+}
+

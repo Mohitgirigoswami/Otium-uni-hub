@@ -34,6 +34,7 @@ import {
 } from "lucide-react";
 import { MultiImageUpload } from "@/components/ui/MultiImageUpload";
 import { PostImageGrid } from "@/components/ui/PostImageGrid";
+import { ClientServiceGuard } from "@/components/ClientServiceGuard";
 
 const FEED_TYPES = [
   { label: "All Whispers", value: "ALL" },
@@ -231,7 +232,8 @@ export default function IncognitoWallPage() {
     `https://api.dicebear.com/9.x/bottts/svg?seed=AnonRobot`;
 
   return (
-    <div className="space-y-8 max-w-6xl mx-auto pb-16">
+    <ClientServiceGuard campusId={user?.collegeId} serviceKey="INCOGNITO_WALL">
+      <div className="space-y-8 max-w-6xl mx-auto pb-16">
       {/* Hero Header */}
       <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-purple-950/90 via-slate-900/90 to-electric-950/90 p-8 sm:p-10 border border-purple-500/30 text-white shadow-2xl backdrop-blur-2xl">
         <div className="absolute top-0 right-0 -mr-16 -mt-16 w-80 h-80 bg-purple-500/20 rounded-full blur-3xl pointer-events-none" />
@@ -673,6 +675,7 @@ export default function IncognitoWallPage() {
           </div>
         </form>
       </Modal>
-    </div>
+      </div>
+    </ClientServiceGuard>
   );
 }

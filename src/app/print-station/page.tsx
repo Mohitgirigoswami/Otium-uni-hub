@@ -29,6 +29,7 @@ import {
 import { PrintTypeEnum } from "@/lib/types";
 import { PdfUploadDropzone } from "@/components/ui/PdfUploadDropzone";
 import { PrintRatesData, calculatePrintCostPaise } from "@/lib/services/print.service";
+import { ClientServiceGuard } from "@/components/ClientServiceGuard";
 
 const DELIVERY_LOCATIONS = [
   "Hostel Block 1 (Freshers Boys)",
@@ -187,7 +188,8 @@ export default function PrintStationPage() {
   };
 
   return (
-    <div className="space-y-8">
+    <ClientServiceGuard campusId={user?.collegeId} serviceKey="PRINT_STATION">
+      <div className="space-y-8">
       {/* Hero Header */}
       <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-teal-950/90 via-slate-900/90 to-brand-950/90 p-8 sm:p-10 border border-teal-500/30 text-white shadow-2xl backdrop-blur-2xl">
         <div className="absolute top-0 right-0 -mr-16 -mt-16 w-80 h-80 bg-teal-500/20 rounded-full blur-3xl pointer-events-none" />
@@ -489,6 +491,7 @@ export default function PrintStationPage() {
           </GlassCard>
         </div>
       </div>
-    </div>
+      </div>
+    </ClientServiceGuard>
   );
 }

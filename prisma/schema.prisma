@@ -150,6 +150,7 @@ model College {
   postedTasks       TaskGig[]
   lostAndFoundItems LostAndFoundItem[]
   incognitoPosts    IncognitoPost[]
+  campusServices    CampusService[]
 }
 
 model Account {
@@ -452,6 +453,21 @@ model IncognitoComment {
 
   @@index([postId])
   @@index([profileId])
+}
+
+model CampusService {
+  id                 String   @id @default(cuid())
+  campusId           String   // Foreign key to the existing College/Campus model
+  serviceKey         String   // e.g., "PRINT_STATION", "INCOGNITO_WALL", "MARKETPLACE", "CAB_SPLIT"
+  serviceName        String   // Display name: e.g., "Hostel Cloud Print Station"
+  isEnabled          Boolean  @default(true)
+  maintenanceMessage String?  @default("This service is temporarily paused for your campus.")
+  updatedAt          DateTime @updatedAt
+
+  campus             College  @relation(fields: [campusId], references: [id], onDelete: Cascade)
+
+  @@unique([campusId, serviceKey])
+  @@index([campusId])
 }
 
 

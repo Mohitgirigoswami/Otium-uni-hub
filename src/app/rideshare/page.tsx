@@ -31,6 +31,7 @@ import {
   UserX,
   ShieldAlert,
 } from "lucide-react";
+import { ClientServiceGuard } from "@/components/ClientServiceGuard";
 
 export default function RideSharePage() {
   const { user } = useUser();
@@ -174,7 +175,8 @@ export default function RideSharePage() {
   };
 
   return (
-    <div className="space-y-8">
+    <ClientServiceGuard campusId={user?.collegeId} serviceKey="CAB_SPLIT">
+      <div className="space-y-8">
       {/* Hero Header */}
       <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-indigo-950/90 via-slate-900/90 to-brand-950/90 p-8 sm:p-10 border border-indigo-500/30 text-white shadow-2xl backdrop-blur-2xl">
         <div className="absolute top-0 right-0 -mr-16 -mt-16 w-80 h-80 bg-indigo-500/20 rounded-full blur-3xl pointer-events-none" />
@@ -572,6 +574,7 @@ export default function RideSharePage() {
           </div>
         </form>
       </Modal>
-    </div>
+      </div>
+    </ClientServiceGuard>
   );
 }
