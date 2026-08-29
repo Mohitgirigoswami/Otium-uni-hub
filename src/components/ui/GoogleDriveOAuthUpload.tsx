@@ -13,6 +13,8 @@ import {
   HardDrive,
   ShieldCheck,
   Sparkles,
+  KeyRound,
+  Check,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -50,16 +52,17 @@ export function GoogleDriveOAuthUpload({
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
-  const [isGisReady, setIsGisReady] = useState(false);
+  const [isAuthorized, setIsAuthorized] = useState(false);
   const [accessToken, setAccessToken] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const tokenClientRef = useRef<any>(null);
   const pendingFileRef = useRef<File | null>(null);
 
   const clientId =
     process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ||
     process.env.NEXT_PUBLIC_AUTH_GOOGLE_ID ||
-    "";
+    "182612765129-k94groidumjmdmb68s32a534sfqtoe10.apps.googleusercontent.com";
 
   const targetFolderId =
     process.env.NEXT_PUBLIC_GOOGLE_DRIVE_FOLDER_ID ||
@@ -70,28 +73,65 @@ export function GoogleDriveOAuthUpload({
     if (existingFileName) setFileName(existingFileName);
   }, [existingFileUrl, existingFileName]);
 
-  // Dynamically load Google Identity Services (GIS)
+  // Load Google Identity Services (GIS) & GAPI
   useEffect(() => {
-    const loadScript = (src: string, id: string) => {
-      if (document.getElementById(id)) {
-        setIsGisReady(true);
+    const loadGis = () => {
+      if (document.getElementById("google-gsi-client")) {
+        initTokenClient();
         return;
       }
       const script = document.createElement("script");
-      script.src = src;
-      script.id = id;
+      script.src = "https://accounts.google.com/gsi/client";
+      script.id = "google-gsi-client";
       script.async = true;
       script.defer = true;
       script.onload = () => {
-        if (window.google?.accounts?.oauth2) {
-          setIsGisReady(true);
-        }
+        initTokenClient();
       };
       document.body.appendChild(script);
     };
 
-    loadScript("https://accounts.google.com/gsi/client", "google-gsi-client");
-  }, []);
+    const initTokenClient = () => {
+      if (window.google?.accounts?.oauth2 && clientId) {
+        try {
+          tokenClientRef.current = window.google.accounts.oauth2.initTokenClient({
+            client_id: clientId,
+            scope: "https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive",
+            callback: async (tokenResponse: any) => {
+              if (tokenResponse.error) {
+                toast.error(`Google Drive authorization error: ${tokenResponse.error}`);
+                setIsUploading(false);
+                onUploadingChange?.(false);
+                return;
+              }
+
+              const token = tokenResponse.access_token;
+              setAccessToken(token);
+              setIsAuthorized(true);
+              toast.success("Google Drive Authorized!");
+
+              if (pendingFileRef.current) {
+                await executeGoogleDriveUpload(pendingFileRef.current, token);
+                pendingFileRef.current = null;
+              }
+            },
+          });
+        } catch (err) {
+          console.warn("Error initializing GIS token client:", err);
+        }
+      }
+    };
+
+    loadGis();
+  }, [clientId]);
+
+  const handleAuthorizeClick = () => {
+    if (tokenClientRef.current) {
+      tokenClientRef.current.requestAccessToken({ prompt: accessToken ? "" : "consent" });
+    } else {
+      toast.info("Connecting to Google Services...");
+    }
+  };
 
   const calculatePdfPages = async (file: File): Promise<number | null> => {
     if (file.type === "application/pdf" || file.name.endsWith(".pdf")) {
@@ -114,13 +154,12 @@ export function GoogleDriveOAuthUpload({
    */
   const executeGoogleDriveUpload = async (file: File, token: string) => {
     setIsUploading(true);
-    setUploadProgress(20);
+    setUploadProgress(25);
     onUploadingChange?.(true);
 
     try {
-      setUploadProgress(40);
+      setUploadProgress(45);
 
-      // Prepare Google Drive Multipart upload
       const metadata: Record<string, any> = {
         name: file.name,
         mimeType: file.type || "application/pdf",
@@ -148,7 +187,6 @@ export function GoogleDriveOAuthUpload({
             `Content-Type: ${file.type || "application/pdf"}\r\n` +
             "Content-Transfer-Encoding: base64\r\n\r\n";
 
-          // Convert bytes to base64
           let binary = "";
           const len = fileBytes.byteLength;
           for (let i = 0; i < len; i++) {
@@ -158,7 +196,7 @@ export function GoogleDriveOAuthUpload({
 
           const multipartBody = metadataPart + base64Data + closeDelim;
 
-          setUploadProgress(60);
+          setUploadProgress(65);
 
           let res = await fetch(
             "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,webViewLink,webContentLink&supportsAllDrives=true",
@@ -172,7 +210,7 @@ export function GoogleDriveOAuthUpload({
             }
           );
 
-          // If target folder is restricted, retry uploading to user's root drive
+          // Retry in root drive if target folder is restricted
           if (!res.ok && res.status === 404 && metadata.parents) {
             delete metadata.parents;
             const fallbackMetadataPart =
@@ -205,7 +243,7 @@ export function GoogleDriveOAuthUpload({
           const driveFileId = driveData.id;
           setUploadProgress(85);
 
-          // Apply public view permission so print manager can view
+          // Apply public reader permission so Print Manager can view
           try {
             await fetch(
               `https://www.googleapis.com/drive/v3/files/${driveFileId}/permissions?supportsAllDrives=true`,
@@ -250,9 +288,6 @@ export function GoogleDriveOAuthUpload({
     }
   };
 
-  /**
-   * Request OAuth access token via Google Identity Services and upload
-   */
   const handleFileSelect = async (file: File) => {
     if (!file) return;
 
@@ -265,50 +300,22 @@ export function GoogleDriveOAuthUpload({
     setFileSizeBytes(file.size);
     pendingFileRef.current = file;
 
-    // Calculate PDF page count in parallel
     await calculatePdfPages(file);
 
-    // If we already have an active access token, upload immediately!
     if (accessToken) {
       await executeGoogleDriveUpload(file, accessToken);
       return;
     }
 
-    // Prompt Google OAuth Consent via Google Identity Services
-    if (window.google?.accounts?.oauth2 && clientId) {
-      try {
-        const tokenClient = window.google.accounts.oauth2.initTokenClient({
-          client_id: clientId,
-          scope: "https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive",
-          callback: async (tokenResponse: any) => {
-            if (tokenResponse.error) {
-              toast.error(`Google Drive authorization error: ${tokenResponse.error}`);
-              setIsUploading(false);
-              onUploadingChange?.(false);
-              return;
-            }
-
-            const token = tokenResponse.access_token;
-            setAccessToken(token);
-
-            if (pendingFileRef.current) {
-              await executeGoogleDriveUpload(pendingFileRef.current, token);
-            }
-          },
-        });
-
-        tokenClient.requestAccessToken({ prompt: "" });
-      } catch (gisErr: any) {
-        console.error("GIS Init Error:", gisErr);
-        toast.error("Failed to launch Google Drive authentication.");
-      }
+    if (tokenClientRef.current) {
+      tokenClientRef.current.requestAccessToken({ prompt: "consent" });
     } else {
-      // Fallback if client ID is missing in dev mode
-      const mockId = `gdrive_${Date.now()}`;
-      const mockUrl = `https://drive.google.com/file/d/${mockId}/view?usp=sharing`;
-      setFileUrl(mockUrl);
-      toast.info("Google Drive Direct Connection ready.");
-      onUploadComplete(mockUrl, mockId, file.name);
+      toast.info("Initializing Google Drive Authorization...");
+      setTimeout(() => {
+        if (tokenClientRef.current) {
+          tokenClientRef.current.requestAccessToken({ prompt: "consent" });
+        }
+      }, 800);
     }
   };
 
@@ -333,19 +340,38 @@ export function GoogleDriveOAuthUpload({
 
   return (
     <div className="space-y-3">
-      {label && (
-        <div className="flex items-center justify-between">
-          <label className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
-            <HardDrive className="w-3.5 h-3.5 text-teal-500" />
-            <span>{label}</span>
-          </label>
+      <div className="flex items-center justify-between">
+        <label className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+          <HardDrive className="w-3.5 h-3.5 text-teal-500" />
+          <span>{label}</span>
+        </label>
+
+        <div className="flex items-center gap-2">
           {detectedPages && (
             <Badge variant="brand" size="sm">
               {detectedPages} {detectedPages === 1 ? "Page" : "Pages"} (via pdf-lib)
             </Badge>
           )}
+
+          {!isAuthorized && (
+            <button
+              type="button"
+              onClick={handleAuthorizeClick}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-teal-500/15 border border-teal-500/30 text-teal-600 dark:text-teal-400 text-[11px] font-bold hover:bg-teal-500/25 transition-all"
+            >
+              <KeyRound className="w-3 h-3" />
+              <span>Connect Google Drive</span>
+            </button>
+          )}
+
+          {isAuthorized && (
+            <Badge variant="success" size="sm" className="gap-1">
+              <Check className="w-3 h-3" />
+              <span>Drive Connected</span>
+            </Badge>
+          )}
         </div>
-      )}
+      </div>
 
       <input
         ref={fileInputRef}
