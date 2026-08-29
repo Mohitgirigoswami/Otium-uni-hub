@@ -159,10 +159,11 @@ function MessagesContent() {
       if (activeConversationId && user) {
         getConversationMessages(activeConversationId, user.id).then((res) => {
           if (res.success && res.data) {
+            const freshData = res.data;
             setMessages((prev) => {
               // Preserve any currently sending/failed optimistic messages
               const pending = prev.filter((m) => m.status === "sending" || m.status === "failed");
-              const serverMsgs: ChatMessage[] = res.data.map((m: any) => ({
+              const serverMsgs: ChatMessage[] = freshData.map((m: any) => ({
                 ...m,
                 status: "sent",
               }));
