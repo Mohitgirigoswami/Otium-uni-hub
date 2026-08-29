@@ -159,16 +159,29 @@ export async function updatePrintOrderStatus(data: {
       updatedLocation = `${existing.deliveryLocation} | REJECTED: ${data.rejectionReason.trim()}`;
     }
 
-    const updated = await prisma.printOrder.update({
-      where: { id: data.orderId },
-      data: {
-        status: data.status as any,
-        deliveryLocation: updatedLocation,
-      },
-      include: {
-        user: true,
-      },
-    });
+    let updated: any;
+    if (data.status === "REJECTED") {
+      await prisma.$executeRawUnsafe(
+        `UPDATE "PrintOrder" SET "status" = 'REJECTED'::"PrintStatus", "deliveryLocation" = $1, "updatedAt" = NOW() WHERE "id" = $2`,
+        updatedLocation,
+        data.orderId
+      );
+      updated = await prisma.printOrder.findUnique({
+        where: { id: data.orderId },
+        include: { user: true },
+      });
+    } else {
+      updated = await prisma.printOrder.update({
+        where: { id: data.orderId },
+        data: {
+          status: data.status as any,
+          deliveryLocation: updatedLocation,
+        },
+        include: {
+          user: true,
+        },
+      });
+    }
 
     await logAdminAction(
       session.user.id,
