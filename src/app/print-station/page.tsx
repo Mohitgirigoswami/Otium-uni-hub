@@ -192,14 +192,14 @@ export default function PrintStationPage() {
       deliveryLocation: enrichedLocation,
       utr: cleanUtr,
       collegeId: user.collegeId,
-      expectedDelivery: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
+      expectedDelivery: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
     });
     setIsSubmitting(false);
 
     if (!res?.success || res?.error) {
       toast.error(res?.error || "Failed to submit print order. Please try again.");
     } else {
-      toast.success("Print order queued! Admin verifying UTR & dispatching to your hostel.");
+      toast.success("Print order queued! Admin verifying UTR & dispatching next-day to your hostel.");
       setFileName("");
       setFileUrl("");
       setDriveFileId("");
@@ -225,10 +225,10 @@ export default function PrintStationPage() {
                 <span>Hostel Cloud Print Station • Supabase Storage</span>
               </div>
               <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight">
-                Hostel Print Station & Express Delivery
+                Hostel Print Station & Next-Day Delivery
               </h1>
               <p className="text-sm text-slate-300 max-w-2xl leading-relaxed">
-                Direct secure document upload to Cloud Storage. Page counts are auto-calculated using pdf-lib to prevent cost manipulation. Express dispatch to your hostel block within 2 hours.
+                Direct secure document upload to Cloud Storage. Page counts are auto-calculated using pdf-lib to prevent cost manipulation. Express dispatch to your hostel block with reliable next-day delivery.
               </p>
             </div>
           </div>
