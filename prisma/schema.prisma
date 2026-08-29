@@ -75,6 +75,7 @@ enum PrintStatus {
   READY
   DELIVERED
   COMPLETED
+  REJECTED
 }
 
 enum LostAndFoundStatus {
@@ -477,19 +478,6 @@ model CampusService {
 
   @@unique([campusId, serviceKey])
   @@index([campusId])
-}
-
-model PlatformSetting {
-  id        String   @id @default("global_config")
-  upiId     String   @default("admin@upi")
-  updatedAt DateTime @updatedAt
-}
-
-model PrintSetting {
-  id              String   @id @default("default")
-  singleSidedRate Int      @default(250) // in paise (₹2.50)
-  doubleSidedRate Int      @default(200) // in paise (₹2.00)
-  updatedAt       DateTime @updatedAt
 }
 
 
