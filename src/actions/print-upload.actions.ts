@@ -90,7 +90,11 @@ export async function uploadPrintDocument(
       `${supabaseUrl}/storage/v1/object/public/${bucketName}/${filePath}`;
 
     if (uploadError) {
-      console.warn("[Supabase Storage Notice]:", uploadError.message);
+      console.error("[Supabase Storage Upload Error]:", uploadError.message);
+      return {
+        success: false,
+        error: `Supabase Storage rejected upload (${uploadError.message}). Please verify that SUPABASE_SERVICE_ROLE_KEY in .env matches your Supabase Dashboard API settings.`,
+      };
     }
 
     return {
