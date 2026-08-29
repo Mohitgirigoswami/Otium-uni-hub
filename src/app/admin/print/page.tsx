@@ -706,6 +706,99 @@ export default function AdminPrintQueuePage() {
           </div>
         </div>
       )}
+
+      {/* Rejection Prompt Modal with Transactional Email Notice */}
+      {rejectingOrderId && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl space-y-4 p-6">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-rose-500/20 text-rose-400 flex items-center justify-center">
+                  <AlertCircle className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">Reject Print Order</h3>
+                  <p className="text-[11px] text-slate-400 truncate max-w-xs">{rejectingOrderName}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setRejectingOrderId(null)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs leading-relaxed">
+              A branded email notification will be automatically sent to the student detailing this rejection reason and dispute instructions.
+            </div>
+
+            {/* Quick Preset Chips */}
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                Quick Reason Presets
+              </label>
+              <div className="flex flex-wrap gap-1.5">
+                {[
+                  "Invalid or unverified UPI transaction UTR.",
+                  "Payment not received. Please provide receipt screenshot.",
+                  "Corrupt or unreadable PDF document.",
+                  "Wrong page count or print options selected.",
+                ].map((preset) => (
+                  <button
+                    key={preset}
+                    type="button"
+                    onClick={() => setRejectionReason(preset)}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all border ${
+                      rejectionReason === preset
+                        ? "bg-rose-500/20 border-rose-500 text-rose-300"
+                        : "bg-slate-800 border-slate-700 text-slate-300 hover:border-slate-600"
+                    }`}
+                  >
+                    {preset}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Custom Reason Textarea */}
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                Custom Explanation / Reason
+              </label>
+              <textarea
+                rows={3}
+                value={rejectionReason}
+                onChange={(e) => setRejectionReason(e.target.value)}
+                placeholder="Enter reason for rejection..."
+                className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white focus:outline-none focus:ring-2 focus:ring-rose-500"
+              />
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setRejectingOrderId(null)}
+                className="text-xs"
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                variant="danger"
+                disabled={statusUpdatingId === rejectingOrderId || !rejectionReason.trim()}
+                onClick={() => handleUpdateStatus(rejectingOrderId, "REJECTED", rejectionReason)}
+                className="text-xs font-bold"
+                leftIcon={<XCircle className="w-4 h-4" />}
+              >
+                {statusUpdatingId === rejectingOrderId ? "Rejecting..." : "Send Rejection & Update"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
