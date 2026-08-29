@@ -222,13 +222,13 @@ export default function PrintStationPage() {
             <div className="space-y-2">
               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-teal-500/20 border border-teal-400/30 text-teal-300 text-xs font-semibold">
                 <Printer className="w-3.5 h-3.5" />
-                <span>Hostel Cloud Print Station • Supabase Storage</span>
+                <span>Hostel Cloud Print Station</span>
               </div>
               <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight">
                 Hostel Print Station & Next-Day Delivery
               </h1>
               <p className="text-sm text-slate-300 max-w-2xl leading-relaxed">
-                Direct secure document upload to Cloud Storage. Page counts are auto-calculated using pdf-lib to prevent cost manipulation. Express dispatch anywhere in campus with reliable next-day delivery.
+                Direct secure document upload. Page counts are auto-calculated to ensure exact transparent pricing. Next-day delivery anywhere in campus.
               </p>
             </div>
           </div>
@@ -277,7 +277,7 @@ export default function PrintStationPage() {
                       </p>
                       <p className="text-[11px] text-slate-500 dark:text-slate-400">
                         {detectedPages > 0
-                          ? "Verified & calculated automatically via pdf-lib"
+                          ? "Verified & calculated automatically with transparent rates"
                           : "Upload a PDF above to extract page count"}
                       </p>
                     </div>

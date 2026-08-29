@@ -165,7 +165,7 @@ export default function IncognitoWallPage() {
     setChatLoadingId(null);
 
     if (res?.success && res.data) {
-      toast.success(`Opening zero-knowledge anonymous chat with @${postHandle}...`);
+      toast.success(`Opening private anonymous chat with @${postHandle}...`);
       router.push(`/messages?id=${res.data.id}`);
     } else {
       toast.error(res?.error || "Failed to start anonymous chat.");
@@ -274,13 +274,13 @@ export default function IncognitoWallPage() {
             <div className="space-y-2">
               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-500/20 border border-purple-400/30 text-purple-300 text-xs font-semibold">
                 <EyeOff className="w-3.5 h-3.5" />
-                <span>Zero-Knowledge Multi-Campus Wall & Whispers</span>
+                <span>Anonymous Multi-Campus Wall & Whispers</span>
               </div>
               <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight">
                 Whisper Wall
               </h1>
               <p className="text-sm text-slate-300 max-w-2xl leading-relaxed">
-                Express unfiltered opinions, share anonymous exam tips, memes, and campus banter. Identity is shielded behind cryptographic robot avatars.
+                Express unfiltered opinions, share anonymous exam tips, memes, and campus banter. Identity is shielded behind private robot avatars.
               </p>
             </div>
 

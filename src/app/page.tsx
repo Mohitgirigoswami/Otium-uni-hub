@@ -45,7 +45,7 @@ export default function LandingPage() {
     },
     {
       q: "Is my identity completely safe on the Whisper Wall?",
-      a: "Yes! The Whisper Wall uses cryptographic blind IDs and pseudonyms. Your real name, university email, and roll number are never linked to your public posts, comments, or anonymous peer messages.",
+      a: "Yes! The Whisper Wall uses anonymous student pseudonyms and robot avatars. Your real name, university email, and roll number are never linked to your public posts, comments, or peer messages.",
     },
     {
       q: "How does the 50/50 Managed Escrow protect Writers and Buyers?",
@@ -148,7 +148,7 @@ export default function LandingPage() {
               <span className="text-xs font-bold uppercase tracking-wider">Whisper Wall</span>
             </div>
             <p className="text-2xl font-black text-white">100% Anon</p>
-            <p className="text-[11px] text-slate-400">Zero-knowledge blind hash</p>
+            <p className="text-[11px] text-slate-400">Private student aliases</p>
           </div>
 
           <div className="p-4 rounded-2xl bg-slate-900/60 border border-slate-800 backdrop-blur-md">
@@ -198,7 +198,7 @@ export default function LandingPage() {
               <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-700/60 text-xs space-y-1 font-mono">
                 <div className="flex justify-between text-slate-400">
                   <span>Page Detection:</span>
-                  <span className="text-teal-400 font-bold">Auto (pdf-lib)</span>
+                  <span className="text-teal-400 font-bold">Instant Automatic</span>
                 </div>
                 <div className="flex justify-between text-slate-400">
                   <span>Delivery Speed:</span>
@@ -226,13 +226,13 @@ export default function LandingPage() {
                 <EyeOff className="w-6 h-6" />
               </div>
               <Badge variant="purple" size="sm">
-                Anonymous Campus Feed
+                100% Anonymous Feed
               </Badge>
               <h3 className="text-xl font-bold text-white group-hover:text-purple-400 transition-colors">
                 Whisper Wall & Secrets
               </h3>
               <p className="text-xs text-slate-300 leading-relaxed">
-                Share unfiltered exam tips, course feedback, hostel confessions, and campus memes. Shielded behind cryptographic pseudonyms and custom robot avatars.
+                Share unfiltered exam tips, course feedback, hostel confessions, and campus memes. Shielded behind anonymous pseudonyms and custom robot avatars.
               </p>
             </div>
 
@@ -240,11 +240,11 @@ export default function LandingPage() {
               <div className="p-3 rounded-xl bg-slate-900/80 border border-slate-700/60 text-xs space-y-1 font-mono">
                 <div className="flex justify-between text-slate-400">
                   <span>Privacy Level:</span>
-                  <span className="text-purple-400 font-bold">Zero-Knowledge</span>
+                  <span className="text-purple-400 font-bold">100% Private</span>
                 </div>
                 <div className="flex justify-between text-slate-400">
                   <span>Peer DMs:</span>
-                  <span className="text-white font-bold">Blind Hash Encrypted</span>
+                  <span className="text-white font-bold">Completely Anonymous</span>
                 </div>
               </div>
 
@@ -394,7 +394,7 @@ export default function LandingPage() {
             Built with Strict University Safeguards
           </h2>
           <p className="text-xs text-slate-400 max-w-lg mx-auto">
-            We prioritize student safety, financial escrow integrity, and cryptographic privacy at every layer.
+            We prioritize student safety, financial escrow integrity, and absolute privacy at every layer.
           </p>
         </div>
 
@@ -409,9 +409,9 @@ export default function LandingPage() {
 
           <div className="p-4 rounded-2xl bg-black/40 border border-slate-800 space-y-2">
             <Lock className="w-6 h-6 text-purple-400" />
-            <h4 className="font-bold text-white text-sm">Zero-Knowledge Feed</h4>
+            <h4 className="font-bold text-white text-sm">100% Anonymous Feed</h4>
             <p className="text-slate-400 leading-relaxed">
-              Confessions and whispers use cryptographic blind hash aliases to protect identity.
+              Confessions and whispers use private pseudonyms and robot avatars to protect your identity.
             </p>
           </div>
 

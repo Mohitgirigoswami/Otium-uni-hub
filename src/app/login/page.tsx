@@ -49,7 +49,7 @@ function LoginContent() {
               </span>
             </h1>
             <p className="text-sm sm:text-base text-slate-600 dark:text-slate-400 leading-relaxed">
-              Otium bridges university freelancing, zero-knowledge anonymous confessions, express hostel printing, and peer marketplaces into a single lightning-fast platform.
+              Otium bridges university freelancing, anonymous campus confessions, next-day printing, and peer marketplaces into a single lightning-fast platform.
             </p>
           </div>
 

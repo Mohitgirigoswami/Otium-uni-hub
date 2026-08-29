@@ -338,7 +338,7 @@ function MessagesContent() {
               </span>
             </h1>
             <p className="text-[11px] text-slate-400">
-              Isolated Public Peer Chats & Zero-Knowledge Incognito DMs
+              Direct Peer Chats & Anonymous Whisper Messages
             </p>
           </div>
         </div>
@@ -537,7 +537,7 @@ function MessagesContent() {
                   {activeConv.isAnonymousChat ? (
                     <span className="text-[10px] font-bold text-purple-400 bg-purple-500/10 px-2 py-0.5 rounded-lg border border-purple-500/20 flex items-center gap-1">
                       <Lock className="w-3 h-3" />
-                      <span>Zero-Knowledge</span>
+                      <span>Anonymous</span>
                     </span>
                   ) : (
                     <Badge variant="brand" size="sm">
@@ -561,7 +561,7 @@ function MessagesContent() {
                     <ShieldCheck className="w-3.5 h-3.5 text-brand-400 shrink-0" />
                     <span>
                       {activeConv.isAnonymousChat
-                        ? "Zero-Knowledge Mode: Personal identities are cryptographically blinded."
+                        ? "Anonymous Mode: Real names and email addresses are completely hidden."
                         : "Direct student chat with instant optimistic delivery."}
                     </span>
                   </p>

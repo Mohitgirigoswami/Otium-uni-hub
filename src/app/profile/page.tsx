@@ -399,10 +399,10 @@ export default function ProfilePage() {
             </div>
             <div>
               <h2 className="text-lg font-bold text-slate-900 dark:text-white">
-                Incognito Pseudonym Manager
+                Whisper Pseudonym Manager
               </h2>
               <p className="text-xs text-slate-500">
-                Powers your anonymous wall whispers & zero-knowledge DMs
+                Powers your anonymous wall whispers & private peer chats
               </p>
             </div>
           </div>

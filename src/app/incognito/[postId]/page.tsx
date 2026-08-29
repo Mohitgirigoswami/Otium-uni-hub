@@ -343,9 +343,9 @@ export default function PostDetailPage() {
                 </div>
               </div>
 
-              <span className="text-[11px] text-slate-400 font-mono flex items-center gap-1">
+              <span className="text-[11px] text-slate-400 font-medium flex items-center gap-1">
                 <Shield className="w-3 h-3 text-purple-400" />
-                <span>Zero-Knowledge Protected</span>
+                <span>100% Anonymous & Private</span>
               </span>
             </div>
           </GlassCard>

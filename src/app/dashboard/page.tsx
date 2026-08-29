@@ -355,7 +355,7 @@ export default function DashboardPage() {
                 <ArrowRight className="w-4 h-4 text-slate-400 group-hover:translate-x-1 transition-transform" />
               </div>
               <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                Zero-knowledge confessions and advice with auto-generated robot bottts avatars.
+                Anonymous confessions and campus advice with custom robot avatar pseudonyms.
               </p>
             </GlassCard>
           </Link>
