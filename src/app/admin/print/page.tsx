@@ -31,6 +31,9 @@ import {
   Settings,
   IndianRupee,
   Sparkles,
+  Copy,
+  XCircle,
+  AlertCircle,
 } from "lucide-react";
 
 export default function AdminPrintQueuePage() {
@@ -49,22 +52,22 @@ export default function AdminPrintQueuePage() {
   const [loadingRates, setLoadingRates] = useState(true);
 
   const fetchOrders = async () => {
-    if (!user) return;
+    if (!user?.id) return;
     setLoading(true);
     const res = await getAllPrintOrdersAdmin(user.id);
-    if (res.success && res.data) {
+    if (res?.success && res.data) {
       setOrders(res.data);
     } else {
-      toast.error(res.error || "Failed to load print orders.");
+      toast.error(res?.error || "Failed to load print orders.");
     }
     setLoading(false);
   };
 
   const fetchRates = async () => {
-    if (!user) return;
+    if (!user?.id) return;
     setLoadingRates(true);
     const res = await getPrintSettingsAdmin(user.id);
-    if (res.success && res.data) {
+    if (res?.success && res.data) {
       setSingleSidedRupees(res.data.singleSidedRupees.toFixed(2));
       setDoubleSidedRupees(res.data.doubleSidedRupees.toFixed(2));
     }
@@ -72,13 +75,15 @@ export default function AdminPrintQueuePage() {
   };
 
   useEffect(() => {
-    fetchOrders();
-    fetchRates();
-  }, [user]);
+    if (user?.id) {
+      fetchOrders();
+      fetchRates();
+    }
+  }, [user?.id]);
 
   const handleUpdateRates = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) return;
+    if (!user?.id) return;
 
     const single = parseFloat(singleSidedRupees);
     const double = parseFloat(doubleSidedRupees);
@@ -96,8 +101,8 @@ export default function AdminPrintQueuePage() {
     });
     setSavingRates(false);
 
-    if (res.error) {
-      toast.error(res.error);
+    if (!res?.success || res?.error) {
+      toast.error(res?.error || "Failed to update print rates.");
     } else {
       toast.success(
         `Print rates updated! Single: ₹${single.toFixed(2)}/pg, Double: ₹${double.toFixed(2)}/pg`
@@ -107,7 +112,7 @@ export default function AdminPrintQueuePage() {
   };
 
   const handleUpdateStatus = async (orderId: string, newStatus: any) => {
-    if (!user) return;
+    if (!user?.id) return;
     setStatusUpdatingId(orderId);
     const res = await updatePrintOrderStatus({
       orderId,
@@ -116,41 +121,17 @@ export default function AdminPrintQueuePage() {
     });
     setStatusUpdatingId(null);
 
-    if (res.error) {
-      toast.error(res.error);
+    if (!res?.success || res?.error) {
+      toast.error(res?.error || "Failed to update order status.");
     } else {
       toast.success(`Order status updated to "${newStatus.replace(/_/g, " ")}"`);
       fetchOrders();
     }
   };
 
-  const handleAdminDownload = async (order: any) => {
-    if (!user) return;
-    if (!order.fileUrl && !order.fileName) {
-      toast.error("No document file attached to this print order.");
-      return;
-    }
-
-    // If fileUrl is a valid public HTTP URL, open directly
-    if (order.fileUrl && (order.fileUrl.startsWith("http://") || order.fileUrl.startsWith("https://"))) {
-      window.open(order.fileUrl, "_blank");
-      toast.success("Opening document in new tab...");
-      return;
-    }
-
-    setDownloadLoadingId(order.id);
-    const res = await getAdminDownloadUrl({
-      filePathOrUrl: order.fileUrl || order.fileName,
-      adminUserId: user.id,
-    });
-    setDownloadLoadingId(null);
-
-    if (res.success && res.data?.signedUrl) {
-      toast.success("Opening document...");
-      window.open(res.data.signedUrl, "_blank");
-    } else {
-      toast.error(res.error || "Failed to generate document print URL.");
-    }
+  const copyToClipboard = (text: string, label: string) => {
+    navigator.clipboard.writeText(text);
+    toast.success(`${label} copied to clipboard!`);
   };
 
   // Filtered orders
@@ -159,9 +140,10 @@ export default function AdminPrintQueuePage() {
       statusFilter === "ALL" || ord.status === statusFilter;
     const matchesSearch =
       searchQuery === "" ||
-      ord.fileName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      ord.fileName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       ord.user?.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      ord.deliveryLocation.toLowerCase().includes(searchQuery.toLowerCase());
+      ord.deliveryLocation?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      ord.utr?.includes(searchQuery);
     return matchesStatus && matchesSearch;
   });
 
@@ -182,10 +164,10 @@ export default function AdminPrintQueuePage() {
         <div>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white flex items-center gap-2.5">
             <Printer className="w-7 h-7 text-amber-500" />
-            <span>Print Fulfillment & Dynamic Pricing Operator Hub</span>
+            <span>Hostel Print Fulfillment & Verification Hub</span>
           </h1>
           <p className="text-xs sm:text-sm text-slate-400 mt-1">
-            Dispatch, fulfill, and configure per-page print pricing in Paise. Secure 60-second signed document print access.
+            Verify UPI payment UTRs, open Google Drive documents, and manage express print dispatch across campus hostels.
           </p>
         </div>
 
@@ -213,7 +195,7 @@ export default function AdminPrintQueuePage() {
               <span>Dynamic Print Pricing Controls</span>
             </div>
             <h2 className="text-lg font-bold text-slate-900 dark:text-white">
-              Campus Print Rates (Stored as Paise in Database)
+              Campus Print Rates (Stored in Paise)
             </h2>
             <p className="text-xs text-slate-500 max-w-xl">
               Updating these rates immediately applies to all new student orders placed through the Print Station.
@@ -283,7 +265,7 @@ export default function AdminPrintQueuePage() {
           <p className="text-2xl font-black text-slate-900 dark:text-white mt-1">
             {submittedCount}
           </p>
-          <p className="text-[10px] text-slate-400 mt-0.5">Awaiting print pickup</p>
+          <p className="text-[10px] text-slate-400 mt-0.5">Awaiting UTR check & print</p>
         </GlassCard>
 
         <GlassCard className="p-4 border-blue-500/20">
@@ -308,12 +290,12 @@ export default function AdminPrintQueuePage() {
 
         <GlassCard className="p-4 border-emerald-500/20">
           <p className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">
-            Completed Orders
+            Delivered / Completed
           </p>
           <p className="text-2xl font-black text-slate-900 dark:text-white mt-1">
             {completedCount}
           </p>
-          <p className="text-[10px] text-slate-400 mt-0.5">Delivered to students</p>
+          <p className="text-[10px] text-slate-400 mt-0.5">Successfully handed over</p>
         </GlassCard>
       </div>
 
@@ -339,7 +321,7 @@ export default function AdminPrintQueuePage() {
           <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
             type="text"
-            placeholder="Search document or student..."
+            placeholder="Search student, UTR, doc name..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pl-9 pr-4 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-xs focus:outline-none focus:ring-2 focus:ring-amber-500"
@@ -353,12 +335,12 @@ export default function AdminPrintQueuePage() {
           <table className="w-full text-left text-xs">
             <thead className="bg-slate-100/80 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700/60 uppercase font-bold text-slate-400">
               <tr>
-                <th className="py-3 px-4">Student Details</th>
-                <th className="py-3 px-4">Document & Specs</th>
-                <th className="py-3 px-4">Delivery Location</th>
-                <th className="py-3 px-4">Cost</th>
-                <th className="py-3 px-4">Status</th>
-                <th className="py-3 px-4 text-right">Operator Actions</th>
+                <th className="py-3.5 px-4">Student</th>
+                <th className="py-3.5 px-4">Document & Drive Link</th>
+                <th className="py-3.5 px-4">Delivery & UTR</th>
+                <th className="py-3.5 px-4">Cost</th>
+                <th className="py-3.5 px-4">Status</th>
+                <th className="py-3.5 px-4 text-right">Fulfillment Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
@@ -378,136 +360,191 @@ export default function AdminPrintQueuePage() {
                   </td>
                 </tr>
               ) : (
-                filteredOrders.map((ord) => (
-                  <tr key={ord.id} className="hover:bg-slate-100/40 dark:hover:bg-slate-800/30 transition-colors">
-                    {/* Student */}
-                    <td className="py-3.5 px-4">
-                      <div className="flex items-center gap-2.5">
-                        <img
-                          src={
-                            ord.user?.image ||
-                            "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=80&auto=format&fit=crop&q=80"
-                          }
-                          alt={ord.user?.name || "Student"}
-                          className="w-8 h-8 rounded-full object-cover bg-slate-800"
-                        />
-                        <div>
-                          <p className="font-bold text-slate-900 dark:text-white">
-                            {ord.user?.name || "Anonymous Student"}
-                          </p>
-                          <p className="text-[10px] text-slate-400 flex items-center gap-1 mt-0.5">
-                            <Phone className="w-2.5 h-2.5" />
-                            <span>{ord.user?.phone || "+91 98765 00000"}</span>
-                          </p>
-                        </div>
-                      </div>
-                    </td>
+                filteredOrders.map((ord) => {
+                  const extractedUtr =
+                    ord.utr ||
+                    ord.deliveryLocation?.match(/UTR:\s*([0-9A-Za-z]+)/)?.[1] ||
+                    null;
 
-                    {/* Document */}
-                    <td className="py-3.5 px-4">
-                      <div>
-                        <p className="font-bold text-slate-800 dark:text-slate-200 truncate max-w-[200px]" title={ord.fileName}>
-                          {ord.fileName}
-                        </p>
-                        <div className="flex items-center gap-2 text-[10px] text-slate-400 mt-0.5">
-                          <span className="font-semibold text-amber-600 dark:text-amber-400">
-                            {ord.pageCount} Pages
-                          </span>
-                          <span>•</span>
-                          <span>{ord.printType.replace(/_/g, " ")}</span>
-                        </div>
-                      </div>
-                    </td>
+                  const documentViewLink =
+                    ord.fileUrl ||
+                    (ord.driveFileId
+                      ? `https://drive.google.com/file/d/${ord.driveFileId}/view?usp=sharing`
+                      : null);
 
-                    {/* Location */}
-                    <td className="py-3.5 px-4">
-                      <div className="flex items-start gap-1.5 text-slate-700 dark:text-slate-300">
-                        <MapPin className="w-3.5 h-3.5 text-rose-500 shrink-0 mt-0.5" />
-                        <div>
-                          <p className="font-semibold">{ord.deliveryLocation}</p>
-                          <p className="text-[10px] text-slate-400 mt-0.5">
+                  return (
+                    <tr
+                      key={ord.id}
+                      className="hover:bg-slate-100/40 dark:hover:bg-slate-800/30 transition-colors"
+                    >
+                      {/* Student Details */}
+                      <td className="py-3.5 px-4">
+                        <div className="flex items-center gap-2.5">
+                          <img
+                            src={
+                              ord.user?.image ||
+                              `https://api.dicebear.com/9.x/bottts/svg?seed=${ord.user?.id || "Student"}`
+                            }
+                            alt={ord.user?.name || "Student"}
+                            className="w-8 h-8 rounded-full object-cover bg-slate-800 shrink-0"
+                          />
+                          <div>
+                            <p className="font-bold text-slate-900 dark:text-white">
+                              {ord.user?.name || "Student"}
+                            </p>
+                            <p className="text-[10px] text-slate-400 flex items-center gap-1 mt-0.5">
+                              <Phone className="w-2.5 h-2.5" />
+                              <span>{ord.user?.phone || "+91 98765 00000"}</span>
+                            </p>
+                            {ord.user?.college?.name && (
+                              <p className="text-[9px] text-amber-600 dark:text-amber-400 font-semibold truncate max-w-[140px]">
+                                {ord.user.college.name}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* Document & Google Drive Verification Link */}
+                      <td className="py-3.5 px-4">
+                        <div className="space-y-1">
+                          <p
+                            className="font-bold text-slate-800 dark:text-slate-200 truncate max-w-[200px]"
+                            title={ord.fileName}
+                          >
+                            {ord.fileName}
+                          </p>
+                          <div className="flex items-center gap-2 text-[10px] text-slate-400">
+                            <span className="font-semibold text-amber-600 dark:text-amber-400">
+                              {ord.pageCount} Pgs {ord.copies > 1 ? `(${ord.copies}x)` : ""}
+                            </span>
+                            <span>•</span>
+                            <span>{ord.printType?.replace(/_/g, " ")}</span>
+                          </div>
+
+                          {/* Direct Google Drive File Link */}
+                          {documentViewLink && (
+                            <a
+                              href={documentViewLink}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex items-center gap-1 text-[11px] font-bold text-teal-600 dark:text-teal-400 hover:underline pt-0.5"
+                            >
+                              <FileText className="w-3 h-3" />
+                              <span>Open in Google Drive</span>
+                              <ExternalLink className="w-2.5 h-2.5" />
+                            </a>
+                          )}
+                        </div>
+                      </td>
+
+                      {/* Location & Payment UTR Verification */}
+                      <td className="py-3.5 px-4">
+                        <div className="space-y-1 text-slate-700 dark:text-slate-300">
+                          <div className="flex items-start gap-1">
+                            <MapPin className="w-3.5 h-3.5 text-rose-500 shrink-0 mt-0.5" />
+                            <span className="font-semibold text-[11px]">
+                              {ord.deliveryLocation}
+                            </span>
+                          </div>
+
+                          {/* UTR Verification Badge */}
+                          {extractedUtr && (
+                            <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400 font-mono text-[10px] font-bold">
+                              <span>UTR: {extractedUtr}</span>
+                              <button
+                                onClick={() => copyToClipboard(extractedUtr, "UTR")}
+                                className="hover:text-amber-300 ml-0.5"
+                                title="Copy UTR"
+                              >
+                                <Copy className="w-2.5 h-2.5" />
+                              </button>
+                            </div>
+                          )}
+
+                          <p className="text-[10px] text-slate-400">
                             Ordered: {formatDate(ord.createdAt)}
                           </p>
                         </div>
-                      </div>
-                    </td>
+                      </td>
 
-                    {/* Cost */}
-                    <td className="py-3.5 px-4 font-black text-brand-600 dark:text-brand-400">
-                      {formatPaiseToRupees(ord.totalCost)}
-                    </td>
+                      {/* Cost */}
+                      <td className="py-3.5 px-4 font-black text-brand-600 dark:text-brand-400 text-sm">
+                        {formatPaiseToRupees(ord.totalCost)}
+                      </td>
 
-                    {/* Status Badge */}
-                    <td className="py-3.5 px-4">
-                      <Badge
-                        variant={
-                          ord.status === "SUBMITTED"
-                            ? "warning"
-                            : ord.status === "PRINTING"
-                            ? "brand"
-                            : ord.status === "OUT_FOR_DELIVERY"
-                            ? "info"
-                            : "success"
-                        }
-                        size="sm"
-                      >
-                        {ord.status.replace(/_/g, " ")}
-                      </Badge>
-                    </td>
-
-                    {/* Actions */}
-                    <td className="py-3.5 px-4 text-right space-x-2">
-                      {/* Secure 1-Min Download Button */}
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleAdminDownload(ord)}
-                        disabled={downloadLoadingId === ord.id}
-                        className="text-xs"
-                        leftIcon={<Download className="w-3.5 h-3.5 text-amber-500" />}
-                      >
-                        {downloadLoadingId === ord.id ? "Signing..." : "Print PDF (60s)"}
-                      </Button>
-
-                      {/* Status Flow Buttons */}
-                      {ord.status === "SUBMITTED" && (
-                        <Button
+                      {/* Status Badge */}
+                      <td className="py-3.5 px-4">
+                        <Badge
+                          variant={
+                            ord.status === "SUBMITTED"
+                              ? "warning"
+                              : ord.status === "PRINTING"
+                              ? "brand"
+                              : ord.status === "OUT_FOR_DELIVERY"
+                              ? "info"
+                              : "success"
+                          }
                           size="sm"
-                          onClick={() => handleUpdateStatus(ord.id, "PRINTING")}
-                          disabled={statusUpdatingId === ord.id}
-                          className="bg-blue-600 hover:bg-blue-500 text-xs"
-                          leftIcon={<Printer className="w-3.5 h-3.5" />}
                         >
-                          Print
-                        </Button>
-                      )}
+                          {ord.status.replace(/_/g, " ")}
+                        </Badge>
+                      </td>
 
-                      {ord.status === "PRINTING" && (
-                        <Button
-                          size="sm"
-                          onClick={() => handleUpdateStatus(ord.id, "OUT_FOR_DELIVERY")}
-                          disabled={statusUpdatingId === ord.id}
-                          className="bg-purple-600 hover:bg-purple-500 text-xs"
-                          leftIcon={<Truck className="w-3.5 h-3.5" />}
-                        >
-                          Dispatch
-                        </Button>
-                      )}
+                      {/* Interactive Fulfillment Actions */}
+                      <td className="py-3.5 px-4 text-right space-x-1.5">
+                        {/* 1. Submitted State -> Verify & Print */}
+                        {ord.status === "SUBMITTED" && (
+                          <>
+                            <Button
+                              size="sm"
+                              onClick={() => handleUpdateStatus(ord.id, "PRINTING")}
+                              disabled={statusUpdatingId === ord.id}
+                              className="bg-blue-600 hover:bg-blue-500 text-xs font-bold"
+                              leftIcon={<Printer className="w-3.5 h-3.5" />}
+                            >
+                              Verify & Print
+                            </Button>
+                          </>
+                        )}
 
-                      {ord.status === "OUT_FOR_DELIVERY" && (
-                        <Button
-                          size="sm"
-                          onClick={() => handleUpdateStatus(ord.id, "COMPLETED")}
-                          disabled={statusUpdatingId === ord.id}
-                          className="bg-emerald-600 hover:bg-emerald-500 text-xs"
-                          leftIcon={<CheckCircle2 className="w-3.5 h-3.5" />}
-                        >
-                          Delivered
-                        </Button>
-                      )}
-                    </td>
-                  </tr>
-                ))
+                        {/* 2. Printing State -> Mark Dispatched */}
+                        {ord.status === "PRINTING" && (
+                          <Button
+                            size="sm"
+                            onClick={() => handleUpdateStatus(ord.id, "OUT_FOR_DELIVERY")}
+                            disabled={statusUpdatingId === ord.id}
+                            className="bg-purple-600 hover:bg-purple-500 text-xs font-bold"
+                            leftIcon={<Truck className="w-3.5 h-3.5" />}
+                          >
+                            Dispatch
+                          </Button>
+                        )}
+
+                        {/* 3. Out for Delivery -> Mark Delivered */}
+                        {ord.status === "OUT_FOR_DELIVERY" && (
+                          <Button
+                            size="sm"
+                            onClick={() => handleUpdateStatus(ord.id, "COMPLETED")}
+                            disabled={statusUpdatingId === ord.id}
+                            className="bg-emerald-600 hover:bg-emerald-500 text-xs font-bold"
+                            leftIcon={<CheckCircle2 className="w-3.5 h-3.5" />}
+                          >
+                            Mark Delivered
+                          </Button>
+                        )}
+
+                        {/* 4. Completed State */}
+                        {(ord.status === "COMPLETED" || ord.status === "DELIVERED") && (
+                          <span className="text-[11px] font-bold text-emerald-500 inline-flex items-center gap-1">
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            <span>Fulfilled</span>
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
