@@ -36,10 +36,10 @@ export async function getPrintOrders(userId: string): Promise<ActionResponse<any
     const orders = await prisma.printOrder.findMany({
       where: { userId },
       include: {
-        college: {
-          select: { id: true, name: true, city: true },
+        user: {
+          select: { id: true, name: true, email: true, phone: true },
         },
-      } as any,
+      },
       orderBy: { createdAt: "desc" },
     });
 
@@ -123,28 +123,28 @@ export async function createPrintOrder(data: {
     const baseCostPaise = calculatePrintCostPaise(validPageCount, data.printType, rates);
     const totalCostPaise = baseCostPaise * validCopies;
 
+    // Format deliveryLocation to embed copies, UTR, and Drive File ID
+    const enrichedLocation = data.deliveryLocation.includes("UTR:")
+      ? data.deliveryLocation.trim()
+      : `${data.deliveryLocation.trim()}${data.copies && data.copies > 1 ? ` | Copies: ${data.copies}` : ""}${data.utr ? ` | UTR: ${data.utr}` : ""}${data.driveFileId ? ` | DriveID: ${data.driveFileId}` : ""}`;
+
     // Atomic transaction for database integrity
     const order = await prisma.$transaction(async (tx) => {
-      return (tx.printOrder as any).create({
+      return tx.printOrder.create({
         data: {
           userId: data.userId,
           fileName: data.fileName.trim(),
           fileUrl: data.fileUrl?.trim() || null,
-          driveFileId: data.driveFileId?.trim() || null,
           pageCount: validPageCount,
-          copies: validCopies,
           printType: data.printType as any,
-          deliveryLocation: data.deliveryLocation.trim(),
-          utr: data.utr?.trim() || null,
+          deliveryLocation: enrichedLocation,
           expectedDelivery: data.expectedDelivery
             ? new Date(data.expectedDelivery)
             : new Date(Date.now() + 2 * 60 * 60 * 1000),
           totalCost: totalCostPaise,
           status: "SUBMITTED",
-          collegeId: activeCollegeId,
         },
         include: {
-          college: true,
           user: {
             select: { id: true, name: true, email: true, phone: true },
           },

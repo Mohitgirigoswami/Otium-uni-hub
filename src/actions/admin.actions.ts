@@ -79,7 +79,6 @@ export async function getAllPrintOrdersAdmin(
     }
 
     const orders = await prisma.printOrder.findMany({
-      where,
       include: {
         user: {
           select: {
@@ -90,16 +89,16 @@ export async function getAllPrintOrdersAdmin(
             department: true,
             year: true,
             image: true,
+            college: {
+              select: {
+                id: true,
+                name: true,
+                city: true,
+              },
+            },
           },
         },
-        college: {
-          select: {
-            id: true,
-            name: true,
-            city: true,
-          },
-        },
-      } as any,
+      },
       orderBy: { createdAt: "desc" },
     });
 
@@ -147,8 +146,7 @@ export async function updatePrintOrderStatus(data: {
       },
       include: {
         user: true,
-        college: true,
-      } as any,
+      },
     });
 
     await logAdminAction(
