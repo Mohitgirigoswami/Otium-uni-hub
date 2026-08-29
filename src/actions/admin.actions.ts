@@ -48,25 +48,38 @@ async function verifySuperAdmin(adminUserId: string): Promise<boolean> {
 }
 
 /**
- * 1. Fetch all Print Orders for Admin Operator Hub
+ * 1. Fetch all Print Orders for Admin Operator Hub (Campus-Segregated for PRINT_MANAGER, Global for SUPER_ADMIN)
  */
 export async function getAllPrintOrdersAdmin(
   adminUserId: string
 ): Promise<ActionResponse<any[]>> {
   try {
-    const rateCheck = await checkRateLimit(adminUserId || "admin-orders");
-    if (!rateCheck.success) {
-      return { error: rateCheck.error };
-    }
-
-    const isAllowed = await verifyPrintOperator(adminUserId);
-    if (!isAllowed) {
+    const session = await getServerSession(authOptions);
+    if (
+      !session?.user ||
+      (session.user.role !== "SUPER_ADMIN" &&
+        session.user.role !== "PRINT_MANAGER" &&
+        session.user.role !== "CAMPUS_MODERATOR")
+    ) {
       return {
+        success: false,
         error: "Unauthorized access: PRINT_MANAGER or SUPER_ADMIN role required.",
       };
     }
 
+    const rateCheck = await checkRateLimit(adminUserId || session.user.id);
+    if (!rateCheck.success) {
+      return { success: false, error: rateCheck.error };
+    }
+
+    // Role-based campus segregation
+    const where: any = {};
+    if (session.user.role === "PRINT_MANAGER" && session.user.collegeId) {
+      where.collegeId = session.user.collegeId;
+    }
+
     const orders = await prisma.printOrder.findMany({
+      where,
       include: {
         user: {
           select: {
@@ -79,7 +92,14 @@ export async function getAllPrintOrdersAdmin(
             image: true,
           },
         },
-      },
+        college: {
+          select: {
+            id: true,
+            name: true,
+            city: true,
+          },
+        },
+      } as any,
       orderBy: { createdAt: "desc" },
     });
 
@@ -90,28 +110,34 @@ export async function getAllPrintOrdersAdmin(
   } catch (error: any) {
     console.error("Error in getAllPrintOrdersAdmin:", error);
     return {
+      success: false,
       error: error?.message || "Failed to fetch admin print orders.",
+      data: [],
     };
   }
 }
 
 /**
- * 2. Update Print Order Status (PRINTING, OUT_FOR_DELIVERY, COMPLETED, etc.)
+ * 2. Update Print Order Status (SUBMITTED, PRINTING, OUT_FOR_DELIVERY, READY, DELIVERED, COMPLETED)
  */
 export async function updatePrintOrderStatus(data: {
   orderId: string;
   status: "SUBMITTED" | "PRINTING" | "OUT_FOR_DELIVERY" | "READY" | "DELIVERED" | "COMPLETED";
   adminUserId: string;
 }): Promise<ActionResponse<any>> {
-  const session = await getServerSession(authOptions);
-  if (!session?.user || (session.user.role !== "SUPER_ADMIN" && session.user.role !== "PRINT_MANAGER")) {
-    throw new Error("UNAUTHORIZED: Critical security violation.");
-  }
-
   try {
-    const rateCheck = await checkRateLimit(data.adminUserId || "admin-status");
+    const session = await getServerSession(authOptions);
+    if (
+      !session?.user ||
+      (session.user.role !== "SUPER_ADMIN" &&
+        session.user.role !== "PRINT_MANAGER")
+    ) {
+      return { success: false, error: "UNAUTHORIZED: Print Manager or Super Admin role required." };
+    }
+
+    const rateCheck = await checkRateLimit(data.adminUserId || session.user.id);
     if (!rateCheck.success) {
-      return { error: rateCheck.error };
+      return { success: false, error: rateCheck.error };
     }
 
     const updated = await prisma.printOrder.update({
@@ -121,12 +147,13 @@ export async function updatePrintOrderStatus(data: {
       },
       include: {
         user: true,
-      },
+        college: true,
+      } as any,
     });
 
     await logAdminAction(
       session.user.id,
-      "VERIFIED_PAYMENT",
+      "UPDATED_PRINT_STATUS",
       `Type: PRINT_ORDER, Order: ${data.orderId}, Status: ${data.status}`
     );
 
@@ -137,6 +164,7 @@ export async function updatePrintOrderStatus(data: {
   } catch (error: any) {
     console.error("Error in updatePrintOrderStatus:", error);
     return {
+      success: false,
       error: error?.message || "Failed to update print order status.",
     };
   }

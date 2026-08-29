@@ -151,6 +151,7 @@ model College {
   lostAndFoundItems LostAndFoundItem[]
   incognitoPosts    IncognitoPost[]
   campusServices    CampusService[]
+  printOrders       PrintOrder[]
 }
 
 model Account {
@@ -349,16 +350,24 @@ model PrintOrder {
   id               String      @id @default(cuid())
   fileName         String
   fileUrl          String?
+  driveFileId      String?
   pageCount        Int
+  copies           Int         @default(1)
   printType        PrintType
   deliveryLocation String
   expectedDelivery DateTime
   totalCost        Int         // Strictly stored in Paise
   status           PrintStatus @default(SUBMITTED)
+  utr              String?
   userId           String
   user             User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  collegeId        String?
+  college          College?    @relation(fields: [collegeId], references: [id], onDelete: SetNull)
   createdAt        DateTime    @default(now())
   updatedAt        DateTime    @updatedAt
+
+  @@index([userId])
+  @@index([collegeId])
 }
 
 model LostAndFoundItem {
@@ -468,6 +477,19 @@ model CampusService {
 
   @@unique([campusId, serviceKey])
   @@index([campusId])
+}
+
+model PlatformSetting {
+  id        String   @id @default("global_config")
+  upiId     String   @default("admin@upi")
+  updatedAt DateTime @updatedAt
+}
+
+model PrintSetting {
+  id              String   @id @default("default")
+  singleSidedRate Int      @default(250) // in paise (₹2.50)
+  doubleSidedRate Int      @default(200) // in paise (₹2.00)
+  updatedAt       DateTime @updatedAt
 }
 
 
