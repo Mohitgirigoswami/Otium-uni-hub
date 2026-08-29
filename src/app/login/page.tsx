@@ -67,7 +67,7 @@ function LoginContent() {
             <div className="p-3 rounded-2xl bg-white/40 dark:bg-slate-900/40 border border-slate-200/60 dark:border-slate-800/80 backdrop-blur-md">
               <Printer className="w-4 h-4 text-amber-500 mb-1.5" />
               <p className="text-xs font-bold text-slate-900 dark:text-white">Print Dispatch</p>
-              <p className="text-[10px] text-slate-500">Next-day delivery to your hostel room</p>
+              <p className="text-[10px] text-slate-500">Next-day delivery anywhere in campus</p>
             </div>
             <div className="p-3 rounded-2xl bg-white/40 dark:bg-slate-900/40 border border-slate-200/60 dark:border-slate-800/80 backdrop-blur-md">
               <ShoppingBag className="w-4 h-4 text-emerald-500 mb-1.5" />

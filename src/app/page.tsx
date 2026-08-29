@@ -41,7 +41,7 @@ export default function LandingPage() {
   const FAQS = [
     {
       q: "How does the Hostel Cloud Print Station work?",
-      a: "Upload your documents directly from your phone or laptop. Our server automatically counts exact pages and computes the lowest double-sided rate. Once paid via locked UPI QR, our print managers process and deliver the physical copies directly to your hostel block with next-day delivery.",
+      a: "Upload your documents directly from your phone or laptop. Our server automatically counts exact pages and computes the lowest double-sided rate. Once paid via locked UPI QR, our print managers process and deliver the physical copies directly anywhere in campus with next-day delivery.",
     },
     {
       q: "Is my identity completely safe on the Whisper Wall?",
@@ -130,7 +130,7 @@ export default function LandingPage() {
               <span className="text-xs font-bold uppercase tracking-wider">Fast Prints</span>
             </div>
             <p className="text-2xl font-black text-white">Next Day</p>
-            <p className="text-[11px] text-slate-400">Hostel room delivery</p>
+            <p className="text-[11px] text-slate-400">Anywhere in campus</p>
           </div>
 
           <div className="p-4 rounded-2xl bg-slate-900/60 border border-slate-800 backdrop-blur-md">
@@ -190,7 +190,7 @@ export default function LandingPage() {
                 Hostel Cloud Print Station
               </h3>
               <p className="text-xs text-slate-300 leading-relaxed">
-                Upload your assignment PDFs anytime. Exact page counts are computed instantly with automatic double-sided rate optimization. Next-day delivery straight to your hostel block.
+                Upload your assignment PDFs anytime. Exact page counts are computed instantly with automatic double-sided rate optimization. Next-day delivery straight to anywhere in campus.
               </p>
             </div>
 

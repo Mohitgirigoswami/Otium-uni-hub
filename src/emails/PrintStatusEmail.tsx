@@ -95,9 +95,9 @@ export function PrintStatusEmail({
 
             {isOutForDelivery && (
               <Text style={bodyTextStyle}>
-                Your document <strong>{documentName}</strong> is out for express delivery! Our student runner is heading to your designated hostel location:
+                Your document <strong>{documentName}</strong> is out for next-day delivery! Our student runner is heading to your designated campus location:
                 <br />
-                <strong style={{ color: "#7c3aed" }}>📍 {deliveryLocation || "Your Hostel Block"}</strong>
+                <strong style={{ color: "#7c3aed" }}>📍 {deliveryLocation || "Your Campus Location"}</strong>
               </Text>
             )}
 
@@ -105,7 +105,7 @@ export function PrintStatusEmail({
               <Text style={bodyTextStyle}>
                 Your document <strong>{documentName}</strong> has been successfully delivered to:
                 <br />
-                <strong style={{ color: "#059669" }}>📍 {deliveryLocation || "Your Hostel Pickup Location"}</strong>.
+                <strong style={{ color: "#059669" }}>📍 {deliveryLocation || "Your Campus Pickup Location"}</strong>.
                 <br />
                 Thank you for using Otium Print Station!
               </Text>

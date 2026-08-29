@@ -168,7 +168,7 @@ export default function PrintStationPage() {
     }
 
     if (!deliveryLocation.trim() || deliveryLocation.trim().length < 3) {
-      toast.error("Please enter your specific in-campus room, hostel, or desk delivery location.");
+      toast.error("Please enter your delivery location anywhere in campus.");
       return;
     }
 
@@ -199,7 +199,7 @@ export default function PrintStationPage() {
     if (!res?.success || res?.error) {
       toast.error(res?.error || "Failed to submit print order. Please try again.");
     } else {
-      toast.success("Print order queued! Admin verifying UTR & dispatching next-day to your hostel.");
+      toast.success("Print order queued! Admin verifying UTR & dispatching next-day anywhere in campus.");
       setFileName("");
       setFileUrl("");
       setDriveFileId("");
@@ -228,7 +228,7 @@ export default function PrintStationPage() {
                 Hostel Print Station & Next-Day Delivery
               </h1>
               <p className="text-sm text-slate-300 max-w-2xl leading-relaxed">
-                Direct secure document upload to Cloud Storage. Page counts are auto-calculated using pdf-lib to prevent cost manipulation. Express dispatch to your hostel block with reliable next-day delivery.
+                Direct secure document upload to Cloud Storage. Page counts are auto-calculated using pdf-lib to prevent cost manipulation. Express dispatch anywhere in campus with reliable next-day delivery.
               </p>
             </div>
           </div>
@@ -355,15 +355,15 @@ export default function PrintStationPage() {
 
                   <div>
                     <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5 flex items-center justify-between">
-                      <span>Step 4: In-Campus Delivery Destination *</span>
-                      <span className="text-[10px] text-teal-600 dark:text-teal-400 font-semibold lowercase">room / hostel / lab</span>
+                      <span>Step 4: Delivery Destination *</span>
+                      <span className="text-[10px] text-teal-600 dark:text-teal-400 font-semibold lowercase">anywhere in campus</span>
                     </label>
                     <div className="relative">
                       <MapPin className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                       <input
                         type="text"
                         required
-                        placeholder="e.g. Hostel Block B, Room 304 / Library Desk 12"
+                        placeholder="e.g. Library Desk 12 / Academic Block C / Hostel Block B"
                         value={deliveryLocation}
                         onChange={(e) => setDeliveryLocation(e.target.value)}
                         className="w-full pl-10 pr-3.5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 font-medium"

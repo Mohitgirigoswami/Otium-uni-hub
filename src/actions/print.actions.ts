@@ -99,7 +99,7 @@ export async function createPrintOrder(data: {
     const validCopies = Math.max(1, Number(data.copies) || 1);
 
     if (!data.deliveryLocation?.trim()) {
-      return { success: false, error: "Delivery hostel room or pickup location is required." };
+      return { success: false, error: "Delivery location anywhere on campus is required." };
     }
 
     // Verify user existence and get campus

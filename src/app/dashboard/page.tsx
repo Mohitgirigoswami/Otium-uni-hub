@@ -229,7 +229,7 @@ export default function DashboardPage() {
                 <ArrowRight className="w-4 h-4 text-slate-400 group-hover:translate-x-1 transition-transform" />
               </div>
               <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                Direct PDF uploads with automated page counting and next-day delivery to your hostel room.
+                Direct PDF uploads with automated page counting and next-day delivery anywhere in campus.
               </p>
             </GlassCard>
           </Link>
