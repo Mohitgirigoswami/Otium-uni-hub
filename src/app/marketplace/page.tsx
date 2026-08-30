@@ -71,9 +71,16 @@ export default function MarketplacePage() {
   const [category, setCategory] = useState<MarketplaceCategoryType>("BOOKS_NOTES");
   const [condition, setCondition] = useState<ItemConditionType>("LIKE_NEW");
   const [imageUrl, setImageUrl] = useState("");
+  const [sellerPhone, setSellerPhone] = useState(user?.phone || "");
   const [isUploadingMedia, setIsUploadingMedia] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (user?.phone && !sellerPhone) {
+      setSellerPhone(user.phone);
+    }
+  }, [user?.phone]);
 
   const fetchItemsList = async () => {
     setLoading(true);
@@ -137,6 +144,12 @@ export default function MarketplacePage() {
       return;
     }
 
+    const cleanPhone = sellerPhone.trim().replace(/\D/g, "");
+    if (!cleanPhone || cleanPhone.length !== 10) {
+      toast.error("Please enter a valid 10-digit mobile number for campus handovers.");
+      return;
+    }
+
     setIsSubmitting(true);
     const res = await createMarketplaceItem({
       sellerId: user.id,
@@ -146,6 +159,7 @@ export default function MarketplacePage() {
       category,
       condition,
       images: imageUrl.trim() ? [imageUrl.trim()] : [],
+      sellerPhone: cleanPhone,
     });
     setIsSubmitting(false);
 
@@ -513,11 +527,30 @@ export default function MarketplacePage() {
             <textarea
               required
               rows={4}
-              placeholder="Describe condition, accessories included, reason for selling, and pickup hostel location..."
+              placeholder="Describe condition, accessories included, reason for selling, and pickup campus location..."
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               className="w-full px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
             />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5 flex items-center justify-between">
+              <span>Contact Mobile Number (Required for campus handovers) *</span>
+              <span className="text-[10px] text-amber-500 font-semibold lowercase">10 digits</span>
+            </label>
+            <div className="relative">
+              <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <input
+                type="tel"
+                required
+                maxLength={10}
+                placeholder="e.g. 9876543210 (10-digit mobile number)"
+                value={sellerPhone}
+                onChange={(e) => setSellerPhone(e.target.value.replace(/\D/g, ""))}
+                className="w-full pl-10 pr-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-amber-500 font-mono"
+              />
+            </div>
           </div>
 
           <div className="pt-4 border-t border-slate-200 dark:border-slate-800 flex justify-end gap-3">

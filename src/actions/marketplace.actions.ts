@@ -77,6 +77,7 @@ export async function createMarketplaceItem(data: {
   category: MarketplaceCategoryType;
   condition: ItemConditionType;
   images: string[];
+  sellerPhone?: string;
 }): Promise<ActionResponse<any>> {
   try {
     const rateCheck = await checkRateLimit(data.sellerId);
@@ -90,25 +91,36 @@ export async function createMarketplaceItem(data: {
       return { error: "Valid price in Rupees is required." };
     }
 
+    const cleanPhoneDigits = data.sellerPhone ? data.sellerPhone.replace(/\D/g, "").slice(-10) : "";
+
     const pricePaise = rupeesToPaise(data.priceRupees);
     const imagesList = data.images && data.images.length > 0 ? data.images : [
       "https://images.unsplash.com/photo-1526738549149-8e07eca6c147?w=500&auto=format&fit=crop&q=80"
     ];
 
-    const item = await prisma.marketplaceItem.create({
-      data: {
-        sellerId: data.sellerId,
-        title: data.title.trim(),
-        description: data.description.trim(),
-        price: pricePaise, // Strictly store in Paise
-        category: data.category as any,
-        condition: data.condition as any,
-        images: imagesList,
-        status: "AVAILABLE",
-      },
-      include: {
-        seller: true,
-      },
+    const item = await prisma.$transaction(async (tx) => {
+      if (cleanPhoneDigits && cleanPhoneDigits.length === 10) {
+        await tx.user.update({
+          where: { id: data.sellerId },
+          data: { phone: cleanPhoneDigits },
+        });
+      }
+
+      return tx.marketplaceItem.create({
+        data: {
+          sellerId: data.sellerId,
+          title: data.title.trim(),
+          description: data.description.trim(),
+          price: pricePaise, // Strictly store in Paise
+          category: data.category as any,
+          condition: data.condition as any,
+          images: imagesList,
+          status: "AVAILABLE",
+        },
+        include: {
+          seller: true,
+        },
+      });
     });
 
     return {

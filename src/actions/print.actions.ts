@@ -72,6 +72,7 @@ export async function createPrintOrder(data: {
   utr?: string;
   expectedDelivery?: string;
   collegeId?: string | null;
+  phoneNumber?: string;
 }): Promise<ActionResponse<any>> {
   try {
     if (!data.userId) {
@@ -105,7 +106,7 @@ export async function createPrintOrder(data: {
     // Verify user existence and get campus
     const user = await prisma.user.findUnique({
       where: { id: data.userId },
-      select: { id: true, isBanned: true, collegeId: true },
+      select: { id: true, isBanned: true, collegeId: true, phone: true },
     });
 
     if (!user) {
@@ -123,13 +124,24 @@ export async function createPrintOrder(data: {
     const baseCostPaise = calculatePrintCostPaise(validPageCount, data.printType, rates);
     const totalCostPaise = baseCostPaise * validCopies;
 
-    // Format deliveryLocation to embed copies, UTR, and Drive File ID
+    // Format deliveryLocation to embed copies, UTR, Drive File ID, and optional Contact Phone
+    const cleanPhoneDigits = data.phoneNumber ? data.phoneNumber.replace(/\D/g, "").slice(-10) : "";
+    const contactInfo = cleanPhoneDigits ? ` | Phone: ${cleanPhoneDigits}` : "";
+
     const enrichedLocation = data.deliveryLocation.includes("UTR:")
-      ? data.deliveryLocation.trim()
-      : `${data.deliveryLocation.trim()}${data.copies && data.copies > 1 ? ` | Copies: ${data.copies}` : ""}${data.utr ? ` | UTR: ${data.utr}` : ""}${data.driveFileId ? ` | DriveID: ${data.driveFileId}` : ""}`;
+      ? `${data.deliveryLocation.trim()}${!data.deliveryLocation.includes("Phone:") && cleanPhoneDigits ? contactInfo : ""}`
+      : `${data.deliveryLocation.trim()}${data.copies && data.copies > 1 ? ` | Copies: ${data.copies}` : ""}${data.utr ? ` | UTR: ${data.utr}` : ""}${data.driveFileId ? ` | DriveID: ${data.driveFileId}` : ""}${contactInfo}`;
 
     // Atomic transaction for database integrity
     const order = await prisma.$transaction(async (tx) => {
+      // Update phone number on user record if provided and valid 10 digits
+      if (cleanPhoneDigits && cleanPhoneDigits.length === 10) {
+        await tx.user.update({
+          where: { id: data.userId },
+          data: { phone: cleanPhoneDigits },
+        });
+      }
+
       return tx.printOrder.create({
         data: {
           userId: data.userId,
@@ -140,7 +152,7 @@ export async function createPrintOrder(data: {
           deliveryLocation: enrichedLocation,
           expectedDelivery: data.expectedDelivery
             ? new Date(data.expectedDelivery)
-            : new Date(Date.now() + 2 * 60 * 60 * 1000),
+            : new Date(Date.now() + 24 * 60 * 60 * 1000),
           totalCost: totalCostPaise,
           status: "SUBMITTED",
         },

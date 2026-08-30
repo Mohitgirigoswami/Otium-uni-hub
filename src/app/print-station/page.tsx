@@ -28,6 +28,7 @@ import {
   HardDrive,
   Check,
   Layers,
+  Phone,
 } from "lucide-react";
 import { PrintTypeEnum } from "@/lib/types";
 import { DocumentUpload } from "@/components/ui/DocumentUpload";
@@ -40,8 +41,9 @@ const DELIVERY_LOCATIONS = [
   "Hostel Block 3 (PG & Research)",
   "Hostel Block 4 (Girls Complex A)",
   "Hostel Block 5 (Girls Complex B)",
-  "Central University Library Desk",
-  "Cafeteria Hub Pickup Counter",
+  "Central Library Desk",
+  "Main Academic Block C",
+  "Cafeteria Hub",
 ];
 
 export default function PrintStationPage() {
@@ -65,9 +67,16 @@ export default function PrintStationPage() {
   const [copies, setCopies] = useState<number>(1);
   const [printType, setPrintType] = useState<PrintTypeEnum>("BW_DOUBLE");
   const [deliveryLocation, setDeliveryLocation] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState(user?.phone || "");
   const [utrNumber, setUtrNumber] = useState("");
   const [isUploadingMedia, setIsUploadingMedia] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (user?.phone && !phoneNumber) {
+      setPhoneNumber(user.phone);
+    }
+  }, [user?.phone]);
 
   const fetchOrders = async () => {
     if (!user?.id) return;
@@ -172,6 +181,12 @@ export default function PrintStationPage() {
       return;
     }
 
+    const cleanPhone = phoneNumber.trim().replace(/\D/g, "");
+    if (!cleanPhone || cleanPhone.length !== 10) {
+      toast.error("Please enter a valid 10-digit mobile number for delivery updates.");
+      return;
+    }
+
     const cleanUtr = utrNumber.trim();
     if (!cleanUtr || cleanUtr.length !== 12 || !/^\d{12}$/.test(cleanUtr)) {
       toast.error("Please enter a valid 12-digit numeric UPI transaction UTR number.");
@@ -179,7 +194,7 @@ export default function PrintStationPage() {
     }
 
     setIsSubmitting(true);
-    const enrichedLocation = `${deliveryLocation.trim()} | Copies: ${copies} | UTR: ${cleanUtr}`;
+    const enrichedLocation = `${deliveryLocation.trim()} | Copies: ${copies} | UTR: ${cleanUtr} | Phone: ${cleanPhone}`;
 
     const res = await createPrintOrder({
       userId: user.id,
@@ -190,6 +205,7 @@ export default function PrintStationPage() {
       copies,
       printType,
       deliveryLocation: enrichedLocation,
+      phoneNumber: cleanPhone,
       utr: cleanUtr,
       collegeId: user.collegeId,
       expectedDelivery: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
@@ -389,6 +405,29 @@ export default function PrintStationPage() {
                         </button>
                       ))}
                     </div>
+                  </div>
+
+                  {/* Contextual Phone Number Input for Delivery Updates */}
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5 flex items-center justify-between">
+                      <span>Mobile Number (Required for delivery updates) *</span>
+                      <span className="text-[10px] text-teal-600 dark:text-teal-400 font-semibold lowercase">10 digits</span>
+                    </label>
+                    <div className="relative">
+                      <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                      <input
+                        type="tel"
+                        required
+                        maxLength={10}
+                        placeholder="e.g. 9876543210 (10-digit phone number)"
+                        value={phoneNumber}
+                        onChange={(e) => setPhoneNumber(e.target.value.replace(/\D/g, ""))}
+                        className="w-full pl-10 pr-3.5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 font-medium font-mono"
+                      />
+                    </div>
+                    <p className="text-[10px] text-slate-400 mt-1">
+                      Our campus delivery runner will SMS or call you upon arrival.
+                    </p>
                   </div>
                 </div>
 
