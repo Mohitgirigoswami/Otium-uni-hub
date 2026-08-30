@@ -20,6 +20,25 @@ const nextConfig = {
       },
     ],
   },
+  async redirects() {
+    return [
+      {
+        source: '/print',
+        destination: '/print-station',
+        permanent: true,
+      },
+      {
+        source: '/whisper',
+        destination: '/incognito',
+        permanent: true,
+      },
+      {
+        source: '/home',
+        destination: '/dashboard',
+        permanent: true,
+      },
+    ];
+  },
 };
 
 export default nextConfig;

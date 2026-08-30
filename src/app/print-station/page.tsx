@@ -530,7 +530,9 @@ export default function PrintStationPage() {
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
                           <p className="text-xs font-bold text-slate-900 dark:text-white truncate max-w-[180px]">
-                            {order.fileName}
+                            {order.fileName && !order.fileName.startsWith("cmt")
+                              ? order.fileName
+                              : `Print Job #${order.id.slice(-4).toUpperCase()}`}
                           </p>
                           <p className="text-[10px] text-slate-400">
                             {formatDate(order.createdAt)}
@@ -543,6 +545,8 @@ export default function PrintStationPage() {
                               ? "success"
                               : order.status === "PRINTING" || order.status === "OUT_FOR_DELIVERY"
                               ? "brand"
+                              : order.status === "REJECTED"
+                              ? "danger"
                               : "warning"
                           }
                           size="sm"
