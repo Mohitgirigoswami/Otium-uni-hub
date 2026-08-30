@@ -44,7 +44,7 @@ export function Footer() {
               </li>
               <li>
                 <Link href="/print-station" className="hover:text-brand-500 transition-colors">
-                  Hostel Cloud Print Station
+                  Campus Print Station
                 </Link>
               </li>
               <li>

@@ -182,10 +182,10 @@ export default function AdminPrintQueuePage() {
         <div>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white flex items-center gap-2.5">
             <Printer className="w-7 h-7 text-amber-500" />
-            <span>Hostel Print Fulfillment & Verification Hub</span>
+            <span>Campus Print Fulfillment & Verification Hub</span>
           </h1>
           <p className="text-xs sm:text-sm text-slate-400 mt-1">
-            Verify UPI payment UTRs, open Google Drive documents, and manage express print dispatch across campus hostels.
+            Verify UPI payment UTRs, open Google Drive documents, and manage express print dispatch anywhere across campus.
           </p>
         </div>
 
@@ -303,7 +303,7 @@ export default function AdminPrintQueuePage() {
           <p className="text-2xl font-black text-slate-900 dark:text-white mt-1">
             {outForDeliveryCount}
           </p>
-          <p className="text-[10px] text-slate-400 mt-0.5">Dispatched to hostels</p>
+          <p className="text-[10px] text-slate-400 mt-0.5">Dispatched to campus</p>
         </GlassCard>
 
         <GlassCard className="p-4 border-emerald-500/20">

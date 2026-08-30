@@ -229,7 +229,7 @@ export default function ProfilePage() {
             <p className="text-2xl font-black text-slate-900 dark:text-white mt-1">
               {statsData.activePrintOrders}
             </p>
-            <p className="text-[10px] text-slate-400 mt-0.5">Hostel queue jobs</p>
+            <p className="text-[10px] text-slate-400 mt-0.5">Campus queue jobs</p>
           </GlassCard>
 
           <GlassCard className="p-4 border-teal-500/20">

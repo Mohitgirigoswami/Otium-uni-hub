@@ -224,7 +224,7 @@ export default function DashboardPage() {
               </div>
               <div className="flex items-center justify-between mb-1">
                 <h3 className="text-base font-bold text-slate-900 dark:text-white group-hover:text-teal-500 transition-colors">
-                  Hostel Cloud Print
+                  Campus Print Station
                 </h3>
                 <ArrowRight className="w-4 h-4 text-slate-400 group-hover:translate-x-1 transition-transform" />
               </div>

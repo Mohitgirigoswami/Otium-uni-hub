@@ -26,7 +26,7 @@ export default function AdminOverviewPage() {
 
   const adminModules = [
     {
-      title: "Hostel Cloud Print Station",
+      title: "Campus Print Station",
       desc: "Live print queues, Google Drive PDF viewer, UTR verification, dispatch tracking.",
       href: "/admin/print",
       icon: Printer,

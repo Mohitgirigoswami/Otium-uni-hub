@@ -31,7 +31,7 @@ export default function LandingPage() {
 
   const FAQS = [
     {
-      q: "How does the Hostel Cloud Print Station work?",
+      q: "How does the Campus Cloud Print Station work?",
       a: "Upload your documents directly from your phone or laptop. Our server automatically counts exact pages and computes the lowest double-sided rate. Once paid via locked UPI QR, our print managers process and deliver the physical copies directly anywhere in campus with next-day delivery.",
     },
     {
@@ -178,7 +178,7 @@ export default function LandingPage() {
                 Next-Day Delivery
               </Badge>
               <h3 className="text-xl font-bold text-white group-hover:text-teal-400 transition-colors">
-                Hostel Print Station
+                Campus Print Station
               </h3>
               <p className="text-xs text-slate-300 leading-relaxed">
                 Direct PDF uploads with instant automated page detection. Best duplex rates and next-day delivery anywhere in campus.

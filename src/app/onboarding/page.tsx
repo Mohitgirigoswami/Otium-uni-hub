@@ -88,7 +88,7 @@ export default function OnboardingPage() {
             Select Your University Campus
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 max-w-md mx-auto">
-            Otium customizes your Marketplace listings, Gig bounties, hostel print queues, and campus confessions to your exact university.
+            Otium customizes your Marketplace listings, Gig bounties, campus print queues, and campus confessions to your exact university.
           </p>
         </div>
 

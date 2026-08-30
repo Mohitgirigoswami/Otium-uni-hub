@@ -105,7 +105,7 @@ export default function SupportPage() {
               Support, Bug Reports & Appeals
             </h1>
             <p className="text-sm text-slate-300 max-w-xl leading-relaxed">
-              Have an issue with an escrow gig, hostel print order, or need to report bad behavior? Our campus moderators are here to help.
+              Have an issue with an escrow gig, campus print order, or need to report bad behavior? Our campus moderators are here to help.
             </p>
           </div>
         </div>

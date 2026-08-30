@@ -50,7 +50,7 @@ export function PrintStatusEmail({
     statusBg = "#ecfdf5";
     previewText = `Great news! Your print job for ${documentName} is now printing.`;
   } else if (isOutForDelivery) {
-    statusTitle = "Dispatched for Hostel Delivery 🚚";
+    statusTitle = "Dispatched for Campus Delivery 🚚";
     statusColor = "#7c3aed"; // Purple
     statusBg = "#f5f3ff";
     previewText = `Your print job for ${documentName} is out for delivery.`;
@@ -70,7 +70,7 @@ export function PrintStatusEmail({
           {/* Header Branding */}
           <Section style={headerStyle}>
             <Text style={logoTextStyle}>OTIUM UNI HUB</Text>
-            <Text style={subHeaderStyle}>Hostel Cloud Print Station</Text>
+            <Text style={subHeaderStyle}>Campus Cloud Print Station</Text>
           </Section>
 
           {/* Status Alert Banner */}
