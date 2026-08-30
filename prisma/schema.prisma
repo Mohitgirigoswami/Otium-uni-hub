@@ -76,6 +76,7 @@ enum PrintStatus {
   DELIVERED
   COMPLETED
   REJECTED
+  ISSUE_REPORTED
 }
 
 enum LostAndFoundStatus {

@@ -142,9 +142,12 @@ export default function PrintStationPage() {
     },
   ];
 
-  // Dynamic Cost calculation in Paise & Amount-Locked UPI URL
+  // Dynamic Cost calculation in Paise & Amount-Locked UPI URL with ₹10 Minimum Floor
   const pages = Math.max(1, detectedPages || 1);
-  const totalCostPaise = calculatePrintCostPaise(pages, printType, rates) * copies;
+  const rawCostPaise = calculatePrintCostPaise(pages, printType, rates) * copies;
+  const MINIMUM_ORDER_PAISE = 1000; // ₹10 minimum floor to deter spam/pranks
+  const isMinimumOrderApplied = rawCostPaise < MINIMUM_ORDER_PAISE;
+  const totalCostPaise = Math.max(MINIMUM_ORDER_PAISE, rawCostPaise);
   const totalCostRupees = (totalCostPaise / 100).toFixed(2);
 
   const dynamicUpiDeepLink = generateUpiUrl(
@@ -500,14 +503,23 @@ export default function PrintStationPage() {
                 {/* Cost Summary & Submit */}
                 <div className="pt-4 border-t border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4">
                   <div>
-                    <p className="text-[10px] uppercase font-bold text-slate-400">
-                      Total Order Payable
-                    </p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-[10px] uppercase font-bold text-slate-400">
+                        Total Order Payable
+                      </p>
+                      {isMinimumOrderApplied && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-600 dark:text-amber-400 text-[10px] font-bold">
+                          <AlertCircle className="w-3 h-3" />
+                          <span>Minimum order value of ₹10 applied.</span>
+                        </span>
+                      )}
+                    </div>
                     <p className="text-2xl font-black text-teal-600 dark:text-teal-400">
                       {formatPaiseToRupees(totalCostPaise)}
                     </p>
                     <p className="text-[11px] text-slate-500">
-                      {detectedPages > 0 ? detectedPages : 1} pages × {copies} {copies === 1 ? "copy" : "copies"} @ ₹{(totalCostPaise / (pages * copies) / 100).toFixed(2)} / page
+                      {detectedPages > 0 ? detectedPages : 1} pages × {copies} {copies === 1 ? "copy" : "copies"}
+                      {isMinimumOrderApplied ? " (Calculated: " + formatPaiseToRupees(rawCostPaise) + " → Min ₹10 Floor)" : ` @ ₹${(rawCostPaise / (pages * copies) / 100).toFixed(2)} / page`}
                     </p>
                   </div>
 

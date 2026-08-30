@@ -36,6 +36,7 @@ import {
   AlertCircle,
   Eye,
   X,
+  MessageSquare,
 } from "lucide-react";
 
 export default function AdminPrintQueuePage() {
@@ -150,6 +151,26 @@ export default function AdminPrintQueuePage() {
   const copyToClipboard = (text: string, label: string) => {
     navigator.clipboard.writeText(text);
     toast.success(`${label} copied to clipboard!`);
+  };
+
+  const notifyStudent = (
+    phone: string,
+    orderId: string,
+    name: string,
+    totalPaise: number
+  ) => {
+    const cleanPhone = phone.replace(/\D/g, "").slice(-10);
+    if (!cleanPhone || cleanPhone.length !== 10) {
+      toast.error("No valid 10-digit mobile number on record for this student.");
+      return;
+    }
+    const totalRupees = (totalPaise / 100).toFixed(2);
+    const studentName = name || "Student";
+    const shortId = orderId.slice(-6).toUpperCase();
+    const message = `Hey ${studentName}! 🚀 Your Otium print order #${shortId} is ready for delivery. Please keep ₹${totalRupees} ready.`;
+    const encodedMessage = encodeURIComponent(message);
+    const url = `https://wa.me/91${cleanPhone}?text=${encodedMessage}`;
+    window.open(url, "_blank");
   };
 
   // Filtered orders
@@ -320,7 +341,7 @@ export default function AdminPrintQueuePage() {
       {/* Filter and Search Bar */}
       <GlassCard className="p-4 flex flex-col sm:flex-row items-center justify-between gap-4">
         <div className="flex items-center gap-2 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0">
-          {["ALL", "SUBMITTED", "PRINTING", "OUT_FOR_DELIVERY", "COMPLETED", "REJECTED"].map((st) => (
+          {["ALL", "SUBMITTED", "PRINTING", "OUT_FOR_DELIVERY", "COMPLETED", "REJECTED", "ISSUE_REPORTED"].map((st) => (
             <button
               key={st}
               onClick={() => setStatusFilter(st)}
@@ -514,7 +535,7 @@ export default function AdminPrintQueuePage() {
                               ? "brand"
                               : ord.status === "OUT_FOR_DELIVERY"
                               ? "info"
-                              : ord.status === "REJECTED"
+                              : ord.status === "REJECTED" || ord.status === "ISSUE_REPORTED"
                               ? "danger"
                               : "success"
                           }
@@ -526,90 +547,141 @@ export default function AdminPrintQueuePage() {
 
                       {/* Interactive Fulfillment Actions */}
                       <td className="py-3.5 px-4 text-right">
-                        {/* 1. Submitted State -> Verify & Print OR Reject */}
-                        {ord.status === "SUBMITTED" && (
-                          <div className="inline-flex items-center gap-1.5">
-                            <Button
-                              size="sm"
-                              onClick={() => handleUpdateStatus(ord.id, "PRINTING")}
-                              disabled={statusUpdatingId === ord.id}
-                              className="bg-blue-600 hover:bg-blue-500 text-xs font-bold"
-                              leftIcon={<Printer className="w-3.5 h-3.5" />}
-                            >
-                              Verify & Print
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="danger"
-                              onClick={() => {
-                                setRejectingOrderId(ord.id);
-                                setRejectingOrderName(ord.fileName);
-                              }}
-                              disabled={statusUpdatingId === ord.id}
-                              className="text-xs font-bold"
-                              leftIcon={<XCircle className="w-3.5 h-3.5" />}
-                            >
-                              Reject
-                            </Button>
-                          </div>
-                        )}
+                        {(() => {
+                          const studentPhone = ord.user?.phone || ord.deliveryLocation?.match(/Phone:\s*(\d{10})/)?.[1] || null;
+                          return (
+                            <div className="flex flex-col items-end gap-2">
+                              {/* Primary Lifecycle State Actions */}
+                              <div className="inline-flex items-center gap-1.5">
+                                {/* 1. Submitted State -> Verify & Print OR Reject */}
+                                {ord.status === "SUBMITTED" && (
+                                  <>
+                                    <Button
+                                      size="sm"
+                                      onClick={() => handleUpdateStatus(ord.id, "PRINTING")}
+                                      disabled={statusUpdatingId === ord.id}
+                                      className="bg-blue-600 hover:bg-blue-500 text-xs font-bold"
+                                      leftIcon={<Printer className="w-3.5 h-3.5" />}
+                                    >
+                                      Verify & Print
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="danger"
+                                      onClick={() => {
+                                        setRejectingOrderId(ord.id);
+                                        setRejectingOrderName(ord.fileName);
+                                      }}
+                                      disabled={statusUpdatingId === ord.id}
+                                      className="text-xs font-bold"
+                                      leftIcon={<XCircle className="w-3.5 h-3.5" />}
+                                    >
+                                      Reject
+                                    </Button>
+                                  </>
+                                )}
 
-                        {/* 2. Printing State -> Mark Dispatched OR Reject */}
-                        {ord.status === "PRINTING" && (
-                          <div className="inline-flex items-center gap-1.5">
-                            <Button
-                              size="sm"
-                              onClick={() => handleUpdateStatus(ord.id, "OUT_FOR_DELIVERY")}
-                              disabled={statusUpdatingId === ord.id}
-                              className="bg-purple-600 hover:bg-purple-500 text-xs font-bold"
-                              leftIcon={<Truck className="w-3.5 h-3.5" />}
-                            >
-                              Dispatch
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => {
-                                setRejectingOrderId(ord.id);
-                                setRejectingOrderName(ord.fileName);
-                              }}
-                              disabled={statusUpdatingId === ord.id}
-                              className="text-rose-500 hover:bg-rose-500/10 text-xs font-bold"
-                              leftIcon={<XCircle className="w-3.5 h-3.5" />}
-                            >
-                              Reject
-                            </Button>
-                          </div>
-                        )}
+                                {/* 2. Printing State -> Mark Dispatched OR Reject */}
+                                {ord.status === "PRINTING" && (
+                                  <>
+                                    <Button
+                                      size="sm"
+                                      onClick={() => handleUpdateStatus(ord.id, "OUT_FOR_DELIVERY")}
+                                      disabled={statusUpdatingId === ord.id}
+                                      className="bg-purple-600 hover:bg-purple-500 text-xs font-bold"
+                                      leftIcon={<Truck className="w-3.5 h-3.5" />}
+                                    >
+                                      Dispatch
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      onClick={() => {
+                                        setRejectingOrderId(ord.id);
+                                        setRejectingOrderName(ord.fileName);
+                                      }}
+                                      disabled={statusUpdatingId === ord.id}
+                                      className="text-rose-500 hover:bg-rose-500/10 text-xs font-bold"
+                                      leftIcon={<XCircle className="w-3.5 h-3.5" />}
+                                    >
+                                      Reject
+                                    </Button>
+                                  </>
+                                )}
 
-                        {/* 3. Out for Delivery -> Mark Delivered */}
-                        {ord.status === "OUT_FOR_DELIVERY" && (
-                          <Button
-                            size="sm"
-                            onClick={() => handleUpdateStatus(ord.id, "COMPLETED")}
-                            disabled={statusUpdatingId === ord.id}
-                            className="bg-emerald-600 hover:bg-emerald-500 text-xs font-bold"
-                            leftIcon={<CheckCircle2 className="w-3.5 h-3.5" />}
-                          >
-                            Mark Delivered
-                          </Button>
-                        )}
+                                {/* 3. Out for Delivery -> Mark Delivered */}
+                                {ord.status === "OUT_FOR_DELIVERY" && (
+                                  <Button
+                                    size="sm"
+                                    onClick={() => handleUpdateStatus(ord.id, "COMPLETED")}
+                                    disabled={statusUpdatingId === ord.id}
+                                    className="bg-emerald-600 hover:bg-emerald-500 text-xs font-bold"
+                                    leftIcon={<CheckCircle2 className="w-3.5 h-3.5" />}
+                                  >
+                                    Mark Delivered
+                                  </Button>
+                                )}
 
-                        {/* 4. Completed State */}
-                        {(ord.status === "COMPLETED" || ord.status === "DELIVERED") && (
-                          <span className="text-[11px] font-bold text-emerald-500 inline-flex items-center gap-1">
-                            <CheckCircle2 className="w-3.5 h-3.5" />
-                            <span>Fulfilled</span>
-                          </span>
-                        )}
+                                {/* 4. Completed State */}
+                                {(ord.status === "COMPLETED" || ord.status === "DELIVERED") && (
+                                  <span className="text-[11px] font-bold text-emerald-500 inline-flex items-center gap-1">
+                                    <CheckCircle2 className="w-3.5 h-3.5" />
+                                    <span>Fulfilled</span>
+                                  </span>
+                                )}
 
-                        {/* 5. Rejected State */}
-                        {ord.status === "REJECTED" && (
-                          <span className="text-[11px] font-bold text-rose-500 inline-flex items-center gap-1">
-                            <XCircle className="w-3.5 h-3.5" />
-                            <span>Rejected</span>
-                          </span>
-                        )}
+                                {/* 5. Rejected State */}
+                                {ord.status === "REJECTED" && (
+                                  <span className="text-[11px] font-bold text-rose-500 inline-flex items-center gap-1">
+                                    <XCircle className="w-3.5 h-3.5" />
+                                    <span>Rejected</span>
+                                  </span>
+                                )}
+
+                                {/* 6. Issue Reported State */}
+                                {ord.status === "ISSUE_REPORTED" && (
+                                  <span className="text-[11px] font-bold text-rose-500 inline-flex items-center gap-1 bg-rose-500/10 px-2 py-0.5 rounded-lg border border-rose-500/30">
+                                    <AlertCircle className="w-3.5 h-3.5" />
+                                    <span>Issue Reported</span>
+                                  </span>
+                                )}
+                              </div>
+
+                              {/* WhatsApp Deep Link Notification & Issue Flagging */}
+                              <div className="inline-flex items-center gap-1.5">
+                                {studentPhone ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => notifyStudent(studentPhone, ord.id, ord.user?.name, ord.totalCost)}
+                                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#25D366] hover:bg-[#20ba5c] text-white font-bold text-xs shadow-sm transition-colors cursor-pointer"
+                                    title={`Send WhatsApp message to +91 ${studentPhone}`}
+                                  >
+                                    <MessageSquare className="w-3 h-3" />
+                                    <span>Notify via WhatsApp</span>
+                                  </button>
+                                ) : (
+                                  <span
+                                    className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-200 dark:bg-slate-800 text-slate-400 font-bold text-xs cursor-not-allowed opacity-75"
+                                    title="No phone number provided on profile or checkout"
+                                  >
+                                    <Phone className="w-3 h-3" />
+                                    <span>No Phone</span>
+                                  </span>
+                                )}
+
+                                <button
+                                  type="button"
+                                  onClick={() => handleUpdateStatus(ord.id, "ISSUE_REPORTED", "Issue flagged by campus operator")}
+                                  disabled={statusUpdatingId === ord.id || ord.status === "ISSUE_REPORTED"}
+                                  className="px-2 py-1 rounded-lg bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/30 text-xs font-bold transition-colors disabled:opacity-50 cursor-pointer"
+                                  title="Flag issue with this print order"
+                                >
+                                  Flag Issue
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })()}
                       </td>
                     </tr>
                   );

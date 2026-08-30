@@ -14,7 +14,8 @@ export const transporter = nodemailer.createTransport({
 export interface SendEmailOptions {
   to: string;
   subject: string;
-  html: string;
+  html?: string;
+  text?: string;
   from?: string;
 }
 
@@ -25,6 +26,7 @@ export async function sendEmail({
   to,
   subject,
   html,
+  text,
   from = process.env.EMAIL_USER || "Otium Uni Hub <support@otium.edu>",
 }: SendEmailOptions): Promise<{ success: boolean; messageId?: string; error?: string }> {
   try {
@@ -40,6 +42,7 @@ export async function sendEmail({
       to,
       subject,
       html,
+      text,
     });
 
     console.log(`[Nodemailer] Email sent successfully to ${to}. MessageId: ${info.messageId}`);

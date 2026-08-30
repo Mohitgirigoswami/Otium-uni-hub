@@ -125,7 +125,7 @@ export async function getAllPrintOrdersAdmin(
  */
 export async function updatePrintOrderStatus(data: {
   orderId: string;
-  status: "SUBMITTED" | "PRINTING" | "OUT_FOR_DELIVERY" | "READY" | "DELIVERED" | "COMPLETED" | "REJECTED";
+  status: "SUBMITTED" | "PRINTING" | "OUT_FOR_DELIVERY" | "READY" | "DELIVERED" | "COMPLETED" | "REJECTED" | "ISSUE_REPORTED";
   adminUserId: string;
   rejectionReason?: string;
 }): Promise<ActionResponse<any>> {
@@ -134,7 +134,8 @@ export async function updatePrintOrderStatus(data: {
     if (
       !session?.user ||
       (session.user.role !== "SUPER_ADMIN" &&
-        session.user.role !== "PRINT_MANAGER")
+        session.user.role !== "PRINT_MANAGER" &&
+        session.user.role !== "CAMPUS_MODERATOR")
     ) {
       return { success: false, error: "UNAUTHORIZED: Print Manager or Super Admin role required." };
     }
@@ -157,6 +158,8 @@ export async function updatePrintOrderStatus(data: {
     let updatedLocation = existing.deliveryLocation;
     if (data.status === "REJECTED" && data.rejectionReason) {
       updatedLocation = `${existing.deliveryLocation} | REJECTED: ${data.rejectionReason.trim()}`;
+    } else if (data.status === "ISSUE_REPORTED" && data.rejectionReason) {
+      updatedLocation = `${existing.deliveryLocation} | ISSUE: ${data.rejectionReason.trim()}`;
     }
 
     const updated = await prisma.printOrder.update({
