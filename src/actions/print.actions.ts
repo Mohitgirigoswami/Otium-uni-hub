@@ -70,6 +70,7 @@ export async function createPrintOrder(data: {
   copies?: number;
   printType: PrintTypeEnum;
   deliveryLocation: string;
+  deliverySlot?: string;
   utr?: string;
   expectedDelivery?: string;
   collegeId?: string | null;
@@ -153,6 +154,7 @@ export async function createPrintOrder(data: {
           pageCount: validPageCount,
           printType: data.printType as any,
           deliveryLocation: enrichedLocation,
+          deliverySlot: data.deliverySlot?.trim() || null,
           expectedDelivery: data.expectedDelivery
             ? new Date(data.expectedDelivery)
             : new Date(Date.now() + 24 * 60 * 60 * 1000),

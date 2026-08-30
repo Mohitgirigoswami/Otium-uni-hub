@@ -357,6 +357,7 @@ model PrintOrder {
   copies           Int         @default(1)
   printType        PrintType
   deliveryLocation String
+  deliverySlot     String?     // e.g. "Morning Drop (8:30 AM - 9:00 AM)" | "Lunch Drop (12:50 PM - 1:30 PM)"
   expectedDelivery DateTime
   totalCost        Int         // Strictly stored in Paise
   status           PrintStatus @default(SUBMITTED)

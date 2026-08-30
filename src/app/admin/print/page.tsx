@@ -61,6 +61,9 @@ export default function AdminPrintQueuePage() {
   const [savingRates, setSavingRates] = useState(false);
   const [loadingRates, setLoadingRates] = useState(true);
 
+  // Delivery Slot Batch Filter
+  const [slotFilter, setSlotFilter] = useState<"ALL" | "MORNING" | "LUNCH">("ALL");
+
   const fetchOrders = async () => {
     if (!user?.id) return;
     setLoading(true);
@@ -183,7 +186,11 @@ export default function AdminPrintQueuePage() {
       ord.user?.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       ord.deliveryLocation?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       ord.utr?.includes(searchQuery);
-    return matchesStatus && matchesSearch;
+    const matchesSlot =
+      slotFilter === "ALL" ||
+      (slotFilter === "MORNING" && ord.deliverySlot?.toLowerCase().includes("morning")) ||
+      (slotFilter === "LUNCH" && ord.deliverySlot?.toLowerCase().includes("lunch"));
+    return matchesStatus && matchesSearch && matchesSlot;
   });
 
   // Metrics
@@ -337,6 +344,43 @@ export default function AdminPrintQueuePage() {
           <p className="text-[10px] text-slate-400 mt-0.5">Successfully handed over</p>
         </GlassCard>
       </div>
+
+      {/* Batch Delivery Slot Filter Toggle */}
+      <GlassCard className="p-4">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+          <div className="flex items-center gap-2 shrink-0">
+            <Clock className="w-4 h-4 text-teal-500" />
+            <span className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">Batch Print by Slot:</span>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            {([
+              { key: "ALL",     label: "All Slots",     emoji: "📋" },
+              { key: "MORNING", label: "Morning Drop",   emoji: "🌅", time: "8:30–9:00 AM" },
+              { key: "LUNCH",   label: "Lunch Drop",     emoji: "🥪", time: "12:50–1:30 PM" },
+            ] as const).map((s) => (
+              <button
+                key={s.key}
+                type="button"
+                onClick={() => setSlotFilter(s.key)}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap border ${
+                  slotFilter === s.key
+                    ? "bg-teal-600 border-teal-600 text-white shadow-md shadow-teal-500/25"
+                    : "bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500 hover:border-teal-400 hover:text-teal-400"
+                }`}
+              >
+                <span>{s.emoji}</span>
+                <span>{s.label}</span>
+                {"time" in s && <span className="opacity-70">({s.time})</span>}
+              </button>
+            ))}
+          </div>
+          {slotFilter !== "ALL" && (
+            <span className="ml-auto text-[11px] text-slate-400">
+              Showing {filteredOrders.length} order{filteredOrders.length !== 1 ? "s" : ""} for this slot
+            </span>
+          )}
+        </div>
+      </GlassCard>
 
       {/* Filter and Search Bar */}
       <GlassCard className="p-4 flex flex-col sm:flex-row items-center justify-between gap-4">
@@ -517,6 +561,18 @@ export default function AdminPrintQueuePage() {
                           <p className="text-[10px] text-slate-400">
                             Ordered: {formatDate(ord.createdAt)}
                           </p>
+
+                          {/* Delivery Slot Badge */}
+                          {ord.deliverySlot && (
+                            <div className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg border text-[10px] font-bold mt-0.5 ${
+                              ord.deliverySlot.toLowerCase().includes("morning")
+                                ? "bg-amber-500/10 border-amber-400/40 text-amber-600 dark:text-amber-400"
+                                : "bg-teal-500/10 border-teal-400/40 text-teal-600 dark:text-teal-400"
+                            }`}>
+                              <span>{ord.deliverySlot.toLowerCase().includes("morning") ? "🌅" : "🥪"}</span>
+                              <span>{ord.deliverySlot}</span>
+                            </div>
+                          )}
                         </div>
                       </td>
 

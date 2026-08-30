@@ -59,6 +59,11 @@ export default function PrintStationPage() {
     doubleSidedRupees: 2.0,
   });
 
+  const DELIVERY_WINDOWS = [
+    { id: "morning", label: "Morning Drop", time: "8:30 AM – 9:00 AM", emoji: "🌅" },
+    { id: "lunch",   label: "Lunch Drop",   time: "12:50 PM – 1:30 PM", emoji: "🥪" },
+  ];
+
   // Form states
   const [fileName, setFileName] = useState("");
   const [fileUrl, setFileUrl] = useState("");
@@ -67,10 +72,23 @@ export default function PrintStationPage() {
   const [copies, setCopies] = useState<number>(1);
   const [printType, setPrintType] = useState<PrintTypeEnum>("BW_DOUBLE");
   const [deliveryLocation, setDeliveryLocation] = useState("");
+  const [deliverySlot, setDeliverySlot] = useState("");
   const [phoneNumber, setPhoneNumber] = useState(user?.phone || "");
   const [utrNumber, setUtrNumber] = useState("");
   const [isUploadingMedia, setIsUploadingMedia] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // 9 PM cut-off warning
+  const [isLateNightOrder, setIsLateNightOrder] = useState(false);
+  useEffect(() => {
+    const checkTime = () => {
+      const h = new Date().getHours();
+      setIsLateNightOrder(h >= 21 || h < 6);
+    };
+    checkTime();
+    const timer = setInterval(checkTime, 60_000);
+    return () => clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     if (user?.phone && !phoneNumber) {
@@ -184,6 +202,11 @@ export default function PrintStationPage() {
       return;
     }
 
+    if (!deliverySlot) {
+      toast.error("Please select a delivery window (Morning or Lunch drop).");
+      return;
+    }
+
     const cleanPhone = phoneNumber.trim().replace(/\D/g, "");
     if (!cleanPhone || cleanPhone.length !== 10) {
       toast.error("Please enter a valid 10-digit mobile number for delivery updates.");
@@ -208,6 +231,7 @@ export default function PrintStationPage() {
       copies,
       printType,
       deliveryLocation: enrichedLocation,
+      deliverySlot,
       phoneNumber: cleanPhone,
       utr: cleanUtr,
       collegeId: user.collegeId,
@@ -225,6 +249,7 @@ export default function PrintStationPage() {
       setDetectedPages(0);
       setCopies(1);
       setUtrNumber("");
+      setDeliverySlot("");
       fetchOrders();
     }
   };
@@ -500,6 +525,57 @@ export default function PrintStationPage() {
                   </div>
                 </div>
 
+                {/* Step 5: Delivery Window Selection */}
+                <div className="space-y-3">
+                  <label className="block text-sm font-bold text-slate-900 dark:text-white">
+                    <span className="inline-flex items-center gap-1.5">
+                      <Clock className="w-4 h-4 text-teal-500" />
+                      Select Delivery Window <span className="text-rose-500">*</span>
+                    </span>
+                  </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {DELIVERY_WINDOWS.map((w) => {
+                      const slotLabel = `${w.label} (${w.time})`;
+                      const isSelected = deliverySlot === slotLabel;
+                      return (
+                        <button
+                          key={w.id}
+                          type="button"
+                          onClick={() => setDeliverySlot(slotLabel)}
+                          className={`flex items-center gap-3 p-4 rounded-xl border-2 text-left transition-all ${
+                            isSelected
+                              ? "border-teal-500 bg-teal-500/10 dark:bg-teal-500/15"
+                              : "border-slate-200 dark:border-slate-700 hover:border-teal-400/60 bg-white dark:bg-slate-900/60"
+                          }`}
+                        >
+                          <span className="text-2xl leading-none shrink-0">{w.emoji}</span>
+                          <div className="min-w-0">
+                            <p className={`font-bold text-sm ${isSelected ? "text-teal-700 dark:text-teal-300" : "text-slate-800 dark:text-slate-200"}`}>
+                              {w.label}
+                            </p>
+                            <p className={`text-xs mt-0.5 ${isSelected ? "text-teal-600 dark:text-teal-400" : "text-slate-500"}`}>
+                              {w.time}
+                            </p>
+                          </div>
+                          {isSelected && (
+                            <Check className="w-4 h-4 text-teal-500 ml-auto shrink-0" />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* 9 PM Late-Night Warning Banner */}
+                {isLateNightOrder && (
+                  <div className="flex items-start gap-3 p-4 rounded-xl bg-amber-500/10 border border-amber-400/40 text-amber-700 dark:text-amber-300">
+                    <AlertCircle className="w-5 h-5 mt-0.5 shrink-0" />
+                    <p className="text-sm font-semibold leading-snug">
+                      ⚠️ Orders placed after 9:00 PM may not be processed until the following evening. Plan accordingly.
+                    </p>
+                  </div>
+                )}
+
                 {/* Cost Summary & Submit */}
                 <div className="pt-4 border-t border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4">
                   <div>
@@ -521,10 +597,15 @@ export default function PrintStationPage() {
                       {detectedPages > 0 ? detectedPages : 1} pages × {copies} {copies === 1 ? "copy" : "copies"}
                       {isMinimumOrderApplied ? " (Calculated: " + formatPaiseToRupees(rawCostPaise) + " → Min ₹10 Floor)" : ` @ ₹${(rawCostPaise / (pages * copies) / 100).toFixed(2)} / page`}
                     </p>
+                    {deliverySlot && (
+                      <p className="text-[11px] text-teal-600 dark:text-teal-400 font-semibold mt-0.5">
+                        📦 {deliverySlot}
+                      </p>
+                    )}
                   </div>
 
                   <SubmitButton
-                    disabled={isUploadingMedia || isSubmitting || (!fileUrl && !driveFileId) || utrNumber.length !== 12 || detectedPages < 1}
+                    disabled={isUploadingMedia || isSubmitting || (!fileUrl && !driveFileId) || utrNumber.length !== 12 || detectedPages < 1 || !deliverySlot}
                     isSubmitting={isSubmitting || isUploadingMedia}
                     loadingText={isUploadingMedia ? "Streaming document to Google Drive..." : "Submitting Print Order..."}
                     size="lg"
