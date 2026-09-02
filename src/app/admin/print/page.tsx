@@ -6,6 +6,7 @@ import {
   getAllPrintOrdersAdmin,
   updatePrintOrderStatus,
   getAdminDownloadUrl,
+  deletePrintOrderPdf,
   getPrintSettingsAdmin,
   updatePrintRatesAction,
 } from "@/actions/admin.actions";
@@ -37,6 +38,7 @@ import {
   Eye,
   X,
   MessageSquare,
+  Trash2,
 } from "lucide-react";
 
 export default function AdminPrintQueuePage() {
@@ -63,6 +65,9 @@ export default function AdminPrintQueuePage() {
 
   // Delivery Slot Batch Filter
   const [slotFilter, setSlotFilter] = useState<"ALL" | "MORNING" | "LUNCH">("ALL");
+
+  // PDF Deletion State
+  const [deletingPdfId, setDeletingPdfId] = useState<string | null>(null);
 
   const fetchOrders = async () => {
     if (!user?.id) return;
@@ -174,6 +179,34 @@ export default function AdminPrintQueuePage() {
     const encodedMessage = encodeURIComponent(message);
     const url = `https://wa.me/91${cleanPhone}?text=${encodedMessage}`;
     window.open(url, "_blank");
+  };
+
+  const handleDeletePdf = async (
+    orderId: string,
+    fileUrl?: string | null,
+    driveFileId?: string | null
+  ) => {
+    if (!user?.id) return;
+    const confirmed = window.confirm(
+      "⚠️ Are you sure? This will permanently delete the PDF from storage."
+    );
+    if (!confirmed) return;
+
+    setDeletingPdfId(orderId);
+    const res = await deletePrintOrderPdf({
+      orderId,
+      adminUserId: user.id,
+      fileUrl,
+      driveFileId,
+    });
+    setDeletingPdfId(null);
+
+    if (res?.success) {
+      toast.success("PDF deleted from storage successfully.");
+      fetchOrders();
+    } else {
+      toast.error(res?.error || "Failed to delete PDF from storage.");
+    }
   };
 
   // Filtered orders
@@ -490,7 +523,7 @@ export default function AdminPrintQueuePage() {
 
                       {/* Document & Print Viewer */}
                       <td className="py-3.5 px-4">
-                        <div className="space-y-1">
+                        <div className="space-y-1.5">
                           <p
                             className="font-bold text-slate-800 dark:text-slate-200 truncate max-w-[200px]"
                             title={ord.fileName}
@@ -505,30 +538,51 @@ export default function AdminPrintQueuePage() {
                             <span>{ord.printType?.replace(/_/g, " ")}</span>
                           </div>
 
-                          {/* Direct Document View & Print Buttons */}
-                          {documentViewLink && (
-                            <div className="flex items-center gap-2 pt-0.5">
-                              <button
-                                onClick={() => {
-                                  setPreviewPdfUrl(documentViewLink);
-                                  setPreviewPdfName(ord.fileName);
-                                }}
-                                className="inline-flex items-center gap-1 text-[11px] font-bold text-teal-600 dark:text-teal-400 hover:underline"
-                              >
-                                <Eye className="w-3 h-3" />
-                                <span>View & Print</span>
-                              </button>
-                              <span className="text-slate-500">•</span>
-                              <a
-                                href={documentViewLink}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="text-slate-400 hover:text-slate-200 inline-flex items-center gap-0.5 text-[10px]"
-                                title="Open in new tab"
-                              >
-                                <span>Tab</span>
-                                <ExternalLink className="w-2.5 h-2.5" />
-                              </a>
+                          {/* Direct Document View & Print Buttons or Deleted State */}
+                          {documentViewLink ? (
+                            <div className="space-y-1.5 pt-0.5">
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => {
+                                    setPreviewPdfUrl(documentViewLink);
+                                    setPreviewPdfName(ord.fileName);
+                                  }}
+                                  className="inline-flex items-center gap-1 text-[11px] font-bold text-teal-600 dark:text-teal-400 hover:underline cursor-pointer"
+                                >
+                                  <Eye className="w-3 h-3" />
+                                  <span>View & Print</span>
+                                </button>
+                                <span className="text-slate-500">•</span>
+                                <a
+                                  href={documentViewLink}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-slate-400 hover:text-slate-200 inline-flex items-center gap-0.5 text-[10px]"
+                                  title="Open in new tab"
+                                >
+                                  <span>Tab</span>
+                                  <ExternalLink className="w-2.5 h-2.5" />
+                                </a>
+                              </div>
+
+                              {/* Prominent Red Danger Button to Delete PDF */}
+                              <div>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeletePdf(ord.id, ord.fileUrl, ord.driveFileId)}
+                                  disabled={deletingPdfId === ord.id}
+                                  className="inline-flex items-center gap-1.5 bg-red-600 hover:bg-red-700 text-white font-bold text-xs rounded-md px-3 py-1.5 shadow-sm transition-colors focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-50 cursor-pointer"
+                                  title="Permanently delete PDF from storage"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                  <span>{deletingPdfId === ord.id ? "Deleting..." : "🗑️ Delete PDF"}</span>
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-slate-100 dark:bg-slate-800 text-[10px] text-slate-500 font-semibold italic border border-slate-200 dark:border-slate-700 mt-1">
+                              <Trash2 className="w-3 h-3 text-slate-400" />
+                              <span>PDF Deleted from Storage</span>
                             </div>
                           )}
                         </div>
@@ -794,6 +848,31 @@ export default function AdminPrintQueuePage() {
                   <span>Open Tab</span>
                   <ExternalLink className="w-3 h-3" />
                 </a>
+
+                {/* Delete PDF Button in Modal */}
+                {(() => {
+                  const activeOrder = orders.find(
+                    (o) =>
+                      o.fileName === previewPdfName ||
+                      o.fileUrl === previewPdfUrl ||
+                      (o.driveFileId && previewPdfUrl?.includes(o.driveFileId))
+                  );
+                  if (!activeOrder) return null;
+                  return (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleDeletePdf(activeOrder.id, activeOrder.fileUrl, activeOrder.driveFileId);
+                        setPreviewPdfUrl(null);
+                      }}
+                      disabled={deletingPdfId === activeOrder.id}
+                      className="px-3 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold text-xs transition-colors inline-flex items-center gap-1.5 shadow-sm disabled:opacity-50"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>{deletingPdfId === activeOrder.id ? "Deleting..." : "🗑️ Delete PDF"}</span>
+                    </button>
+                  );
+                })()}
 
                 <button
                   onClick={() => setPreviewPdfUrl(null)}

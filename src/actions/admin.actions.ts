@@ -321,7 +321,118 @@ export async function getAdminDownloadUrl(data: {
 }
 
 /**
- * 4. Update Dynamic Print Rates in Paise (₹2.50 -> 250 paise)
+ * 4. Permanently Delete Print Order PDF from Supabase Storage and Update Order Record
+ */
+export async function deletePrintOrderPdf(data: {
+  orderId: string;
+  adminUserId: string;
+  fileUrl?: string | null;
+  filePath?: string | null;
+  driveFileId?: string | null;
+}): Promise<ActionResponse<{ success: boolean }>> {
+  try {
+    const session = await getServerSession(authOptions);
+    if (
+      !session?.user ||
+      (session.user.role !== "SUPER_ADMIN" &&
+        session.user.role !== "PRINT_MANAGER" &&
+        session.user.role !== "CAMPUS_MODERATOR")
+    ) {
+      return {
+        success: false,
+        error: "Unauthorized access: Print Operator or Super Admin role required.",
+      };
+    }
+
+    const rateCheck = await checkRateLimit(data.adminUserId || session.user.id);
+    if (!rateCheck.success) {
+      return { success: false, error: rateCheck.error };
+    }
+
+    const order = await prisma.printOrder.findUnique({
+      where: { id: data.orderId },
+    });
+
+    if (!order) {
+      return { success: false, error: "Print order not found." };
+    }
+
+    const targetUrlOrPath = data.filePath || data.fileUrl || order.fileUrl;
+
+    // Remove file from Supabase storage bucket if fileUrl/filePath exists
+    if (targetUrlOrPath) {
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+      if (supabaseUrl && serviceRoleKey) {
+        const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
+          auth: { persistSession: false, autoRefreshToken: false },
+        });
+
+        let bucketName = "print-documents";
+        let relativePath = targetUrlOrPath;
+
+        if (relativePath.includes("/print-documents/")) {
+          bucketName = "print-documents";
+          relativePath = relativePath.split("/print-documents/")[1];
+        } else if (relativePath.includes("/documents/")) {
+          bucketName = "documents";
+          relativePath = relativePath.split("/documents/")[1];
+        } else if (relativePath.includes("/print-queue/")) {
+          bucketName = "print-queue";
+          relativePath = relativePath.split("/print-queue/")[1];
+        }
+
+        relativePath = relativePath.split("?")[0];
+
+        try {
+          const { error: removeError } = await supabaseAdmin.storage
+            .from(bucketName)
+            .remove([relativePath]);
+
+          if (removeError) {
+            console.warn(`[Supabase Storage Remove Warning in ${bucketName}]:`, removeError.message);
+            // Attempt fallback bucket removal
+            const altBucket = bucketName === "print-documents" ? "documents" : "print-documents";
+            await supabaseAdmin.storage.from(altBucket).remove([relativePath]);
+          }
+        } catch (storageErr) {
+          console.warn("[Supabase Storage Deletion Warning]:", storageErr);
+        }
+      }
+    }
+
+    // Clear PDF file reference on database record
+    await prisma.printOrder.update({
+      where: { id: data.orderId },
+      data: {
+        fileUrl: null,
+        driveFileId: null,
+      },
+    });
+
+    await logAdminAction(
+      session.user.id,
+      "DELETED_PRINT_PDF",
+      `Deleted PDF storage file for Print Order #${data.orderId.slice(-6).toUpperCase()}`
+    );
+
+    revalidatePath("/admin/print");
+    return {
+      success: true,
+      data: { success: true },
+    };
+  } catch (error: any) {
+    console.error("Error in deletePrintOrderPdf:", error);
+    return {
+      success: false,
+      error: error?.message || "Failed to delete PDF from storage.",
+    };
+  }
+}
+
+/**
+ * 5. Update Dynamic Print Rates in Paise (₹2.50 -> 250 paise)
  */
 export async function updatePrintRatesAction(data: {
   singleSidedRupees: number;
