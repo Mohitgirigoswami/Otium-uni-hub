@@ -1,23 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { createPrintOrder, getPrintOrders } from "@/actions/print.actions";
+import { verifyAuth } from "@/utils/auth";
 
 /**
- * Mobile REST API Bridge: POST /api/print/order
+ * Mobile & Web REST API: POST /api/print/order
  */
 export async function POST(req: NextRequest) {
   try {
+    // 1. Verify JWT Authentication
+    const auth = await verifyAuth(req);
     const body = await req.json();
 
-    let userId = body.userId;
+    let userId = auth.authenticated && auth.user ? auth.user.id : body.userId;
 
-    // Fallback: If mobile client has not logged in yet, look up or assign demo student
+    // If neither JWT nor userId is present, reject
     if (!userId) {
-      const studentUser = await prisma.user.findFirst({
-        where: { role: "STUDENT" },
-        select: { id: true },
-      });
-      userId = studentUser?.id || "mobile-student-demo";
+      return NextResponse.json(
+        { success: false, error: auth.error || "Authentication required to place print orders. Please log in." },
+        { status: 401 }
+      );
     }
 
     const {
@@ -31,7 +33,7 @@ export async function POST(req: NextRequest) {
       deliverySlot,
       phoneNumber,
       utr,
-      collegeId,
+      collegeId = auth.user?.collegeId,
     } = body;
 
     if (!fileName || typeof fileName !== "string") {

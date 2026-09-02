@@ -2,9 +2,10 @@
 
 import React, { useState, Suspense } from "react";
 import { signIn } from "next-auth/react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { Button } from "@/components/ui/Button";
+import { toast } from "sonner";
 import {
   Sparkles,
   ShieldCheck,
@@ -13,21 +14,65 @@ import {
   EyeOff,
   ShoppingBag,
   ArrowRight,
-  GraduationCap,
+  Mail,
+  Lock,
+  Eye,
+  Loader2,
 } from "lucide-react";
 
 function LoginContent() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const callbackUrl = searchParams.get("callbackUrl") || "/";
-  const [isLoading, setIsLoading] = useState(false);
+
+  const [email, setEmail] = useState("student@dtu.ac.in");
+  const [password, setPassword] = useState("password123");
+  const [showPassword, setShowPassword] = useState(false);
+  const [isCredentialLoading, setIsCredentialLoading] = useState(false);
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+
+  // JWT Credential Login Handler
+  const handleCredentialLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email.trim()) {
+      toast.error("Please enter your university email address.");
+      return;
+    }
+
+    setIsCredentialLoading(true);
+
+    try {
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim(), password }),
+      });
+
+      const data = await res.json();
+      setIsCredentialLoading(false);
+
+      if (res.ok && data.success && data.token) {
+        // 1. Store JWT in localStorage
+        localStorage.setItem("otium_jwt_token", data.token);
+
+        toast.success(`Welcome back, ${data.user?.name || "Student"}!`);
+        window.location.href = callbackUrl;
+      } else {
+        toast.error(data.error || "Authentication failed. Please check credentials.");
+      }
+    } catch (err: any) {
+      setIsCredentialLoading(false);
+      toast.error("Network error. Failed to reach authentication server.");
+    }
+  };
 
   const handleGoogleSignIn = async () => {
     try {
-      setIsLoading(true);
+      setIsGoogleLoading(true);
       await signIn("google", { callbackUrl });
     } catch (error) {
       console.error("Sign in failed:", error);
-      setIsLoading(false);
+      setIsGoogleLoading(false);
     }
   };
 
@@ -96,49 +141,103 @@ function LoginContent() {
                   Welcome to Otium
                 </h2>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Sign in with your university Google account to access campus tools
+                  Enter your credentials to access campus tools
                 </p>
+              </div>
+
+              {/* Email & Password Form (Unified JWT Auth) */}
+              <form onSubmit={handleCredentialLogin} className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    University Email / Roll No
+                  </label>
+                  <div className="relative">
+                    <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                    <input
+                      type="text"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="e.g. student@dtu.ac.in"
+                      className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-sm font-semibold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    Password
+                  </label>
+                  <div className="relative">
+                    <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+                    <input
+                      type={showPassword ? "text" : "password"}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="Enter password"
+                      className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-sm font-semibold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-brand-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3.5 top-3 text-slate-400 hover:text-slate-200"
+                    >
+                      <Eye className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+
+                <Button
+                  type="submit"
+                  variant="brand"
+                  size="lg"
+                  isLoading={isCredentialLoading}
+                  className="w-full shadow-lg shadow-brand-500/25"
+                >
+                  Sign In with JWT
+                </Button>
+              </form>
+
+              {/* Divider */}
+              <div className="relative flex py-1 items-center">
+                <div className="flex-grow border-t border-slate-300 dark:border-slate-800"></div>
+                <span className="flex-shrink mx-4 text-[11px] font-bold uppercase text-slate-400">
+                  Or Continue With
+                </span>
+                <div className="flex-grow border-t border-slate-300 dark:border-slate-800"></div>
               </div>
 
               {/* Google Sign-in Action */}
-              <div className="space-y-4 pt-2">
-                <button
-                  onClick={handleGoogleSignIn}
-                  disabled={isLoading}
-                  className="w-full flex items-center justify-center gap-3 px-6 py-3.5 rounded-2xl bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 hover:border-brand-500 dark:hover:border-brand-500 shadow-md hover:shadow-xl transition-all duration-200 text-sm font-bold text-slate-800 dark:text-slate-100 group disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <svg className="w-5 h-5" viewBox="0 0 24 24">
-                    <path
-                      fill="#4285F4"
-                      d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                    />
-                    <path
-                      fill="#34A853"
-                      d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                    />
-                    <path
-                      fill="#FBBC05"
-                      d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
-                    />
-                    <path
-                      fill="#EA4335"
-                      d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
-                    />
-                  </svg>
-                  <span>{isLoading ? "Connecting to Google..." : "Continue with Google"}</span>
-                  <ArrowRight className="w-4 h-4 text-slate-400 group-hover:translate-x-1 group-hover:text-brand-500 transition-all" />
-                </button>
+              <button
+                onClick={handleGoogleSignIn}
+                disabled={isGoogleLoading}
+                className="w-full flex items-center justify-center gap-3 px-6 py-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 hover:border-brand-500 shadow-sm hover:shadow-md transition-all text-xs font-bold text-slate-800 dark:text-slate-100 group disabled:opacity-50"
+              >
+                <svg className="w-4 h-4" viewBox="0 0 24 24">
+                  <path
+                    fill="#4285F4"
+                    d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                  />
+                  <path
+                    fill="#34A853"
+                    d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                  />
+                  <path
+                    fill="#FBBC05"
+                    d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+                  />
+                  <path
+                    fill="#EA4335"
+                    d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+                  />
+                </svg>
+                <span>{isGoogleLoading ? "Connecting..." : "Continue with Google"}</span>
+              </button>
 
+              <div className="pt-2 border-t border-slate-200/80 dark:border-slate-800/80 text-center">
                 <div className="flex items-center gap-2 justify-center text-[11px] text-slate-400">
                   <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
-                  <span>Encrypted university single sign-on & instant access</span>
+                  <span>Stateless 256-bit JWT authentication</span>
                 </div>
-              </div>
-
-              <div className="pt-4 border-t border-slate-200/80 dark:border-slate-800/80 text-center">
-                <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  By continuing, you agree to Otium's Campus Honor Code and Community Guidelines.
-                </p>
               </div>
             </div>
           </GlassCard>
