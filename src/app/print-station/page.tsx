@@ -133,12 +133,17 @@ export default function PrintStationPage() {
     }
   }, [user?.id]);
 
+  const isOnePage = detectedPages === 1;
   const printTypeOptions = [
     {
       id: "BW_DOUBLE" as PrintTypeEnum,
-      name: "B&W Double-Sided (Recommended)",
-      desc: "Eco-friendly duplex printing on 75 GSM bright paper.",
-      rateRupees: `₹${rates.doubleSidedRupees.toFixed(2)} / page`,
+      name: isOnePage ? "B&W Duplex (1 Page = Single-Sided)" : "B&W Double-Sided (Recommended)",
+      desc: isOnePage
+        ? "1-page documents are printed single-sided at standard rate."
+        : "Eco-friendly duplex printing on 75 GSM bright paper.",
+      rateRupees: isOnePage
+        ? `₹${rates.singleSidedRupees.toFixed(2)} / page`
+        : `₹${rates.doubleSidedRupees.toFixed(2)} / page`,
     },
     {
       id: "BW_SINGLE" as PrintTypeEnum,
@@ -154,16 +159,18 @@ export default function PrintStationPage() {
     },
     {
       id: "COLOR_DOUBLE" as PrintTypeEnum,
-      name: "Full Color Double-Sided",
-      desc: "Vibrant duplex color printing for project reports.",
-      rateRupees: "₹8.00 / page",
+      name: isOnePage ? "Full Color (1 Page = Single-Sided)" : "Full Color Double-Sided",
+      desc: isOnePage
+        ? "1-page documents are printed single-sided at standard color rate."
+        : "Vibrant duplex color printing for project reports.",
+      rateRupees: isOnePage ? "₹10.00 / page" : "₹8.00 / page",
     },
   ];
 
-  // Dynamic Cost calculation in Paise & Amount-Locked UPI URL with ₹10 Minimum Floor
+  // Dynamic Cost calculation in Paise & Amount-Locked UPI URL with ₹5 Minimum Floor
   const pages = Math.max(1, detectedPages || 1);
   const rawCostPaise = calculatePrintCostPaise(pages, printType, rates) * copies;
-  const MINIMUM_ORDER_PAISE = 1000; // ₹10 minimum floor to deter spam/pranks
+  const MINIMUM_ORDER_PAISE = 500; // ₹5 minimum floor to deter spam/pranks
   const isMinimumOrderApplied = rawCostPaise < MINIMUM_ORDER_PAISE;
   const totalCostPaise = Math.max(MINIMUM_ORDER_PAISE, rawCostPaise);
   const totalCostRupees = (totalCostPaise / 100).toFixed(2);
@@ -297,7 +304,12 @@ export default function PrintStationPage() {
                   }}
                   onPageCountDetected={(count) => {
                     setDetectedPages(count);
-                    toast.info(`Auto-detected ${count} pages in document.`);
+                    if (count === 1) {
+                      setPrintType((prev) => (prev === "COLOR_DOUBLE" ? "COLOR_SINGLE" : "BW_SINGLE"));
+                      toast.info("1-page document detected: single-sided rate applied.");
+                    } else {
+                      toast.info(`Auto-detected ${count} pages in document.`);
+                    }
                   }}
                   onUploadingChange={(up) => setIsUploadingMedia(up)}
                   campusId={user?.collegeId || "global"}
@@ -586,7 +598,7 @@ export default function PrintStationPage() {
                       {isMinimumOrderApplied && (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-600 dark:text-amber-400 text-[10px] font-bold">
                           <AlertCircle className="w-3 h-3" />
-                          <span>Minimum order value of ₹10 applied.</span>
+                          <span>Minimum order value of ₹5 applied.</span>
                         </span>
                       )}
                     </div>
@@ -595,7 +607,7 @@ export default function PrintStationPage() {
                     </p>
                     <p className="text-[11px] text-slate-500">
                       {detectedPages > 0 ? detectedPages : 1} pages × {copies} {copies === 1 ? "copy" : "copies"}
-                      {isMinimumOrderApplied ? " (Calculated: " + formatPaiseToRupees(rawCostPaise) + " → Min ₹10 Floor)" : ` @ ₹${(rawCostPaise / (pages * copies) / 100).toFixed(2)} / page`}
+                      {isMinimumOrderApplied ? " (Calculated: " + formatPaiseToRupees(rawCostPaise) + " → Min ₹5 Floor)" : ` @ ₹${(rawCostPaise / (pages * copies) / 100).toFixed(2)} / page`}
                     </p>
                     {deliverySlot && (
                       <p className="text-[11px] text-teal-600 dark:text-teal-400 font-semibold mt-0.5">

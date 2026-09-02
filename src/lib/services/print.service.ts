@@ -53,6 +53,7 @@ export async function getDynamicPrintRates(): Promise<PrintRatesData> {
 
 /**
  * Calculate total print order cost based on page count, print type, and dynamic rates
+ * Prevents 1-page double-sided discount exploit: 1-page documents are physically single-sided
  */
 export function calculatePrintCostPaise(
   pageCount: number,
@@ -60,6 +61,15 @@ export function calculatePrintCostPaise(
   rates: PrintRatesData
 ): number {
   const pages = Math.max(1, pageCount);
+
+  // Single-page document: physically printed on 1 side only
+  if (pages === 1) {
+    if (printType === "COLOR_SINGLE" || printType === "COLOR_DOUBLE") {
+      return rates.colorSinglePaise;
+    }
+    return rates.singleSidedPaise;
+  }
+
   switch (printType) {
     case "BW_SINGLE":
       return pages * rates.singleSidedPaise;

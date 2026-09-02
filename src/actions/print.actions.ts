@@ -121,11 +121,11 @@ export async function createPrintOrder(data: {
 
     const activeCollegeId = data.collegeId || user.collegeId || null;
 
-    // Server-Side Independent Cost Calculation with ₹10 Minimum Floor
+    // Server-Side Independent Cost Calculation with ₹5 Minimum Floor
     const rates = await getDynamicPrintRates();
     const baseCostPaise = calculatePrintCostPaise(validPageCount, data.printType, rates);
     const rawCostPaise = baseCostPaise * validCopies;
-    const MINIMUM_ORDER_PAISE = 1000; // ₹10 minimum floor to deter spam/pranks
+    const MINIMUM_ORDER_PAISE = 500; // ₹5 minimum floor to deter spam/pranks
     const totalCostPaise = Math.max(MINIMUM_ORDER_PAISE, rawCostPaise);
 
     // Format deliveryLocation to embed copies, UTR, Drive File ID, and optional Contact Phone
@@ -169,7 +169,7 @@ export async function createPrintOrder(data: {
       });
     });
 
-    // Task 2: Trigger Post-Pay Email Invoicing upon order creation
+    // Trigger Email Receipt upon order creation
     if (order.user?.email) {
       const totalRupees = (order.totalCost / 100).toFixed(2);
       const invoiceSubject = `Otium Print Receipt - Order #${order.id.slice(-6).toUpperCase()}`;
@@ -186,20 +186,21 @@ export async function createPrintOrder(data: {
             <p style="margin: 6px 0; color: #475569; font-size: 13px;"><strong>Document:</strong> ${order.fileName}</p>
             <p style="margin: 6px 0; color: #475569; font-size: 13px;"><strong>Pages:</strong> ${order.pageCount} pages (${order.printType})</p>
             <p style="margin: 6px 0; color: #475569; font-size: 13px;"><strong>Delivery Location:</strong> ${order.deliveryLocation}</p>
+            ${order.deliverySlot ? `<p style="margin: 6px 0; color: #475569; font-size: 13px;"><strong>Delivery Slot:</strong> ${order.deliverySlot}</p>` : ""}
             <div style="margin-top: 14px; padding-top: 10px; border-top: 1px dashed #cbd5e1;">
-              <span style="font-size: 14px; font-weight: bold; color: #334155;">Total Amount Due: </span>
+              <span style="font-size: 14px; font-weight: bold; color: #334155;">Total Paid: </span>
               <span style="color: #0d9488; font-size: 18px; font-weight: 900;">₹${totalRupees}</span>
             </div>
           </div>
 
-          <div style="background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 12px 16px; border-radius: 8px; margin-bottom: 20px;">
-            <p style="margin: 0; color: #92400e; font-size: 13px; font-weight: 600; line-height: 1.5;">
-              📌 This is a post-pay delivery. Please have ₹${totalRupees} ready to pay upon receiving your print.
+          <div style="background-color: #f0fdf4; border-left: 4px solid #10b981; padding: 12px 16px; border-radius: 8px; margin-bottom: 20px;">
+            <p style="margin: 0; color: #065f46; font-size: 13px; font-weight: 600; line-height: 1.5;">
+              ✅ Payment received via advance UPI. Your print order is queued for campus processing and delivery.
             </p>
           </div>
 
           <p style="color: #94a3b8; font-size: 11px; text-align: center; margin: 20px 0 0 0;">
-            Otium Uni Hub • University Student Super App. Keep this receipt for reference upon delivery.
+            Otium Uni Hub • University Student Super App. Keep this receipt for reference.
           </p>
         </div>
       `;
@@ -208,7 +209,7 @@ export async function createPrintOrder(data: {
         to: order.user.email,
         subject: invoiceSubject,
         html: invoiceHtml,
-        text: `Otium Print Receipt - Order #${order.id}\nDocument: ${order.fileName}\nPages: ${order.pageCount} (${order.printType})\nDelivery Location: ${order.deliveryLocation}\nTotal Amount Due: ₹${totalRupees}\n\nThis is a post-pay delivery. Please have ₹${totalRupees} ready to pay upon receiving your print.`,
+        text: `Otium Print Receipt - Order #${order.id}\nDocument: ${order.fileName}\nPages: ${order.pageCount} (${order.printType})\nDelivery Location: ${order.deliveryLocation}\nTotal Paid: ₹${totalRupees}\n\nPayment received via advance UPI. Your order is queued for campus processing and delivery.`,
       }).catch((err) => {
         console.error("[Print Invoice Email Error]:", err);
       });

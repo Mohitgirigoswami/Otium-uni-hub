@@ -164,18 +164,20 @@ export default function AdminPrintQueuePage() {
   const notifyStudent = (
     phone: string,
     orderId: string,
-    name: string,
-    totalPaise: number
+    name?: string,
+    fileName?: string,
+    deliverySlot?: string | null
   ) => {
     const cleanPhone = phone.replace(/\D/g, "").slice(-10);
     if (!cleanPhone || cleanPhone.length !== 10) {
       toast.error("No valid 10-digit mobile number on record for this student.");
       return;
     }
-    const totalRupees = (totalPaise / 100).toFixed(2);
     const studentName = name || "Student";
     const shortId = orderId.slice(-6).toUpperCase();
-    const message = `Hey ${studentName}! 🚀 Your Otium print order #${shortId} is ready for delivery. Please keep ₹${totalRupees} ready.`;
+    const docInfo = fileName ? ` for "${fileName}"` : "";
+    const slotInfo = deliverySlot ? ` (${deliverySlot})` : "";
+    const message = `Hey ${studentName}! 🚀 Your Otium print order #${shortId}${docInfo} is printed and ready${slotInfo}. Our runner is dispatching it to your campus location. See you soon! 📦`;
     const encodedMessage = encodeURIComponent(message);
     const url = `https://wa.me/91${cleanPhone}?text=${encodedMessage}`;
     window.open(url, "_blank");
@@ -762,7 +764,7 @@ export default function AdminPrintQueuePage() {
                                 {studentPhone ? (
                                   <button
                                     type="button"
-                                    onClick={() => notifyStudent(studentPhone, ord.id, ord.user?.name, ord.totalCost)}
+                                    onClick={() => notifyStudent(studentPhone, ord.id, ord.user?.name, ord.fileName, ord.deliverySlot)}
                                     className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#25D366] hover:bg-[#20ba5c] text-white font-bold text-xs shadow-sm transition-colors cursor-pointer"
                                     title={`Send WhatsApp message to +91 ${studentPhone}`}
                                   >
