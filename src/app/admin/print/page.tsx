@@ -179,7 +179,7 @@ export default function AdminPrintQueuePage() {
     const shortId = orderId.slice(-6).toUpperCase();
     const docInfo = fileName ? ` for "${fileName}"` : "";
     const slotInfo = deliverySlot ? ` (${deliverySlot})` : "";
-    const message = `Hey ${studentName}! 🚀 Your Otium print order #${shortId}${docInfo} is printed and ready${slotInfo}. Our runner is dispatching it to your campus location. See you soon! 📦`;
+    const message = `*Otium Print Station*\n\nHey ${studentName}! Your print order *#${shortId}*${docInfo} is printed and ready${slotInfo}.\n\nOur runner is dispatching it to your campus location right now. See you soon!`;
     const encodedMessage = encodeURIComponent(message);
     const url = `https://wa.me/91${cleanPhone}?text=${encodedMessage}`;
     window.open(url, "_blank");
