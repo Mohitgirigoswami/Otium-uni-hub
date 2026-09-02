@@ -13,6 +13,7 @@ import { colors } from "../theme/colors";
 import { GlassCard } from "../components/GlassCard";
 import { Badge } from "../components/Badge";
 import { Button } from "../components/MintButton";
+import { apiClient } from "../services/apiClient";
 
 interface PrintOption {
   id: string;
@@ -108,7 +109,7 @@ export function PrintStationScreen() {
   const isFloorApplied = rawCost < MINIMUM_ORDER_FLOOR;
   const finalPayable = Math.max(MINIMUM_ORDER_FLOOR, rawCost);
 
-  const handlePlaceOrder = () => {
+  const handlePlaceOrder = async () => {
     if (!selectedFile) {
       Alert.alert("Upload Required", "Please upload a document PDF first.");
       return;
@@ -123,13 +124,36 @@ export function PrintStationScreen() {
     }
 
     setIsSubmitting(true);
-    setTimeout(() => {
+
+    try {
+      const response = await apiClient.post("/print/order", {
+        fileName: selectedFile.name,
+        pageCount: selectedFile.pages,
+        copies,
+        printType: selectedFormat,
+        deliveryLocation: `${deliveryLocation.trim()} | Copies: ${copies} | UTR: ${utrNumber} | Phone: ${phone}`,
+        deliverySlot: deliveryWindow,
+        phoneNumber: phone,
+        utr: utrNumber,
+      });
+
       setIsSubmitting(false);
-      Alert.alert(
-        "🚀 Print Order Placed!",
-        `Order confirmed for ₹${finalPayable.toFixed(2)}. Runner will deliver during ${deliveryWindow}.`
-      );
-    }, 1200);
+
+      if (response.success) {
+        Alert.alert(
+          "🚀 Print Order Placed!",
+          `Order #${(response.data?.id || "ORD").slice(-6).toUpperCase()} confirmed for ₹${finalPayable.toFixed(2)}. Runner will deliver during ${deliveryWindow}.`
+        );
+      } else {
+        Alert.alert(
+          "Order Failed",
+          response.error || "Failed to submit print order to backend."
+        );
+      }
+    } catch (err: any) {
+      setIsSubmitting(false);
+      Alert.alert("Network Error", err?.message || "Failed to connect to backend server.");
+    }
   };
 
   return (
