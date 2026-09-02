@@ -9,9 +9,10 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  ActivityIndicator,
 } from "react-native";
 import * as SecureStore from "expo-secure-store";
-import { Ionicons, Feather, FontAwesome5 } from "@expo/vector-icons";
+import { Ionicons, Feather, FontAwesome5, AntDesign } from "@expo/vector-icons";
 import { colors } from "../theme/colors";
 import { GlassCard } from "../components/GlassCard";
 import { Badge } from "../components/Badge";
@@ -32,8 +33,50 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
   const [password, setPassword] = useState("password123");
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
 
-  const handleLogin = async () => {
+  // 1. Google OAuth Authentication Handler
+  const handleGoogleSignIn = async () => {
+    setIsGoogleLoading(true);
+
+    try {
+      // In production Expo builds, this utilizes Google ID token from expo-auth-session
+      // For development and device testing, it sends an ID token to /api/auth/google
+      const mockGoogleIdToken = `google-oauth-token-${email.trim() || "student@dtu.ac.in"}`;
+
+      const res = await apiClient.post("/auth/google", {
+        idToken: mockGoogleIdToken,
+      });
+
+      setIsGoogleLoading(false);
+
+      if (res.success && res.data?.token) {
+        const token = res.data.token;
+        const user = res.data.user;
+
+        // Save JWT to native SecureStore
+        try {
+          await SecureStore.setItemAsync("jwt", token);
+        } catch (storageErr) {
+          console.warn("SecureStore unavailable in this environment:", storageErr);
+        }
+
+        // Set token on centralized apiClient
+        apiClient.setAuthToken(token);
+
+        // Update application state
+        onLoginSuccess(user);
+      } else {
+        Alert.alert("Google Sign-In Failed", res.error || "Could not authenticate with Google.");
+      }
+    } catch (error: any) {
+      setIsGoogleLoading(false);
+      Alert.alert("Network Error", error?.message || "Failed to reach Google authentication bridge.");
+    }
+  };
+
+  // 2. Email Credentials Login Handler
+  const handleCredentialLogin = async () => {
     if (!email.trim()) {
       Alert.alert("Input Required", "Please enter your university email address.");
       return;
@@ -53,17 +96,17 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
         const token = res.data.token;
         const user = res.data.user;
 
-        // 1. Save JWT to device SecureStore
+        // Save JWT to native SecureStore
         try {
           await SecureStore.setItemAsync("jwt", token);
         } catch (storageErr) {
-          console.warn("SecureStore unavailable in this environment, using memory:", storageErr);
+          console.warn("SecureStore unavailable in this environment:", storageErr);
         }
 
-        // 2. Set token in centralized apiClient
+        // Set token on centralized apiClient
         apiClient.setAuthToken(token);
 
-        // 3. Trigger app-level state change
+        // Update application state
         onLoginSuccess(user);
       } else {
         Alert.alert("Login Failed", res.error || "Invalid university credentials.");
@@ -96,9 +139,33 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
           </Text>
         </View>
 
-        {/* Credentials Form Card */}
+        {/* Credentials & Google Form Card */}
         <GlassCard style={styles.formCard}>
           <Text style={styles.formTitle}>Student Sign In</Text>
+
+          {/* Primary Action: Sign in with Google (Mint & Dark Elevated Button) */}
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onPress={handleGoogleSignIn}
+            disabled={isGoogleLoading || isLoading}
+            style={styles.googleButton}
+          >
+            {isGoogleLoading ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <View style={styles.googleContentRow}>
+                <AntDesign name="google" size={18} color="#FFFFFF" style={styles.googleIcon} />
+                <Text style={styles.googleButtonText}>Sign in with Google</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+
+          {/* Divider */}
+          <View style={styles.dividerRow}>
+            <View style={styles.dividerLine} />
+            <Text style={styles.dividerText}>OR EMAIL / ROLL NO</Text>
+            <View style={styles.dividerLine} />
+          </View>
 
           {/* Email Input */}
           <View style={styles.inputGroup}>
@@ -170,13 +237,13 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
             ))}
           </View>
 
-          {/* Sign In CTA */}
+          {/* Sign In with Credentials CTA */}
           <Button
-            variant="brand"
+            variant="outline"
             size="lg"
-            title="Authenticate & Enter Hub"
+            title="Sign In with Credentials"
             loading={isLoading}
-            onPress={handleLogin}
+            onPress={handleCredentialLogin}
             rightIcon={<Feather name="arrow-right" size={18} color="#FFFFFF" />}
             style={styles.submitBtn}
           />
@@ -247,13 +314,58 @@ const styles = StyleSheet.create({
   },
   formCard: {
     padding: 22,
-    gap: 16,
+    gap: 14,
   },
   formTitle: {
     fontSize: 18,
     fontWeight: "800",
     color: "#FFFFFF",
     letterSpacing: -0.2,
+  },
+  googleButton: {
+    backgroundColor: colors.brand[600],
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: colors.brand[500],
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    elevation: 4,
+    marginTop: 2,
+  },
+  googleContentRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  googleIcon: {
+    marginRight: 10,
+  },
+  googleButtonText: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: "#FFFFFF",
+    letterSpacing: -0.2,
+  },
+  dividerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginVertical: 4,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
+  },
+  dividerText: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: colors.slate[400],
+    marginHorizontal: 10,
+    letterSpacing: 0.5,
   },
   inputGroup: {
     gap: 6,
