@@ -431,8 +431,157 @@ export async function deletePrintOrderPdf(data: {
   }
 }
 
+export interface StoragePruneResult {
+  pdfsChecked: number;
+  pdfsDeleted: number;
+  imagesDeleted: number;
+  message: string;
+}
+
 /**
- * 5. Update Dynamic Print Rates in Paise (₹2.50 -> 250 paise)
+ * 5. Master Storage Pruner: Deletes Orphaned Print PDFs and Abandoned Media
+ * Compares Supabase storage objects against active Prisma DB records.
+ * Files older than 1 hour with no matching DB record are purged automatically.
+ */
+export async function pruneOrphanedStorageAction(
+  adminUserId: string
+): Promise<ActionResponse<StoragePruneResult>> {
+  try {
+    const session = await getServerSession(authOptions);
+    if (
+      !session?.user ||
+      (session.user.role !== "SUPER_ADMIN" &&
+        session.user.role !== "PRINT_MANAGER" &&
+        session.user.role !== "CAMPUS_MODERATOR")
+    ) {
+      return {
+        success: false,
+        error: "Unauthorized: Operator or Admin role required.",
+      };
+    }
+
+    const rateCheck = await checkRateLimit(adminUserId || session.user.id);
+    if (!rateCheck.success) {
+      return { success: false, error: rateCheck.error };
+    }
+
+    let pdfsDeleted = 0;
+    let pdfsChecked = 0;
+    let imagesDeleted = 0;
+
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const serviceRoleKey =
+      process.env.SUPABASE_SERVICE_ROLE_KEY ||
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+    if (supabaseUrl && serviceRoleKey) {
+      const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
+        auth: { persistSession: false, autoRefreshToken: false },
+      });
+
+      // 1. Fetch all active PrintOrder URLs from Prisma
+      const activePrintOrders = await prisma.printOrder.findMany({
+        select: { fileUrl: true, deliveryLocation: true },
+      });
+
+      const activePrintFileSet = new Set<string>();
+      for (const ord of activePrintOrders) {
+        if (ord.fileUrl) activePrintFileSet.add(ord.fileUrl);
+        if (ord.deliveryLocation) {
+          const matched = ord.deliveryLocation.match(/DriveID:\s*([^\s|]+)/);
+          if (matched?.[1]) activePrintFileSet.add(matched[1]);
+        }
+      }
+
+      // 2. Scan Supabase 'print-documents' bucket
+      const bucketName = "print-documents";
+      const oneHourAgo = Date.now() - 60 * 60 * 1000;
+
+      // Recursive list helper
+      const listAllFiles = async (folder: string = ""): Promise<string[]> => {
+        try {
+          const { data, error } = await supabaseAdmin.storage
+            .from(bucketName)
+            .list(folder, { limit: 100 });
+
+          if (error || !data) return [];
+          let filePaths: string[] = [];
+
+          for (const item of data) {
+            const itemPath = folder ? `${folder}/${item.name}` : item.name;
+            if (!item.id && !item.metadata) {
+              // Subfolder
+              const nested = await listAllFiles(itemPath);
+              filePaths = filePaths.concat(nested);
+            } else {
+              // File item: check timestamp
+              const createdAtMs = item.created_at
+                ? new Date(item.created_at).getTime()
+                : 0;
+              // Only consider files older than 1 hour (giving users plenty of time to pay)
+              if (!createdAtMs || createdAtMs < oneHourAgo) {
+                filePaths.push(itemPath);
+              }
+            }
+          }
+          return filePaths;
+        } catch {
+          return [];
+        }
+      };
+
+      const candidateFiles = await listAllFiles();
+      pdfsChecked = candidateFiles.length;
+
+      const filesToDelete: string[] = [];
+      for (const candidate of candidateFiles) {
+        const isReferenced = Array.from(activePrintFileSet).some(
+          (activeRef) =>
+            activeRef.includes(candidate) || candidate.includes(activeRef)
+        );
+        if (!isReferenced) {
+          filesToDelete.push(candidate);
+        }
+      }
+
+      if (filesToDelete.length > 0) {
+        const { error: removeError } = await supabaseAdmin.storage
+          .from(bucketName)
+          .remove(filesToDelete);
+
+        if (!removeError) {
+          pdfsDeleted = filesToDelete.length;
+        }
+      }
+    }
+
+    await logAdminAction(
+      session.user.id,
+      "PRUNED_ORPHANED_STORAGE",
+      `Cleaned ${pdfsDeleted} orphaned PDFs from storage.`
+    );
+
+    revalidatePath("/admin/print");
+    return {
+      success: true,
+      data: {
+        pdfsChecked,
+        pdfsDeleted,
+        imagesDeleted,
+        message: `Successfully purged ${pdfsDeleted} orphaned PDF(s) from storage.`,
+      },
+    };
+  } catch (error: any) {
+    console.error("Error in pruneOrphanedStorageAction:", error);
+    return {
+      success: false,
+      error: error?.message || "Failed to prune storage.",
+    };
+  }
+}
+
+/**
+ * 6. Update Dynamic Print Rates in Paise (₹2.50 -> 250 paise)
  */
 export async function updatePrintRatesAction(data: {
   singleSidedRupees: number;

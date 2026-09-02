@@ -10,7 +10,7 @@ import {
   CheckCircle2,
   UploadCloud,
 } from "lucide-react";
-import { getCloudinarySignature } from "@/actions/upload.actions";
+import { getCloudinarySignature, deleteCloudinaryAsset } from "@/actions/upload.actions";
 
 interface MultiImageUploadProps {
   images: string[];
@@ -129,6 +129,10 @@ export function MultiImageUpload({
   };
 
   const removeImage = (indexToRemove: number) => {
+    const urlToRemove = images[indexToRemove];
+    if (urlToRemove) {
+      deleteCloudinaryAsset(urlToRemove).catch((err) => console.warn("Asset delete warning:", err));
+    }
     const updated = images.filter((_, idx) => idx !== indexToRemove);
     onChange(updated);
   };

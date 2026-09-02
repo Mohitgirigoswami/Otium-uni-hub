@@ -115,3 +115,56 @@ export async function uploadPrintDocument(
     };
   }
 }
+
+/**
+ * SERVER ACTION: DELETE PRINT DOCUMENT FROM SUPABASE STORAGE
+ * Purges an uploaded or unsubmitted print PDF from 'print-documents' bucket
+ */
+export async function deletePrintDocument(
+  filePathOrUrl: string
+): Promise<ActionResponse<{ success: boolean }>> {
+  try {
+    if (!filePathOrUrl) return { success: true, data: { success: true } };
+
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://pjrpscknjjkhwfssxxwa.supabase.co";
+    const supabaseKey =
+      process.env.SUPABASE_SERVICE_ROLE_KEY ||
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+      "";
+
+    const supabase = createClient(supabaseUrl, supabaseKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+
+    const bucketName = "print-documents";
+    let relativePath = filePathOrUrl;
+
+    if (relativePath.includes("/print-documents/")) {
+      relativePath = relativePath.split("/print-documents/")[1];
+    } else if (relativePath.includes("/documents/")) {
+      relativePath = relativePath.split("/documents/")[1];
+    }
+    relativePath = relativePath.split("?")[0];
+
+    const { error: removeError } = await supabase.storage
+      .from(bucketName)
+      .remove([relativePath]);
+
+    if (removeError) {
+      console.warn("[deletePrintDocument Warning]:", removeError.message);
+      // Fallback bucket
+      await supabase.storage.from("documents").remove([relativePath]);
+    }
+
+    return {
+      success: true,
+      data: { success: true },
+    };
+  } catch (error: any) {
+    console.warn("[deletePrintDocument Error]:", error);
+    return {
+      success: false,
+      error: error?.message || "Failed to delete document from storage.",
+    };
+  }
+}

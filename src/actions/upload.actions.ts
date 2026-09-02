@@ -207,3 +207,97 @@ export async function uploadDocumentDirect(
     return { error: error?.message || "Direct upload to Supabase documents failed." };
   }
 }
+
+/**
+ * Helper to extract Cloudinary Public ID from a secure URL
+ */
+export function extractCloudinaryPublicId(url: string): string | null {
+  if (!url || typeof url !== "string" || !url.includes("cloudinary.com")) return null;
+  try {
+    const parts = url.split("/upload/");
+    if (parts.length < 2) return null;
+    let pathWithVersion = parts[1];
+    // Remove version prefix e.g. v1725252525/
+    if (pathWithVersion.startsWith("v") && pathWithVersion.indexOf("/") > 0) {
+      pathWithVersion = pathWithVersion.substring(pathWithVersion.indexOf("/") + 1);
+    }
+    // Remove file extension e.g. .jpg, .webp, .png
+    const lastDotIndex = pathWithVersion.lastIndexOf(".");
+    if (lastDotIndex > 0) {
+      pathWithVersion = pathWithVersion.substring(0, lastDotIndex);
+    }
+    return pathWithVersion;
+  } catch (e) {
+    return null;
+  }
+}
+
+/**
+ * 4. DELETE CLOUDINARY IMAGE ASSET
+ */
+export async function deleteCloudinaryAsset(
+  publicIdOrUrl: string
+): Promise<ActionResponse<{ success: boolean }>> {
+  try {
+    if (!publicIdOrUrl) return { success: true, data: { success: true } };
+
+    const publicId = publicIdOrUrl.includes("http")
+      ? extractCloudinaryPublicId(publicIdOrUrl)
+      : publicIdOrUrl;
+
+    if (!publicId) {
+      return { success: true, data: { success: true } };
+    }
+
+    const res = await cloudinary.uploader.destroy(publicId);
+    return {
+      success: true,
+      data: { success: res?.result === "ok" || res?.result === "not found" },
+    };
+  } catch (error: any) {
+    console.warn("[Cloudinary Delete Warning]:", error?.message);
+    return {
+      success: false,
+      error: error?.message || "Failed to delete image from Cloudinary.",
+    };
+  }
+}
+
+/**
+ * 5. DELETE SUPABASE STORAGE FILE
+ */
+export async function deleteSupabaseStorageFile(
+  bucketName: string,
+  filePathOrUrl: string
+): Promise<ActionResponse<{ success: boolean }>> {
+  try {
+    if (!filePathOrUrl) return { success: true, data: { success: true } };
+
+    const supabaseAdmin = getSupabaseAdmin();
+    let relativePath = filePathOrUrl;
+
+    if (relativePath.includes(`/${bucketName}/`)) {
+      relativePath = relativePath.split(`/${bucketName}/`)[1];
+    }
+    relativePath = relativePath.split("?")[0];
+
+    const { error } = await supabaseAdmin.storage
+      .from(bucketName)
+      .remove([relativePath]);
+
+    if (error) {
+      console.warn(`[Supabase Storage Delete Warning (${bucketName})]:`, error.message);
+    }
+
+    return {
+      success: true,
+      data: { success: !error },
+    };
+  } catch (error: any) {
+    console.warn("[Supabase Storage Delete Exception]:", error);
+    return {
+      success: false,
+      error: error?.message || "Failed to delete storage file.",
+    };
+  }
+}

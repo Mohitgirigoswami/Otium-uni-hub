@@ -175,8 +175,10 @@ export async function markItemSold(
   }
 }
 
+import { deleteCloudinaryAsset } from "@/actions/upload.actions";
+
 /**
- * Delete a marketplace listing
+ * Delete a marketplace listing and its stored images
  */
 export async function deleteMarketplaceItem(
   itemId: string,
@@ -186,6 +188,19 @@ export async function deleteMarketplaceItem(
     const rateCheck = await checkRateLimit(sellerId);
     if (!rateCheck.success) {
       return { error: rateCheck.error };
+    }
+
+    const item = await prisma.marketplaceItem.findFirst({
+      where: { id: itemId, sellerId },
+      select: { id: true, images: true },
+    });
+
+    if (item && item.images && item.images.length > 0) {
+      for (const imgUrl of item.images) {
+        if (imgUrl.includes("cloudinary.com")) {
+          deleteCloudinaryAsset(imgUrl).catch(() => {});
+        }
+      }
     }
 
     await prisma.marketplaceItem.deleteMany({

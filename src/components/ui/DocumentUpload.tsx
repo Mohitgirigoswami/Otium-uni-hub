@@ -14,7 +14,7 @@ import {
   FileCheck,
   Sparkles,
 } from "lucide-react";
-import { uploadPrintDocument } from "@/actions/print-upload.actions";
+import { uploadPrintDocument, deletePrintDocument } from "@/actions/print-upload.actions";
 import { Badge } from "@/components/ui/Badge";
 
 interface DocumentUploadProps {
@@ -53,6 +53,37 @@ export function DocumentUpload({
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Sync with prop changes if parent clears the fileUrl upon order submission
+  React.useEffect(() => {
+    setFileUrl(existingFileUrl || "");
+    setFileName(existingFileName || "");
+  }, [existingFileUrl, existingFileName]);
+
+  // Clean up uncommitted file on tab close / navigation
+  React.useEffect(() => {
+    const handleUnload = () => {
+      if (fileUrl) {
+        const payload = JSON.stringify({ fileUrl });
+        if (navigator.sendBeacon) {
+          const blob = new Blob([payload], { type: "application/json" });
+          navigator.sendBeacon("/api/print/cleanup-orphan", blob);
+        } else {
+          fetch("/api/print/cleanup-orphan", {
+            method: "POST",
+            body: payload,
+            headers: { "Content-Type": "application/json" },
+            keepalive: true,
+          }).catch(() => {});
+        }
+      }
+    };
+
+    window.addEventListener("pagehide", handleUnload);
+    return () => {
+      window.removeEventListener("pagehide", handleUnload);
+    };
+  }, [fileUrl]);
+
   // Client-side quick page count preview using pdf-lib
   const calculatePdfPagesClient = async (file: File): Promise<number | null> => {
     if (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")) {
@@ -78,6 +109,11 @@ export function DocumentUpload({
         `File exceeds the ${(maxSizeBytes / (1024 * 1024)).toFixed(0)}MB limit.`
       );
       return;
+    }
+
+    // If replacing an existing uncommitted upload, purge previous file from storage
+    if (fileUrl) {
+      deletePrintDocument(fileUrl).catch(() => {});
     }
 
     setFileName(file.name);
@@ -141,6 +177,10 @@ export function DocumentUpload({
 
   const handleReset = (e: React.MouseEvent) => {
     e.stopPropagation();
+    // Immediately delete orphaned file from storage
+    if (fileUrl) {
+      deletePrintDocument(fileUrl).catch(() => {});
+    }
     setFileUrl("");
     setFileName("");
     setPageCount(null);

@@ -7,6 +7,7 @@ import {
   updatePrintOrderStatus,
   getAdminDownloadUrl,
   deletePrintOrderPdf,
+  pruneOrphanedStorageAction,
   getPrintSettingsAdmin,
   updatePrintRatesAction,
 } from "@/actions/admin.actions";
@@ -68,6 +69,7 @@ export default function AdminPrintQueuePage() {
 
   // PDF Deletion State
   const [deletingPdfId, setDeletingPdfId] = useState<string | null>(null);
+  const [isPruning, setIsPruning] = useState(false);
 
   const fetchOrders = async () => {
     if (!user?.id) return;
@@ -211,6 +213,25 @@ export default function AdminPrintQueuePage() {
     }
   };
 
+  const handlePruneStorage = async () => {
+    if (!user?.id) return;
+    const confirmed = window.confirm(
+      "🧹 Prune Orphaned PDFs: This will scan Supabase Storage and permanently delete uploaded files that were abandoned by users and never submitted as an order (older than 1 hour). Proceed?"
+    );
+    if (!confirmed) return;
+
+    setIsPruning(true);
+    const res = await pruneOrphanedStorageAction(user.id);
+    setIsPruning(false);
+
+    if (res?.success && res.data) {
+      toast.success(res.data.message || `Pruned ${res.data.pdfsDeleted} orphaned file(s).`);
+      fetchOrders();
+    } else {
+      toast.error(res?.error || "Failed to prune orphaned storage.");
+    }
+  };
+
   // Filtered orders
   const filteredOrders = orders.filter((ord) => {
     const matchesStatus =
@@ -253,6 +274,17 @@ export default function AdminPrintQueuePage() {
         </div>
 
         <div className="flex items-center gap-2">
+          <Button
+            onClick={handlePruneStorage}
+            variant="outline"
+            size="sm"
+            disabled={isPruning}
+            className="border-rose-500/40 text-rose-400 hover:bg-rose-500/10 hover:text-rose-300 font-bold"
+            leftIcon={<Trash2 className={`w-3.5 h-3.5 ${isPruning ? "animate-spin" : ""}`} />}
+          >
+            {isPruning ? "Pruning..." : "🧹 Prune Orphaned PDFs"}
+          </Button>
+
           <Button
             onClick={() => {
               fetchOrders();
