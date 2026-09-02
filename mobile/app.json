@@ -1,0 +1,21 @@
+{
+  "expo": {
+    "name": "Otium Uni Hub",
+    "slug": "otium-uni-hub",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#0A0F1D",
+    "splash": {
+      "backgroundColor": "#0A0F1D"
+    },
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0A0F1D"
+      }
+    }
+  }
+}
