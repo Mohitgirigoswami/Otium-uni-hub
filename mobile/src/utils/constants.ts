@@ -1,4 +1,5 @@
 import { Platform } from "react-native";
+import Constants from "expo-constants";
 
 /**
  * Otium Mobile Network & Environment Configuration
@@ -13,12 +14,21 @@ const getApiBaseUrl = (): string => {
 
   // 2. Development Mode
   if (__DEV__) {
-    // Android emulator loops back to host machine via 10.0.2.2
-    if (Platform.OS === "android") {
-      return "http://10.0.2.2:3000/api";
+    // Automatically extract laptop's Wi-Fi IP address from Expo bundler connection
+    const hostUri =
+      Constants.expoConfig?.hostUri ||
+      Constants.manifest2?.extra?.expoClient?.hostUri ||
+      (Constants as any)?.manifest?.debuggerHost;
+
+    if (hostUri) {
+      const ip = hostUri.split(":")[0];
+      if (ip && ip !== "localhost" && ip !== "127.0.0.1") {
+        return `http://${ip}:3000/api`;
+      }
     }
-    // iOS simulator / Web can access localhost directly
-    return "http://localhost:3000/api";
+
+    // Direct fallback to laptop Wi-Fi IP (replaces unreachable 10.0.2.2 emulator address)
+    return "http://10.23.241.16:3000/api";
   }
 
   // 3. Production Live Backend URL
