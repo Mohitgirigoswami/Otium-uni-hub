@@ -14,11 +14,6 @@ import {
 import * as WebBrowser from "expo-web-browser";
 import * as Google from "expo-auth-session/providers/google";
 import * as SecureStore from "expo-secure-store";
-import {
-  GoogleSignin,
-  statusCodes,
-  isErrorWithCode,
-} from "@react-native-google-signin/google-signin";
 import { Ionicons, Feather, AntDesign } from "@expo/vector-icons";
 import { colors } from "../theme/colors";
 import { GlassCard } from "../components/GlassCard";
@@ -33,15 +28,26 @@ const GOOGLE_CLIENT_ID =
   process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ||
   "182612765129-k94groidumjmdmb68s32a534sfqtoe10.apps.googleusercontent.com";
 
-// Configure Native Google Sign-In SDK
+// Safely resolve Native Google Sign-In SDK (only present in custom native APK/dev builds, absent in Expo Go)
+let NativeGoogleSignin: any = null;
+let nativeStatusCodes: any = {};
+let nativeIsErrorWithCode: (error: any) => boolean = () => false;
+
 try {
-  GoogleSignin.configure({
-    webClientId: GOOGLE_CLIENT_ID,
-    offlineAccess: true,
-  });
-} catch (e) {
-  console.log("GoogleSignin native init skipped in current runtime:", e);
-}
+  const RNSignIn = require("@react-native-google-signin/google-signin");
+  NativeGoogleSignin = RNSignIn.GoogleSignin;
+  nativeStatusCodes = RNSignIn.statusCodes;
+  nativeIsErrorWithCode = RNSignIn.isErrorWithCode;
+
+  if (NativeGoogleSignin?.configure) {
+    NativeGoogleSignin.configure({
+      webClientId: GOOGLE_CLIENT_ID,
+      offlineAccess: true,
+    });
+  }
+} catch {
+  // In generic Expo Go, RNGoogleSignin native binary is not present
+  }
 
 interface LoginScreenProps {
   onLoginSuccess: (user: any) => void;
@@ -124,11 +130,11 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
   const handleGoogleSignIn = async () => {
     setIsGoogleLoading(true);
 
-    // 1. Try Native Google Sign-In SDK (Option 2 - Google Play Services)
+    // 1. Try Native Google Sign-In SDK (Option 2 - Google Play Services in custom APK)
     try {
-      if (GoogleSignin?.hasPlayServices) {
-        await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
-        const userInfo = await GoogleSignin.signIn();
+      if (NativeGoogleSignin?.hasPlayServices) {
+        await NativeGoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+        const userInfo = await NativeGoogleSignin.signIn();
         const idToken = (userInfo as any)?.data?.idToken || (userInfo as any)?.idToken;
         const user = (userInfo as any)?.data?.user || (userInfo as any)?.user;
 
@@ -142,15 +148,15 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
         }
       }
     } catch (nativeErr: any) {
-      if (isErrorWithCode(nativeErr)) {
+      if (nativeIsErrorWithCode(nativeErr)) {
         setIsGoogleLoading(false);
-        if (nativeErr.code === statusCodes.SIGN_IN_CANCELLED) {
+        if (nativeErr.code === nativeStatusCodes.SIGN_IN_CANCELLED) {
           return;
         }
-        if (nativeErr.code === statusCodes.IN_PROGRESS) {
+        if (nativeErr.code === nativeStatusCodes.IN_PROGRESS) {
           return;
         }
-        if (nativeErr.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
+        if (nativeErr.code === nativeStatusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
           Alert.alert("Google Play Error", "Google Play Services is not available on this device.");
           return;
         }
