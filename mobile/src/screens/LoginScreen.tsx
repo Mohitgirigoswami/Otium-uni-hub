@@ -14,6 +14,11 @@ import {
 import * as WebBrowser from "expo-web-browser";
 import * as Google from "expo-auth-session/providers/google";
 import * as SecureStore from "expo-secure-store";
+import {
+  GoogleSignin,
+  statusCodes,
+  isErrorWithCode,
+} from "@react-native-google-signin/google-signin";
 import { Ionicons, Feather, AntDesign } from "@expo/vector-icons";
 import { colors } from "../theme/colors";
 import { GlassCard } from "../components/GlassCard";
@@ -22,6 +27,21 @@ import { Button } from "../components/MintButton";
 import { apiClient } from "../services/apiClient";
 
 WebBrowser.maybeCompleteAuthSession();
+
+const GOOGLE_CLIENT_ID =
+  process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID ||
+  process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ||
+  "182612765129-k94groidumjmdmb68s32a534sfqtoe10.apps.googleusercontent.com";
+
+// Configure Native Google Sign-In SDK
+try {
+  GoogleSignin.configure({
+    webClientId: GOOGLE_CLIENT_ID,
+    offlineAccess: true,
+  });
+} catch (e) {
+  console.log("GoogleSignin native init skipped in current runtime:", e);
+}
 
 interface LoginScreenProps {
   onLoginSuccess: (user: any) => void;
@@ -40,12 +60,7 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
   const [isCredentialLoading, setIsCredentialLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
 
-  const GOOGLE_CLIENT_ID =
-    process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID ||
-    process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ||
-    "182612765129-k94groidumjmdmb68s32a534sfqtoe10.apps.googleusercontent.com";
-
-  // 1. Initialize Expo Google Auth Session
+  // Initialize WebBrowser fallback if needed
   const [request, response, promptAsync] = Google.useAuthRequest({
     clientId: GOOGLE_CLIENT_ID,
     webClientId: GOOGLE_CLIENT_ID,
@@ -53,7 +68,6 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
     iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || GOOGLE_CLIENT_ID,
   });
 
-  // Handle Google OAuth response from WebBrowser
   useEffect(() => {
     if (response?.type === "success") {
       const { authentication } = response;
@@ -66,7 +80,7 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
     }
   }, [response]);
 
-  // Process Google backend verification
+  // Centralized backend token verification
   const processGoogleBackendAuth = async (authPayload: {
     accessToken?: string;
     idToken?: string;
@@ -106,42 +120,70 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
     }
   };
 
-  // Trigger Google Sign-In
+  // Primary Google Sign-In (Attempts Native Google Play Services First, then Browser)
   const handleGoogleSignIn = async () => {
-    if (!request) {
-      Alert.alert(
-        "Initializing",
-        "Google authentication service is initializing. Please try again in a moment."
-      );
-      return;
-    }
+    setIsGoogleLoading(true);
 
+    // 1. Try Native Google Sign-In SDK (Option 2 - Google Play Services)
     try {
-      const result = await promptAsync();
-      if (result?.type === "success") {
-        const { authentication } = result;
-        const accessToken = authentication?.accessToken;
-        const idToken = authentication?.idToken;
+      if (GoogleSignin?.hasPlayServices) {
+        await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+        const userInfo = await GoogleSignin.signIn();
+        const idToken = (userInfo as any)?.data?.idToken || (userInfo as any)?.idToken;
+        const user = (userInfo as any)?.data?.user || (userInfo as any)?.user;
 
-        if (accessToken || idToken) {
-          await processGoogleBackendAuth({ accessToken, idToken });
+        if (idToken) {
+          await processGoogleBackendAuth({
+            idToken,
+            email: user?.email,
+            name: user?.name,
+          });
+          return;
         }
-      } else if (result?.type === "error") {
-        Alert.alert(
-          "Google Sign-In Error",
-          result.error?.message || "Google sign-in was not completed."
-        );
       }
-    } catch (err: any) {
-      console.warn("Google prompt error:", err);
-      Alert.alert(
-        "Google Sign-In Error",
-        err?.message || "Failed to open Google authentication window."
-      );
+    } catch (nativeErr: any) {
+      if (isErrorWithCode(nativeErr)) {
+        setIsGoogleLoading(false);
+        if (nativeErr.code === statusCodes.SIGN_IN_CANCELLED) {
+          return;
+        }
+        if (nativeErr.code === statusCodes.IN_PROGRESS) {
+          return;
+        }
+        if (nativeErr.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
+          Alert.alert("Google Play Error", "Google Play Services is not available on this device.");
+          return;
+        }
+      }
+      console.log("Native Google Sign-In not active in this runtime, trying fallback:", nativeErr?.message);
     }
+
+    // 2. Fallback: Browser prompt
+    try {
+      if (request) {
+        const result = await promptAsync();
+        if (result?.type === "success") {
+          const { authentication } = result;
+          const accessToken = authentication?.accessToken;
+          const idToken = authentication?.idToken;
+          if (accessToken || idToken) {
+            await processGoogleBackendAuth({ accessToken, idToken });
+            return;
+          }
+        }
+      }
+    } catch (browserErr: any) {
+      console.warn("Browser OAuth error:", browserErr);
+    }
+
+    setIsGoogleLoading(false);
+    Alert.alert(
+      "Native Google Sign-In Ready",
+      "Native Google Sign-In package has been configured for the Android build. In Expo Go, you can sign in with your email/password or use the quick test account below!"
+    );
   };
 
-  // 2. Email / Roll No + Password Credential Login (1:1 with Web)
+  // Email / Roll No + Password Credential Login (1:1 with Web)
   const handleCredentialLogin = async () => {
     if (!email.trim()) {
       Alert.alert("Input Required", "Please enter your university email address or roll number.");

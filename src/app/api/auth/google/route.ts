@@ -5,7 +5,10 @@ import { signToken } from "@/utils/auth";
 import jwt from "jsonwebtoken";
 
 const googleClient = new OAuth2Client(
-  process.env.GOOGLE_CLIENT_ID || process.env.NEXTAUTH_GOOGLE_ID
+  process.env.GOOGLE_CLIENT_ID ||
+  process.env.NEXTAUTH_GOOGLE_ID ||
+  process.env.AUTH_GOOGLE_ID ||
+  process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID
 );
 
 export async function POST(req: NextRequest) {
@@ -52,6 +55,8 @@ export async function POST(req: NextRequest) {
           const googleClientId =
             process.env.GOOGLE_CLIENT_ID ||
             process.env.NEXTAUTH_GOOGLE_ID ||
+            process.env.AUTH_GOOGLE_ID ||
+            process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ||
             process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID;
 
           if (googleClientId) {

@@ -11,12 +11,17 @@
       "backgroundColor": "#0A0F1D"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.otium.unihub"
     },
     "android": {
+      "package": "com.otium.unihub",
       "adaptiveIcon": {
         "backgroundColor": "#0A0F1D"
       }
-    }
+    },
+    "plugins": [
+      "@react-native-google-signin/google-signin"
+    ]
   }
 }
