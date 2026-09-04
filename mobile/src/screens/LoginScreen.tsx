@@ -40,13 +40,17 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
   const [isCredentialLoading, setIsCredentialLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
 
+  const GOOGLE_CLIENT_ID =
+    process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID ||
+    process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ||
+    "182612765129-k94groidumjmdmb68s32a534sfqtoe10.apps.googleusercontent.com";
+
   // 1. Initialize Expo Google Auth Session
   const [request, response, promptAsync] = Google.useAuthRequest({
-    webClientId:
-      process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ||
-      "182612765129-k94groidumjmdmb68s32a534sfqtoe10.apps.googleusercontent.com",
-    androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
-    iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+    clientId: GOOGLE_CLIENT_ID,
+    webClientId: GOOGLE_CLIENT_ID,
+    androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID || GOOGLE_CLIENT_ID,
+    iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || GOOGLE_CLIENT_ID,
   });
 
   // Handle Google OAuth response from WebBrowser
