@@ -33,9 +33,11 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
 
   // Initialize Expo Google Auth Session
   const [request, response, promptAsync] = Google.useAuthRequest({
+    webClientId:
+      process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ||
+      "182612765129-k94groidumjmdmb68s32a534sfqtoe10.apps.googleusercontent.com",
     androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
     iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
-    webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
   });
 
   // Handle Google OAuth response from WebBrowser
@@ -98,23 +100,38 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
 
   // Trigger Google Sign-In Flow
   const handleGoogleSignIn = async () => {
-    if (request) {
-      try {
-        const result = await promptAsync();
-        if (result?.type === "success") {
-          return;
-        }
-      } catch (err) {
-        console.warn("Google prompt error, falling back to direct token auth:", err);
-      }
+    if (!request) {
+      Alert.alert(
+        "Initializing",
+        "Google authentication service is initializing. Please try again in a moment."
+      );
+      return;
     }
 
-    // Direct Google authentication bridge for rapid device testing
-    await processGoogleBackendAuth({
-      idToken: `google-verified-token-student@dtu.ac.in`,
-      email: "student@dtu.ac.in",
-      name: "Aarav Sharma",
-    });
+    try {
+      const result = await promptAsync();
+      if (result?.type === "success") {
+        const { authentication } = result;
+        const accessToken = authentication?.accessToken;
+        const idToken = authentication?.idToken;
+
+        if (accessToken || idToken) {
+          await processGoogleBackendAuth({ accessToken, idToken });
+        }
+      } else if (result?.type === "error") {
+        console.warn("Google Sign-In Result Error:", result.error);
+        Alert.alert(
+          "Google Sign-In Error",
+          result.error?.message || "Google sign-in was not completed."
+        );
+      }
+    } catch (err: any) {
+      console.warn("Google prompt error:", err);
+      Alert.alert(
+        "Google Sign-In Error",
+        err?.message || "Failed to open Google authentication window."
+      );
+    }
   };
 
   return (

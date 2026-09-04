@@ -2,6 +2,7 @@
   "expo": {
     "name": "Otium Uni Hub",
     "slug": "otium-uni-hub",
+    "scheme": "otium",
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
