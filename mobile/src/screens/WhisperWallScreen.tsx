@@ -10,7 +10,11 @@ import {
   Alert,
   ActivityIndicator,
   RefreshControl,
+  Image,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
+import * as DocumentPicker from "expo-document-picker";
 import { Ionicons, Feather, FontAwesome5 } from "@expo/vector-icons";
 import { colors } from "../theme/colors";
 import { GlassCard } from "../components/GlassCard";
@@ -27,6 +31,8 @@ interface WhisperPost {
   collegeId?: string;
   category: "CONFESSION" | "ADVICE" | "MEME" | "CAMPUS_NEWS" | "GENERAL";
   content: string;
+  mediaUrls?: string[];
+  mediaUrl?: string;
   timeAgo: string;
   upvotes: number;
   downvotes: number;
@@ -101,6 +107,9 @@ export function WhisperWallScreen() {
   const [isComposeOpen, setIsComposeOpen] = useState(false);
   const [composeContent, setComposeContent] = useState("");
   const [composeCategory, setComposeCategory] = useState<WhisperPost["category"]>("CONFESSION");
+  const [composeImages, setComposeImages] = useState<string[]>([]);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [enlargedImage, setEnlargedImage] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
 
@@ -155,6 +164,9 @@ export function WhisperWallScreen() {
           collegeId: p.collegeId,
           category: p.feedType || "CONFESSION",
           content: p.content,
+          mediaUrls: Array.isArray(p.mediaUrls) && p.mediaUrls.length > 0
+            ? p.mediaUrls
+            : (p.mediaUrl ? [p.mediaUrl] : []),
           timeAgo: new Date(p.createdAt).toLocaleTimeString([], {
             hour: "2-digit",
             minute: "2-digit",
@@ -232,6 +244,51 @@ export function WhisperWallScreen() {
     );
   };
 
+  const handlePickImage = async () => {
+    if (composeImages.length >= 4) {
+      Alert.alert("Limit Reached", "You can attach up to 4 images per whisper.");
+      return;
+    }
+
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ["image/jpeg", "image/png", "image/webp", "image/gif"],
+        copyToCacheDirectory: true,
+      });
+
+      if (result.canceled || !result.assets || result.assets.length === 0) {
+        return;
+      }
+
+      const asset = result.assets[0];
+      setIsUploadingImage(true);
+
+      const formData = new FormData();
+      formData.append("file", {
+        uri: asset.uri,
+        name: asset.name || "whisper_image.jpg",
+        type: asset.mimeType || "image/jpeg",
+      } as any);
+      formData.append("folder", "otium_wall_memes");
+
+      const uploadRes = await apiClient.upload("/upload", formData);
+      setIsUploadingImage(false);
+
+      if (uploadRes.success && uploadRes.data?.url) {
+        setComposeImages((prev) => [...prev, uploadRes.data.url]);
+      } else {
+        Alert.alert("Upload Failed", uploadRes.error || "Could not upload image. Please try again.");
+      }
+    } catch (err: any) {
+      setIsUploadingImage(false);
+      Alert.alert("Image Error", err?.message || "Failed to pick image.");
+    }
+  };
+
+  const handleRemoveComposeImage = (idxToRemove: number) => {
+    setComposeImages((prev) => prev.filter((_, idx) => idx !== idxToRemove));
+  };
+
   const handlePublishWhisper = async () => {
     if (!composeContent.trim()) {
       Alert.alert("Error", "Please write a whisper before publishing.");
@@ -244,20 +301,23 @@ export function WhisperWallScreen() {
         content: composeContent.trim(),
         feedType: composeCategory,
         collegeId: user?.collegeId,
+        mediaUrls: composeImages,
+        mediaUrl: composeImages.length > 0 ? composeImages[0] : undefined,
       });
       setIsPublishing(false);
 
       if (res.success) {
-        setComposeContent("");
+        Alert.alert("Whisper Published! 🎭", "Your anonymous whisper is live on the campus wall.");
         setIsComposeOpen(false);
-        Alert.alert("🤫 Published!", "Your whisper is live on the anonymous wall.");
+        setComposeContent("");
+        setComposeImages([]);
         fetchWhispers();
       } else {
-        Alert.alert("Publish Failed", res.error || "Could not publish whisper.");
+        Alert.alert("Error", res.error || "Failed to publish whisper.");
       }
     } catch (e: any) {
       setIsPublishing(false);
-      Alert.alert("Network Error", e?.message || "Could not reach backend.");
+      Alert.alert("Error", e.message || "Failed to publish.");
     }
   };
 
@@ -432,6 +492,42 @@ export function WhisperWallScreen() {
                 {/* Post Text Content */}
                 <Text style={styles.postContent}>{post.content}</Text>
 
+                {/* Post Attached Images (Single or Multi-Grid) */}
+                {post.mediaUrls && post.mediaUrls.length > 0 && (
+                  <View style={styles.mediaContainer}>
+                    {post.mediaUrls.length === 1 ? (
+                      <TouchableOpacity
+                        activeOpacity={0.9}
+                        onPress={() => setEnlargedImage(post.mediaUrls![0])}
+                        style={styles.singleImageWrapper}
+                      >
+                        <Image
+                          source={{ uri: post.mediaUrls[0] }}
+                          style={styles.singleImage}
+                          resizeMode="cover"
+                        />
+                      </TouchableOpacity>
+                    ) : (
+                      <View style={styles.multiImageGrid}>
+                        {post.mediaUrls.slice(0, 4).map((imgUrl, imgIdx) => (
+                          <TouchableOpacity
+                            key={imgIdx}
+                            activeOpacity={0.9}
+                            onPress={() => setEnlargedImage(imgUrl)}
+                            style={styles.gridImageWrapper}
+                          >
+                            <Image
+                              source={{ uri: imgUrl }}
+                              style={styles.gridImage}
+                              resizeMode="cover"
+                            />
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    )}
+                  </View>
+                )}
+
                 {/* Interaction Footer: Upvote, Downvote, Comment, Share */}
                 <View style={styles.postFooter}>
                   {/* Voting Group */}
@@ -508,64 +604,131 @@ export function WhisperWallScreen() {
         <Text style={styles.fabText}>Whisper</Text>
       </TouchableOpacity>
 
-      {/* Compose Whisper Modal */}
-      <Modal visible={isComposeOpen} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
+      {/* Compose Whisper Modal with Image Attachment & Keyboard UX */}
+      <Modal visible={isComposeOpen} transparent animationType="slide" onRequestClose={() => setIsComposeOpen(false)}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          style={styles.modalOverlay}
+        >
+          <TouchableOpacity
+            style={styles.modalOverlayTouch}
+            activeOpacity={1}
+            onPress={() => setIsComposeOpen(false)}
+          />
           <GlassCard style={styles.composeModalCard}>
             <View style={styles.composeHeader}>
               <View style={styles.composeTitleRow}>
                 <Ionicons name="eye-off-outline" size={20} color={colors.purple[400]} />
                 <Text style={styles.composeTitle}>Post Anonymous Whisper</Text>
               </View>
-              <TouchableOpacity onPress={() => setIsComposeOpen(false)}>
+              <TouchableOpacity onPress={() => setIsComposeOpen(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
                 <Ionicons name="close" size={22} color={colors.slate[400]} />
               </TouchableOpacity>
             </View>
 
-            {/* Category Select Pills */}
-            <Text style={styles.composeLabel}>Select Topic / Category:</Text>
-            <View style={styles.composeCatGrid}>
-              {(["CONFESSION", "ADVICE", "MEME", "CAMPUS_NEWS"] as const).map((cat) => (
-                <TouchableOpacity
-                  key={cat}
-                  onPress={() => setComposeCategory(cat)}
-                  style={[
-                    styles.composeCatChip,
-                    composeCategory === cat && styles.composeCatChipActive,
-                  ]}
-                >
-                  <Text
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              {/* Category Select Pills */}
+              <Text style={styles.composeLabel}>Select Topic / Category:</Text>
+              <View style={styles.composeCatGrid}>
+                {(["CONFESSION", "ADVICE", "MEME", "CAMPUS_NEWS"] as const).map((cat) => (
+                  <TouchableOpacity
+                    key={cat}
+                    onPress={() => setComposeCategory(cat)}
                     style={[
-                      styles.composeCatChipText,
-                      composeCategory === cat && styles.composeCatChipTextActive,
+                      styles.composeCatChip,
+                      composeCategory === cat && styles.composeCatChipActive,
                     ]}
                   >
-                    {cat}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+                    <Text
+                      style={[
+                        styles.composeCatChipText,
+                        composeCategory === cat && styles.composeCatChipTextActive,
+                      ]}
+                    >
+                      {cat}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
 
-            {/* Content Input */}
-            <TextInput
-              multiline
-              numberOfLines={5}
-              placeholder="What's on your mind? Share confessions, exam tips, or campus tea... Identity is completely anonymous."
-              placeholderTextColor={colors.slate[500]}
-              value={composeContent}
-              onChangeText={setComposeContent}
-              style={styles.composeInput}
-            />
+              {/* Content Input */}
+              <TextInput
+                multiline
+                numberOfLines={4}
+                placeholder="What's on your mind? Share confessions, exam tips, or campus tea... Identity is completely anonymous."
+                placeholderTextColor={colors.slate[500]}
+                value={composeContent}
+                onChangeText={setComposeContent}
+                style={styles.composeInput}
+              />
 
-            {/* Submit Button */}
-            <Button
-              title="Publish Anonymously"
-              variant="brand"
-              loading={isPublishing}
-              onPress={handlePublishWhisper}
-              style={{ marginTop: 14 }}
-            />
+              {/* Attached Images Preview Row */}
+              {composeImages.length > 0 && (
+                <View style={styles.attachedImagesRow}>
+                  {composeImages.map((imgUrl, idx) => (
+                    <View key={idx} style={styles.attachedImageItem}>
+                      <Image source={{ uri: imgUrl }} style={styles.attachedThumbnail} />
+                      <TouchableOpacity
+                        style={styles.removeAttachedBtn}
+                        onPress={() => handleRemoveComposeImage(idx)}
+                      >
+                        <Ionicons name="close-circle" size={20} color={colors.rose[400]} />
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                </View>
+              )}
+
+              {/* Attach Image / Meme Button */}
+              <TouchableOpacity
+                activeOpacity={0.7}
+                onPress={handlePickImage}
+                disabled={isUploadingImage}
+                style={styles.attachImageBtn}
+              >
+                {isUploadingImage ? (
+                  <ActivityIndicator size="small" color={colors.purple[400]} />
+                ) : (
+                  <Feather name="image" size={16} color={colors.purple[400]} />
+                )}
+                <Text style={styles.attachImageBtnText}>
+                  {isUploadingImage
+                    ? "Uploading image to wall..."
+                    : composeImages.length > 0
+                    ? `Add another photo (${composeImages.length}/4)`
+                    : "Attach Photo or Meme (Up to 4)"}
+                </Text>
+              </TouchableOpacity>
+
+              {/* Submit Button */}
+              <Button
+                title="Publish Anonymously"
+                variant="brand"
+                loading={isPublishing}
+                onPress={handlePublishWhisper}
+                style={{ marginTop: 14 }}
+              />
+            </ScrollView>
           </GlassCard>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Fullscreen Image Preview Modal */}
+      <Modal visible={!!enlargedImage} transparent animationType="fade" onRequestClose={() => setEnlargedImage(null)}>
+        <View style={styles.fullImageBackdrop}>
+          <TouchableOpacity
+            style={styles.closeFullImageBtn}
+            onPress={() => setEnlargedImage(null)}
+          >
+            <Ionicons name="close" size={28} color="#FFFFFF" />
+          </TouchableOpacity>
+          {enlargedImage && (
+            <Image
+              source={{ uri: enlargedImage }}
+              style={styles.fullImage}
+              resizeMode="contain"
+            />
+          )}
         </View>
       </Modal>
 
@@ -1035,5 +1198,105 @@ const styles = StyleSheet.create({
   collegeCityText: {
     fontSize: 11,
     color: colors.slate[400],
+  },
+  modalOverlayTouch: {
+    flex: 1,
+  },
+  mediaContainer: {
+    marginTop: 8,
+    borderRadius: 14,
+    overflow: "hidden",
+  },
+  singleImageWrapper: {
+    borderRadius: 14,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    backgroundColor: colors.slate[900],
+  },
+  singleImage: {
+    width: "100%",
+    height: 220,
+    borderRadius: 14,
+  },
+  multiImageGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+  },
+  gridImageWrapper: {
+    width: "48.5%",
+    height: 140,
+    borderRadius: 12,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    backgroundColor: colors.slate[900],
+  },
+  gridImage: {
+    width: "100%",
+    height: "100%",
+  },
+  attachedImagesRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 10,
+    flexWrap: "wrap",
+  },
+  attachedImageItem: {
+    position: "relative",
+    width: 68,
+    height: 68,
+    borderRadius: 10,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: colors.brand[400],
+  },
+  attachedThumbnail: {
+    width: "100%",
+    height: "100%",
+  },
+  removeAttachedBtn: {
+    position: "absolute",
+    top: 2,
+    right: 2,
+    backgroundColor: "rgba(0, 0, 0, 0.7)",
+    borderRadius: 10,
+  },
+  attachImageBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(168, 85, 247, 0.3)",
+    backgroundColor: "rgba(168, 85, 247, 0.08)",
+    marginTop: 12,
+  },
+  attachImageBtnText: {
+    fontSize: 12.5,
+    fontWeight: "700",
+    color: colors.purple[300],
+  },
+  fullImageBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.95)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  closeFullImageBtn: {
+    position: "absolute",
+    top: 48,
+    right: 20,
+    zIndex: 10,
+    padding: 8,
+    backgroundColor: "rgba(255, 255, 255, 0.15)",
+    borderRadius: 20,
+  },
+  fullImage: {
+    width: "92%",
+    height: "80%",
   },
 });

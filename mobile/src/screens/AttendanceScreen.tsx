@@ -10,6 +10,8 @@ import {
   TextInput,
   ActivityIndicator,
   RefreshControl,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import { Ionicons, Feather } from "@expo/vector-icons";
 import { colors } from "../theme/colors";
@@ -398,69 +400,79 @@ export function AttendanceScreen() {
         })}
       </View>
 
-      {/* Add Subject Modal */}
-      <Modal visible={isAddModalOpen} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
+      {/* Add Subject Modal with Keyboard UX */}
+      <Modal visible={isAddModalOpen} transparent animationType="fade" onRequestClose={() => setIsAddModalOpen(false)}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          style={styles.modalOverlay}
+        >
+          <TouchableOpacity
+            style={styles.modalOverlayTouch}
+            activeOpacity={1}
+            onPress={() => setIsAddModalOpen(false)}
+          />
           <GlassCard style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Add Semester Subject</Text>
-              <TouchableOpacity onPress={() => setIsAddModalOpen(false)}>
+              <TouchableOpacity onPress={() => setIsAddModalOpen(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
                 <Ionicons name="close" size={20} color={colors.slate[400]} />
               </TouchableOpacity>
             </View>
 
-            <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>Subject Name *</Text>
-              <TextInput
-                value={newSubName}
-                onChangeText={setNewSubName}
-                placeholder="e.g. Distributed Systems"
-                placeholderTextColor={colors.slate[500]}
-                style={styles.modalInput}
-              />
-            </View>
-
-            <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>Course Code</Text>
-              <TextInput
-                value={newSubCode}
-                onChangeText={setNewSubCode}
-                placeholder="e.g. CS301"
-                placeholderTextColor={colors.slate[500]}
-                style={styles.modalInput}
-              />
-            </View>
-
-            <View style={styles.formRow}>
-              <View style={[styles.formGroup, { flex: 1 }]}>
-                <Text style={styles.formLabel}>Attended</Text>
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>Subject Name *</Text>
                 <TextInput
-                  value={newSubAttended}
-                  onChangeText={setNewSubAttended}
-                  keyboardType="number-pad"
+                  value={newSubName}
+                  onChangeText={setNewSubName}
+                  placeholder="e.g. Distributed Systems"
+                  placeholderTextColor={colors.slate[500]}
                   style={styles.modalInput}
                 />
               </View>
 
-              <View style={[styles.formGroup, { flex: 1 }]}>
-                <Text style={styles.formLabel}>Total Held</Text>
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>Course Code</Text>
                 <TextInput
-                  value={newSubTotal}
-                  onChangeText={setNewSubTotal}
-                  keyboardType="number-pad"
+                  value={newSubCode}
+                  onChangeText={setNewSubCode}
+                  placeholder="e.g. CS301"
+                  placeholderTextColor={colors.slate[500]}
                   style={styles.modalInput}
                 />
               </View>
-            </View>
 
-            <Button
-              variant="brand"
-              title="Save Subject"
-              onPress={handleAddSubject}
-              style={{ marginTop: 10 }}
-            />
+              <View style={styles.formRow}>
+                <View style={[styles.formGroup, { flex: 1 }]}>
+                  <Text style={styles.formLabel}>Attended</Text>
+                  <TextInput
+                    value={newSubAttended}
+                    onChangeText={setNewSubAttended}
+                    keyboardType="number-pad"
+                    style={styles.modalInput}
+                  />
+                </View>
+
+                <View style={[styles.formGroup, { flex: 1 }]}>
+                  <Text style={styles.formLabel}>Total Held</Text>
+                  <TextInput
+                    value={newSubTotal}
+                    onChangeText={setNewSubTotal}
+                    keyboardType="number-pad"
+                    style={styles.modalInput}
+                  />
+                </View>
+              </View>
+
+              <Button
+                variant="brand"
+                title="Save Subject"
+                onPress={handleAddSubject}
+                style={{ marginTop: 10 }}
+              />
+            </ScrollView>
           </GlassCard>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </ScrollView>
   );
@@ -711,6 +723,13 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0, 0, 0, 0.75)",
     justifyContent: "center",
     padding: 20,
+  },
+  modalOverlayTouch: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
   },
   modalContent: {
     padding: 22,
