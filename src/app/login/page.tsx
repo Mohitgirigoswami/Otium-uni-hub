@@ -32,6 +32,7 @@ function LoginContent() {
       const res = await fetch("/api/auth/google", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ idToken }),
       });
 
@@ -41,7 +42,11 @@ function LoginContent() {
       if (res.ok && data.success && data.token) {
         localStorage.setItem("otium_jwt_token", data.token);
         toast.success(`Welcome, ${data.user?.name || "Student"}! Signed in via Google.`);
-        window.location.href = callbackUrl;
+        const destination =
+          callbackUrl && callbackUrl !== "/login" && callbackUrl !== "/"
+            ? callbackUrl
+            : "/dashboard";
+        window.location.href = destination;
       } else {
         toast.error(data.error || "Google authentication failed on server.");
       }

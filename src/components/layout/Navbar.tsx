@@ -147,7 +147,7 @@ export function Navbar() {
             )}
 
             {/* User Profile & Account Menu */}
-            {session ? (
+            {session || user ? (
               <div className="relative">
                 <button
                   onClick={() => setUserMenuOpen(!userMenuOpen)}
@@ -315,7 +315,7 @@ export function Navbar() {
           </div>
 
           <div className="pt-3 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between">
-            {session ? (
+            {session || user ? (
               <>
                 <Link
                   href="/profile"

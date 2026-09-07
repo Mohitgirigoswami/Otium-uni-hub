@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { OAuth2Client } from "google-auth-library";
 import { prisma } from "@/lib/prisma";
 import { signToken } from "@/utils/auth";
+import { encode } from "next-auth/jwt";
 import jwt from "jsonwebtoken";
 
 const googleClient = new OAuth2Client(
@@ -167,7 +168,7 @@ export async function POST(req: NextRequest) {
     }
 
     // 5. Upsert User in Prisma
-    const user = await prisma.user.upsert({
+    let user = await prisma.user.upsert({
       where: { email },
       create: {
         email,
@@ -189,6 +190,19 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    // If user existed without a collegeId, auto-assign default campus
+    if (!user.collegeId && userCollegeId) {
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: { collegeId: userCollegeId },
+        include: {
+          college: {
+            select: { id: true, name: true, city: true },
+          },
+        },
+      });
+    }
+
     // 6. Guard against banned accounts
     if (user.isBanned) {
       return NextResponse.json(
@@ -200,7 +214,25 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 7. Issue Custom 30-Day JWT
+    // Ensure incognitoProfile exists for whisper wall
+    const existingIncognito = await prisma.incognitoProfile.findUnique({
+      where: { userId: user.id },
+    });
+    if (!existingIncognito) {
+      const cleanName = (user.name || "Student").replace(/[^a-zA-Z0-9]/g, "");
+      const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+      const autoHandle = `Anon_${cleanName}_${randomSuffix}`;
+      const autoAvatar = `https://api.dicebear.com/9.x/bottts/svg?seed=${encodeURIComponent(autoHandle)}`;
+      await prisma.incognitoProfile.create({
+        data: {
+          userId: user.id,
+          handle: autoHandle,
+          avatarUrl: autoAvatar,
+        },
+      });
+    }
+
+    // 7. Issue Custom 30-Day JWT for mobile / client API
     const token = signToken({
       userId: user.id,
       email: user.email || undefined,
@@ -208,7 +240,28 @@ export async function POST(req: NextRequest) {
       name: user.name || undefined,
     });
 
-    return NextResponse.json({
+    // 8. Generate NextAuth Encrypted Session Token
+    const nextAuthSecret =
+      process.env.AUTH_SECRET ||
+      process.env.NEXTAUTH_SECRET ||
+      "otium-super-secret-key-production-jwt";
+
+    const nextAuthSessionToken = await encode({
+      token: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        picture: user.image,
+        role: user.role,
+        collegeId: user.collegeId,
+        isBanned: user.isBanned || false,
+        sub: user.id,
+      },
+      secret: nextAuthSecret,
+      maxAge: 30 * 24 * 60 * 60,
+    });
+
+    const response = NextResponse.json({
       success: true,
       token,
       user: {
@@ -223,6 +276,29 @@ export async function POST(req: NextRequest) {
       },
       message: "Google authentication successful.",
     });
+
+    const isProd = process.env.NODE_ENV === "production" || process.env.VERCEL === "1";
+    const isHttps =
+      req.nextUrl.protocol === "https:" ||
+      req.headers.get("x-forwarded-proto") === "https" ||
+      isProd;
+
+    const cookieMaxAge = 30 * 24 * 60 * 60; // 30 days
+    const cookieOptions = {
+      httpOnly: true,
+      sameSite: "lax" as const,
+      path: "/",
+      secure: isHttps,
+      maxAge: cookieMaxAge,
+    };
+
+    response.cookies.set("next-auth.session-token", nextAuthSessionToken, cookieOptions);
+    if (isHttps) {
+      response.cookies.set("__Secure-next-auth.session-token", nextAuthSessionToken, cookieOptions);
+    }
+    response.cookies.set("otium_token", token, cookieOptions);
+
+    return response;
   } catch (error: any) {
     console.error("[POST /api/auth/google Error]:", error);
     return NextResponse.json(
