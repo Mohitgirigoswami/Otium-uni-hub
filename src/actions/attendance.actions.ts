@@ -85,7 +85,8 @@ export async function createSubject(data: {
 export async function logAttendanceSession(
   subjectId: string,
   userId: string,
-  status: "PRESENT" | "ABSENT"
+  status: "PRESENT" | "ABSENT",
+  count: number = 1
 ): Promise<ActionResponse<any>> {
   try {
     const rateCheck = await checkRateLimit(userId);
@@ -101,8 +102,9 @@ export async function logAttendanceSession(
       return { error: "Subject not found or unauthorized." };
     }
 
-    const newTotal = subject.totalClasses + 1;
-    const newAttended = status === "PRESENT" ? subject.attendedClasses + 1 : subject.attendedClasses;
+    const weight = Math.max(1, Math.min(Number(count) || 1, 5));
+    const newTotal = subject.totalClasses + weight;
+    const newAttended = status === "PRESENT" ? subject.attendedClasses + weight : subject.attendedClasses;
 
     const [updatedSubject, record] = await prisma.$transaction([
       prisma.subject.update({

@@ -109,12 +109,12 @@ export function AttendanceScreen() {
   const aggregatePercentage = totalClasses > 0 ? (totalAttended / totalClasses) * 100 : 100;
   const criticalCount = subjects.filter((s) => (s.attended / s.total) * 100 < 75).length;
 
-  const handleLogAttendance = async (id: string, isPresent: boolean) => {
+  const handleLogAttendance = async (id: string, isPresent: boolean, count: number = 1) => {
     setSubjects((prev) =>
       prev.map((sub) => {
         if (sub.id === id) {
-          const newAttended = isPresent ? sub.attended + 1 : sub.attended;
-          const newTotal = sub.total + 1;
+          const newAttended = isPresent ? sub.attended + count : sub.attended;
+          const newTotal = sub.total + count;
           return {
             ...sub,
             attended: newAttended,
@@ -130,6 +130,7 @@ export function AttendanceScreen() {
         action: "LOG_SESSION",
         subjectId: id,
         isPresent,
+        count,
       });
     } catch (e) {
       console.warn("Could not log attendance session:", e);
@@ -343,25 +344,48 @@ export function AttendanceScreen() {
                 </Text>
               </View>
 
-              {/* Quick Attendance Logger Buttons */}
-              <View style={styles.actionsRow}>
-                <TouchableOpacity
-                  activeOpacity={0.8}
-                  onPress={() => handleLogAttendance(sub.id, true)}
-                  style={[styles.actionBtn, styles.presentBtn]}
-                >
-                  <Feather name="check" size={14} color={colors.emerald[400]} />
-                  <Text style={styles.presentBtnText}>Present (+1)</Text>
-                </TouchableOpacity>
+              {/* Quick Attendance Logger Buttons (Single Lecture & Lab 2-Period) */}
+              <View style={styles.actionsContainer}>
+                <View style={styles.actionsRow}>
+                  <TouchableOpacity
+                    activeOpacity={0.8}
+                    onPress={() => handleLogAttendance(sub.id, true, 1)}
+                    style={[styles.actionBtn, styles.presentBtn]}
+                  >
+                    <Feather name="check" size={13} color={colors.emerald[400]} />
+                    <Text style={styles.presentBtnText}>Class (+1)</Text>
+                  </TouchableOpacity>
 
-                <TouchableOpacity
-                  activeOpacity={0.8}
-                  onPress={() => handleLogAttendance(sub.id, false)}
-                  style={[styles.actionBtn, styles.absentBtn]}
-                >
-                  <Feather name="x" size={14} color={colors.rose[400]} />
-                  <Text style={styles.absentBtnText}>Absent</Text>
-                </TouchableOpacity>
+                  <TouchableOpacity
+                    activeOpacity={0.8}
+                    onPress={() => handleLogAttendance(sub.id, false, 1)}
+                    style={[styles.actionBtn, styles.absentBtn]}
+                  >
+                    <Feather name="x" size={13} color={colors.rose[400]} />
+                    <Text style={styles.absentBtnText}>Missed (-1)</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* Lab 2-Period Fast Actions */}
+                <View style={styles.labRow}>
+                  <TouchableOpacity
+                    activeOpacity={0.8}
+                    onPress={() => handleLogAttendance(sub.id, true, 2)}
+                    style={styles.labPresentBtn}
+                  >
+                    <Ionicons name="flask-outline" size={13} color={colors.brand[400]} />
+                    <Text style={styles.labPresentText}>Lab Attended (+2)</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    activeOpacity={0.8}
+                    onPress={() => handleLogAttendance(sub.id, false, 2)}
+                    style={styles.labAbsentBtn}
+                  >
+                    <Ionicons name="flask-outline" size={13} color={colors.rose[400]} />
+                    <Text style={styles.labAbsentText}>Lab Missed (-2)</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             </GlassCard>
           );
@@ -584,20 +608,23 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "600",
   },
+  actionsContainer: {
+    gap: 6,
+    marginTop: 2,
+  },
   actionsRow: {
     flexDirection: "row",
-    gap: 10,
-    marginTop: 2,
+    gap: 8,
   },
   actionBtn: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 9,
+    paddingVertical: 8,
     borderRadius: 10,
     borderWidth: 1,
-    gap: 6,
+    gap: 5,
   },
   presentBtn: {
     backgroundColor: "rgba(16, 185, 129, 0.1)",
@@ -614,6 +641,44 @@ const styles = StyleSheet.create({
   },
   absentBtnText: {
     fontSize: 12,
+    fontWeight: "700",
+    color: colors.rose[400],
+  },
+  labRow: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  labPresentBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 7,
+    borderRadius: 8,
+    backgroundColor: "rgba(20, 184, 166, 0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(20, 184, 166, 0.25)",
+    gap: 4,
+  },
+  labPresentText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: colors.brand[400],
+  },
+  labAbsentBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 7,
+    borderRadius: 8,
+    backgroundColor: "rgba(244, 63, 94, 0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(244, 63, 94, 0.25)",
+    gap: 4,
+  },
+  labAbsentText: {
+    fontSize: 11,
     fontWeight: "700",
     color: colors.rose[400],
   },

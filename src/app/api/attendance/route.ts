@@ -43,10 +43,11 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // If logging a session (mark present / absent)
+    // If logging a session (mark present / absent, supports multi-period labs)
     if (body.action === "LOG_SESSION" && body.subjectId) {
       const status: "PRESENT" | "ABSENT" = body.isPresent !== false ? "PRESENT" : "ABSENT";
-      const res = await logAttendanceSession(body.subjectId, userId, status);
+      const count = Number(body.count) || 1;
+      const res = await logAttendanceSession(body.subjectId, userId, status, count);
       return NextResponse.json(res);
     }
 
