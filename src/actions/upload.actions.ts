@@ -211,7 +211,7 @@ export async function uploadDocumentDirect(
 /**
  * Helper to extract Cloudinary Public ID from a secure URL
  */
-export function extractCloudinaryPublicId(url: string): string | null {
+function extractCloudinaryPublicId(url: string): string | null {
   if (!url || typeof url !== "string" || !url.includes("cloudinary.com")) return null;
   try {
     const parts = url.split("/upload/");

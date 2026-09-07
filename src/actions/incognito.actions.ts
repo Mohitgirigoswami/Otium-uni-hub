@@ -402,7 +402,9 @@ export async function toggleLikeIncognitoPost(
 }
 
 // Legacy alias to maintain backwards compatibility
-export const likeIncognitoPost = toggleLikeIncognitoPost;
+export async function likeIncognitoPost(postId: string, userId: string): Promise<ActionResponse<any>> {
+  return toggleLikeIncognitoPost(postId, userId);
+}
 
 /**
  * TASK 2.4: Comments System - Post a reply to an incognito whisper
