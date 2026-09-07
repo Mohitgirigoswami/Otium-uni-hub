@@ -38,7 +38,7 @@ export async function getSemesterRecords(userId: string): Promise<ActionResponse
 export async function saveSemesterRecord(data: {
   userId: string;
   semester: number;
-  courses: Array<{ name: string; credits: number; gradePoint: number; gradeLabel: string }>;
+  courses?: Array<{ name: string; credits: number; gradePoint: number; gradeLabel: string }>;
   gpa: number;
   totalCredits: number;
 }): Promise<ActionResponse<any>> {
@@ -55,6 +55,8 @@ export async function saveSemesterRecord(data: {
       },
     });
 
+    const coursesJson = JSON.stringify(data.courses || []);
+
     let record;
     if (existing) {
       record = await prisma.semesterCGPA.update({
@@ -62,7 +64,7 @@ export async function saveSemesterRecord(data: {
         data: {
           gpa: Number(data.gpa),
           totalCredits: Number(data.totalCredits),
-          courses: JSON.stringify(data.courses),
+          courses: coursesJson,
         },
       });
     } else {
@@ -72,7 +74,7 @@ export async function saveSemesterRecord(data: {
           semester: Number(data.semester),
           gpa: Number(data.gpa),
           totalCredits: Number(data.totalCredits),
-          courses: JSON.stringify(data.courses),
+          courses: coursesJson,
         },
       });
     }

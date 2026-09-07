@@ -47,10 +47,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { semester, courses, gpa, totalCredits } = body;
-    if (!semester || !Array.isArray(courses) || courses.length === 0) {
+    const { semester, courses = [], gpa, totalCredits } = body;
+    if (semester === undefined || gpa === undefined || !totalCredits) {
       return NextResponse.json(
-        { success: false, error: "Semester and valid courses are required." },
+        { success: false, error: "Semester number, SGPA, and total credits are required." },
         { status: 400 }
       );
     }
@@ -58,7 +58,7 @@ export async function POST(req: NextRequest) {
     const res = await saveSemesterRecord({
       userId,
       semester: Number(semester),
-      courses,
+      courses: Array.isArray(courses) ? courses : [],
       gpa: Number(gpa),
       totalCredits: Number(totalCredits),
     });

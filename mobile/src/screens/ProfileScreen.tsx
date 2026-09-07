@@ -11,6 +11,8 @@ import {
   ActivityIndicator,
   RefreshControl,
   Image,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import { Ionicons, Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { colors } from "../theme/colors";
@@ -270,18 +272,31 @@ export function ProfileScreen() {
         <Text style={styles.signOutButtonText}>Sign Out from Otium</Text>
       </TouchableOpacity>
 
-      {/* Edit Profile Modal */}
-      <Modal visible={isEditModalOpen} animationType="slide" transparent>
-        <View style={styles.modalBackdrop}>
+      {/* Edit Profile Modal with Keyboard UX */}
+      <Modal visible={isEditModalOpen} animationType="slide" transparent onRequestClose={() => setIsEditModalOpen(false)}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={styles.keyboardAvoidingModal}
+        >
+          <TouchableOpacity
+            style={styles.modalBackdropTouch}
+            activeOpacity={1}
+            onPress={() => setIsEditModalOpen(false)}
+          />
           <View style={styles.modalContainer}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Edit Student Profile</Text>
-              <TouchableOpacity onPress={() => setIsEditModalOpen(false)}>
-                <Ionicons name="close" size={20} color={colors.slate[400]} />
+              <TouchableOpacity onPress={() => setIsEditModalOpen(false)} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+                <Ionicons name="close" size={22} color={colors.slate[400]} />
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={styles.modalScroll} showsVerticalScrollIndicator={false}>
+            <ScrollView
+              style={styles.modalScroll}
+              contentContainerStyle={styles.modalScrollContent}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
               <View style={styles.formGroup}>
                 <Text style={styles.formLabel}>Full Name *</Text>
                 <TextInput
@@ -370,7 +385,7 @@ export function ProfileScreen() {
               </TouchableOpacity>
             </ScrollView>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </ScrollView>
   );
@@ -576,10 +591,13 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "800",
   },
-  modalBackdrop: {
+  keyboardAvoidingModal: {
     flex: 1,
     backgroundColor: "rgba(0, 0, 0, 0.75)",
     justifyContent: "flex-end",
+  },
+  modalBackdropTouch: {
+    flex: 1,
   },
   modalContainer: {
     backgroundColor: colors.surface,
@@ -587,7 +605,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 24,
     borderWidth: 1,
     borderColor: "rgba(255, 255, 255, 0.1)",
-    maxHeight: "85%",
+    maxHeight: "88%",
     padding: 20,
     gap: 16,
   },
@@ -605,7 +623,10 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
   },
   modalScroll: {
-    maxHeight: 440,
+    flexGrow: 0,
+  },
+  modalScrollContent: {
+    paddingBottom: 30,
   },
   formGroup: {
     marginBottom: 14,

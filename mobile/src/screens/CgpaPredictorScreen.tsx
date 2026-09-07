@@ -54,6 +54,12 @@ export function CgpaPredictorScreen() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
+  // Entry Mode: Quick SGPA entry vs Detailed Course Builder
+  const [entryMode, setEntryMode] = useState<"quick" | "detailed">("quick");
+  const [quickSemester, setQuickSemester] = useState<number>(3);
+  const [quickSgpa, setQuickSgpa] = useState<string>("8.50");
+  const [quickCredits, setQuickCredits] = useState<string>("24");
+
   // Target Planner inputs
   const [targetCgpa, setTargetCgpa] = useState<string>("8.50");
   const [upcomingCredits, setUpcomingCredits] = useState<string>("20");
@@ -68,6 +74,7 @@ export function CgpaPredictorScreen() {
           const maxSem = Math.max(...res.data.map((s: any) => s.semester));
           if (maxSem < 8) {
             setActiveSemesterNum(maxSem + 1);
+            setQuickSemester(maxSem + 1);
           }
         }
       }
@@ -193,6 +200,48 @@ export function CgpaPredictorScreen() {
     }
   };
 
+  // Save quick semester record (no courses required)
+  const handleSaveQuickSemester = async () => {
+    const parsedGpa = parseFloat(quickSgpa);
+    const parsedCredits = parseInt(quickCredits.replace(/[^0-9]/g, ""), 10);
+
+    if (isNaN(parsedGpa) || parsedGpa < 0 || parsedGpa > 10) {
+      Alert.alert("Invalid SGPA", "Please enter an SGPA between 0.00 and 10.00.");
+      return;
+    }
+    if (isNaN(parsedCredits) || parsedCredits <= 0 || parsedCredits > 45) {
+      Alert.alert("Invalid Credits", "Please enter valid total credits for the semester (e.g. 18 to 30).");
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const res = await apiClient.post("/cgpa", {
+        semester: quickSemester,
+        courses: [],
+        gpa: parsedGpa,
+        totalCredits: parsedCredits,
+      });
+
+      if (res.success) {
+        Alert.alert(
+          "Quick Semester Saved! 🎓",
+          `Semester ${quickSemester} (SGPA: ${parsedGpa.toFixed(2)}, Credits: ${parsedCredits}) saved to your cumulative transcript.`
+        );
+        fetchRecords();
+        if (quickSemester < 8) {
+          setQuickSemester(quickSemester + 1);
+        }
+      } else {
+        Alert.alert("Save Failed", res.error || "Could not save semester record.");
+      }
+    } catch (e: any) {
+      Alert.alert("Network Error", e?.message || "Could not reach backend.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   // Delete saved semester
   const handleDeleteSemester = (recordId: string, semNum: number) => {
     Alert.alert(
@@ -258,17 +307,163 @@ export function CgpaPredictorScreen() {
             <MaterialCommunityIcons name="trophy-award" size={28} color={colors.brand[400]} />
           </View>
         </View>
+
+        {/* Mode Switcher: Quick SGPA Entry vs Detailed Course Calculator */}
+        <View style={styles.segmentedModeContainer}>
+          <TouchableOpacity
+            style={[styles.segmentBtn, entryMode === "quick" && styles.segmentBtnActive]}
+            onPress={() => setEntryMode("quick")}
+            activeOpacity={0.8}
+          >
+            <Ionicons
+              name="flash"
+              size={15}
+              color={entryMode === "quick" ? colors.brand[400] : colors.slate[400]}
+            />
+            <Text style={[styles.segmentBtnText, entryMode === "quick" && styles.segmentBtnTextActive]}>
+              ⚡ Quick SGPA Entry
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.segmentBtn, entryMode === "detailed" && styles.segmentBtnActive]}
+            onPress={() => setEntryMode("detailed")}
+            activeOpacity={0.8}
+          >
+            <Ionicons
+              name="list"
+              size={15}
+              color={entryMode === "detailed" ? colors.brand[400] : colors.slate[400]}
+            />
+            <Text style={[styles.segmentBtnText, entryMode === "detailed" && styles.segmentBtnTextActive]}>
+              📝 Course Calculator
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
-      {/* Active Semester Course Calculator */}
-      <GlassCard style={styles.calculatorCard}>
-        <View style={styles.calcHeaderRow}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.calcTitle}>Course Calculator</Text>
-            <Text style={styles.calcSubtitle}>
-              Edit course names, credits, and grades below
-            </Text>
+      {/* Mode 1: Quick SGPA & Credits Input */}
+      {entryMode === "quick" ? (
+        <GlassCard style={styles.calculatorCard}>
+          <View style={styles.calcHeaderRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.calcTitle}>Quick Semester Entry</Text>
+              <Text style={styles.calcSubtitle}>
+                No need to type courses! Enter your SGPA and Total Credits directly.
+              </Text>
+            </View>
+            <View style={styles.sgpaPill}>
+              <Text style={styles.sgpaLabel}>Semester SGPA</Text>
+              <Text style={styles.sgpaValue}>
+                {parseFloat(quickSgpa) ? parseFloat(quickSgpa).toFixed(2) : "0.00"}
+              </Text>
+            </View>
           </View>
+
+          {/* Quick Semester Selector */}
+          <View style={styles.semBarContainer}>
+            <Text style={styles.semBarLabel}>Select Semester to Record:</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.semScroll}>
+              {[1, 2, 3, 4, 5, 6, 7, 8].map((sem) => (
+                <TouchableOpacity
+                  key={sem}
+                  onPress={() => setQuickSemester(sem)}
+                  style={[
+                    styles.semPill,
+                    quickSemester === sem && styles.semPillActive,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.semPillText,
+                      quickSemester === sem && styles.semPillTextActive,
+                    ]}
+                  >
+                    Sem {sem}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+
+          {/* Quick Input Fields */}
+          <View style={styles.quickInputsGrid}>
+            <View style={styles.quickInputCard}>
+              <Text style={styles.quickInputLabel}>Semester SGPA (e.g. 8.50) *</Text>
+              <TextInput
+                value={quickSgpa}
+                onChangeText={setQuickSgpa}
+                placeholder="8.50"
+                placeholderTextColor={colors.slate[500]}
+                keyboardType="decimal-pad"
+                maxLength={5}
+                style={styles.quickTextInput}
+              />
+              <Text style={styles.quickInputHint}>Range: 0.00 to 10.00</Text>
+            </View>
+
+            <View style={styles.quickInputCard}>
+              <Text style={styles.quickInputLabel}>Total Semester Credits *</Text>
+              <TextInput
+                value={quickCredits}
+                onChangeText={(text) => setQuickCredits(text.replace(/\D/g, ""))}
+                placeholder="24"
+                placeholderTextColor={colors.slate[500]}
+                keyboardType="number-pad"
+                maxLength={2}
+                style={styles.quickTextInput}
+              />
+              <Text style={styles.quickInputHint}>Usually between 18 and 28 credits</Text>
+            </View>
+          </View>
+
+          {/* Projected Cumulative CGPA Preview */}
+          {(() => {
+            const numSgpa = parseFloat(quickSgpa) || 0;
+            const numCreds = parseInt(quickCredits, 10) || 0;
+            const newTotalCredits = cumulativeTotalCredits + numCreds;
+            const newCumulativeCGPA =
+              newTotalCredits > 0
+                ? ((cumulativeWeightedPoints + numSgpa * numCreds) / newTotalCredits).toFixed(2)
+                : "—";
+            return (
+              <View style={styles.quickPreviewCard}>
+                <Ionicons name="trending-up" size={18} color={colors.brand[400]} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.quickPreviewHeading}>Cumulative Impact Preview</Text>
+                  <Text style={styles.quickPreviewText}>
+                    Recording Sem {quickSemester} will update your total transcript to{" "}
+                    <Text style={{ color: colors.brand[400], fontWeight: "900" }}>
+                      {newCumulativeCGPA} CGPA
+                    </Text>{" "}
+                    ({newTotalCredits} cumulative credits).
+                  </Text>
+                </View>
+              </View>
+            );
+          })()}
+
+          {/* Save Quick Semester Button */}
+          <Button
+            variant="brand"
+            size="lg"
+            title={isSaving ? "Saving to Transcript..." : `Save Sem ${quickSemester} to Transcript (SGPA ${quickSgpa || "—"})`}
+            loading={isSaving}
+            onPress={handleSaveQuickSemester}
+            leftIcon={<Ionicons name="checkmark-circle-outline" size={18} color="#0B132B" />}
+            style={{ width: "100%", marginTop: 14 }}
+          />
+        </GlassCard>
+      ) : (
+        /* Mode 2: Detailed Course Calculator */
+        <GlassCard style={styles.calculatorCard}>
+          <View style={styles.calcHeaderRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.calcTitle}>Course-by-Course Calculator</Text>
+              <Text style={styles.calcSubtitle}>
+                Edit course names, credits, and letter grades below
+              </Text>
+            </View>
 
           {/* Semester Selector Pills */}
           <View style={styles.sgpaPill}>
@@ -402,6 +597,7 @@ export function CgpaPredictorScreen() {
           </TouchableOpacity>
         </View>
       </GlassCard>
+      )}
 
       {/* Target CGPA Output & Requirement Card */}
       <GlassCard style={styles.targetPlannerCard}>
@@ -949,5 +1145,88 @@ const styles = StyleSheet.create({
   },
   deleteSemBtn: {
     padding: 6,
+  },
+  segmentedModeContainer: {
+    flexDirection: "row",
+    backgroundColor: colors.slate[900],
+    borderRadius: 14,
+    padding: 4,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    marginTop: 12,
+  },
+  segmentBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 10,
+    borderRadius: 10,
+    gap: 6,
+  },
+  segmentBtnActive: {
+    backgroundColor: "rgba(20, 184, 166, 0.2)",
+    borderWidth: 1,
+    borderColor: colors.brand[400],
+  },
+  segmentBtnText: {
+    fontSize: 12.5,
+    fontWeight: "700",
+    color: colors.slate[400],
+  },
+  segmentBtnTextActive: {
+    color: "#FFFFFF",
+  },
+  quickInputsGrid: {
+    gap: 12,
+    marginTop: 12,
+  },
+  quickInputCard: {
+    backgroundColor: colors.slate[900],
+    padding: 14,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+  },
+  quickInputLabel: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: colors.slate[300],
+    textTransform: "uppercase",
+    marginBottom: 6,
+  },
+  quickTextInput: {
+    fontSize: 22,
+    fontWeight: "900",
+    color: colors.brand[400],
+    paddingVertical: 4,
+    fontFamily: "monospace",
+  },
+  quickInputHint: {
+    fontSize: 11,
+    color: colors.slate[500],
+    marginTop: 2,
+  },
+  quickPreviewCard: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    backgroundColor: "rgba(20, 184, 166, 0.08)",
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(20, 184, 166, 0.2)",
+    marginTop: 12,
+  },
+  quickPreviewHeading: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: colors.brand[300],
+    marginBottom: 2,
+  },
+  quickPreviewText: {
+    fontSize: 11.5,
+    color: colors.slate[300],
+    lineHeight: 16,
   },
 });

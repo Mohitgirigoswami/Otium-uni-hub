@@ -8,8 +8,11 @@ import {
   TextInput,
   Alert,
   ActivityIndicator,
+  Image,
+  Linking,
 } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
+import * as Clipboard from "expo-clipboard";
 import { Ionicons, MaterialCommunityIcons, Feather } from "@expo/vector-icons";
 import { colors } from "../theme/colors";
 import { GlassCard } from "../components/GlassCard";
@@ -92,10 +95,12 @@ export function PrintStationScreen() {
   const [deliveryWindow, setDeliveryWindow] = useState<string>("Morning Drop (8:30 AM - 9:00 AM)");
   const [deliveryLocation, setDeliveryLocation] = useState<string>("Library Ground Floor, Desk 14");
   const [phone, setPhone] = useState<string>("9876543210");
-  const [utrNumber, setUtrNumber] = useState<string>("423819823412");
+  const [utrNumber, setUtrNumber] = useState<string>("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [recentOrders, setRecentOrders] = useState<any[]>([]);
   const [isLoadingOrders, setIsLoadingOrders] = useState(false);
+  const [platformUpiId, setPlatformUpiId] = useState<string>("otium.escrow@okhdfcbank");
+  const [copiedUpi, setCopiedUpi] = useState(false);
 
   const fetchOrders = async () => {
     setIsLoadingOrders(true);
@@ -111,8 +116,20 @@ export function PrintStationScreen() {
     }
   };
 
+  const fetchPlatformSettings = async () => {
+    try {
+      const res = await apiClient.get("/settings");
+      if (res.success && res.data?.upiId) {
+        setPlatformUpiId(res.data.upiId);
+      }
+    } catch (e) {
+      console.warn("Could not fetch platform settings:", e);
+    }
+  };
+
   useEffect(() => {
     fetchOrders();
+    fetchPlatformSettings();
   }, []);
 
   const handlePickDocument = async () => {
@@ -175,6 +192,56 @@ export function PrintStationScreen() {
   const MINIMUM_ORDER_FLOOR = 5.0;
   const isFloorApplied = rawCost < MINIMUM_ORDER_FLOOR;
   const finalPayable = Math.max(MINIMUM_ORDER_FLOOR, rawCost);
+
+  // UPI deep link & QR code image with amount locked
+  const upiPayUrl = `upi://pay?pa=${encodeURIComponent(platformUpiId)}&pn=${encodeURIComponent("Otium Uni Hub")}&am=${finalPayable.toFixed(2)}&cu=INR&tn=${encodeURIComponent(`Print Order ${selectedFile ? selectedFile.name.slice(0, 15) : ""}`)}`;
+  const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=260x260&margin=8&data=${encodeURIComponent(upiPayUrl)}`;
+
+  const handleOpenUpiApp = async () => {
+    try {
+      const supported = await Linking.canOpenURL(upiPayUrl);
+      if (supported) {
+        await Linking.openURL(upiPayUrl);
+      } else {
+        await Linking.openURL(upiPayUrl).catch(() => {
+          Alert.alert(
+            "No UPI App Found",
+            `Could not open UPI app directly. Please scan the QR code above or copy the UPI ID (${platformUpiId}) into Google Pay, PhonePe, or Paytm.`
+          );
+        });
+      }
+    } catch (err: any) {
+      Alert.alert(
+        "UPI Intent",
+        `Please scan the QR code above or copy the UPI ID: ${platformUpiId}`
+      );
+    }
+  };
+
+  const handleCopyUpiId = async () => {
+    await Clipboard.setStringAsync(platformUpiId);
+    setCopiedUpi(true);
+    setTimeout(() => setCopiedUpi(false), 2500);
+    Alert.alert("UPI ID Copied! 📋", `${platformUpiId} has been copied to your clipboard.`);
+  };
+
+  const handlePasteUtr = async () => {
+    try {
+      const text = await Clipboard.getStringAsync();
+      const cleaned = text.replace(/\D/g, "");
+      if (cleaned.length >= 12) {
+        setUtrNumber(cleaned.slice(0, 12));
+        Alert.alert("UTR Pasted", `Pasted 12-digit UTR: ${cleaned.slice(0, 12)}`);
+      } else if (cleaned.length > 0) {
+        setUtrNumber(cleaned);
+        Alert.alert("UTR Pasted", `Pasted ${cleaned.length} digits. UTR must be 12 digits.`);
+      } else {
+        Alert.alert("Clipboard Empty", "No numbers found in your clipboard.");
+      }
+    } catch (e) {
+      Alert.alert("Error", "Could not read clipboard.");
+    }
+  };
 
   const handlePlaceOrder = async () => {
     if (!selectedFile) {
@@ -451,30 +518,95 @@ export function PrintStationScreen() {
         </Text>
       </View>
 
-      {/* Step 5: Advance UPI Payment (12-Digit UTR) */}
+      {/* Step 5: Advance UPI Payment (QR Code & App Chooser) */}
       <GlassCard style={styles.sectionCard}>
         <View style={styles.sectionHeaderRow}>
           <MaterialCommunityIcons name="qrcode-scan" size={18} color={colors.amber[400]} />
-          <Text style={styles.sectionTitle}>Step 6: Advance UPI Payment</Text>
+          <Text style={styles.sectionTitle}>Step 6: Advance UPI Payment (₹{finalPayable.toFixed(2)})</Text>
         </View>
 
-        <View style={styles.upiCard}>
-          <View style={styles.upiHeaderRow}>
-            <Text style={styles.upiLabel}>Pay via Platform UPI ID:</Text>
-            <Text style={styles.upiIdText}>otiumprint@axl</Text>
-          </View>
-          <View style={styles.utrInputWrapper}>
-            <Text style={styles.utrLabel}>12-Digit UPI Transaction / UTR Number *</Text>
-            <TextInput
-              value={utrNumber}
-              onChangeText={(text: string) => setUtrNumber(text.replace(/\D/g, ""))}
-              maxLength={12}
-              keyboardType="number-pad"
-              placeholder="e.g. 423819823412"
-              placeholderTextColor={colors.slate[500]}
-              style={styles.utrInput}
+        {/* Dynamic QR Code Box */}
+        <View style={styles.qrContainer}>
+          <View style={styles.qrWhiteFrame}>
+            <Image
+              source={{ uri: qrCodeUrl }}
+              style={styles.qrImage}
+              resizeMode="contain"
             />
           </View>
+          <Text style={styles.qrSubtext}>Scan with GPay, PhonePe, Paytm, or CRED</Text>
+          <Badge variant="warning" size="sm">
+            Amount Locked: ₹{finalPayable.toFixed(2)}
+          </Badge>
+        </View>
+
+        {/* Open Installed UPI App Chooser Button */}
+        <TouchableOpacity
+          activeOpacity={0.8}
+          onPress={handleOpenUpiApp}
+          style={styles.payUpiButton}
+        >
+          <Ionicons name="flash" size={18} color="#0B132B" />
+          <Text style={styles.payUpiButtonText}>Pay via UPI App (GPay / PhonePe / Paytm)</Text>
+        </TouchableOpacity>
+
+        {/* Live Platform UPI ID with Copy Button */}
+        <View style={styles.upiCopyRow}>
+          <View style={styles.upiInfoColumn}>
+            <Text style={styles.upiInfoLabel}>Live Platform UPI ID</Text>
+            <Text style={styles.upiInfoValue}>{platformUpiId}</Text>
+          </View>
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={handleCopyUpiId}
+            style={styles.copyBtn}
+          >
+            <Ionicons
+              name={copiedUpi ? "checkmark" : "copy-outline"}
+              size={15}
+              color={copiedUpi ? colors.emerald[400] : colors.brand[400]}
+            />
+            <Text style={[styles.copyBtnText, copiedUpi && { color: colors.emerald[400] }]}>
+              {copiedUpi ? "Copied" : "Copy"}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Notice explaining why user can copy UTR without automatic redirection */}
+        <View style={styles.utrNoticeBox}>
+          <Ionicons name="information-circle-outline" size={18} color={colors.brand[400]} style={{ marginTop: 2 }} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.utrNoticeHeading}>How to submit your order:</Text>
+            <Text style={styles.utrNoticeText}>
+              1. Tap "Pay via UPI App" or scan QR above.{"\n"}
+              2. Complete payment in your UPI app.{"\n"}
+              3. Copy the 12-digit UPI Ref / UTR number from your payment receipt screen.{"\n"}
+              4. Return to Otium and paste the UTR below.
+            </Text>
+          </View>
+        </View>
+
+        {/* 12-Digit UTR Input with Paste Button */}
+        <View style={styles.utrInputWrapper}>
+          <View style={styles.utrHeaderRow}>
+            <Text style={styles.utrLabel}>12-Digit UPI Transaction / UTR Number *</Text>
+            <TouchableOpacity onPress={handlePasteUtr} style={styles.pasteBadgeBtn}>
+              <Ionicons name="clipboard-outline" size={13} color={colors.amber[400]} />
+              <Text style={styles.pasteBadgeText}>Paste UTR</Text>
+            </TouchableOpacity>
+          </View>
+          <TextInput
+            value={utrNumber}
+            onChangeText={(text: string) => setUtrNumber(text.replace(/\D/g, ""))}
+            maxLength={12}
+            keyboardType="number-pad"
+            placeholder="e.g. 423819823412"
+            placeholderTextColor={colors.slate[500]}
+            style={styles.utrInput}
+          />
+          <Text style={styles.utrCounter}>
+            {utrNumber.length}/12 digits entered {utrNumber.length === 12 ? "✅ Ready to submit" : ""}
+          </Text>
         </View>
       </GlassCard>
 
@@ -847,29 +979,125 @@ const styles = StyleSheet.create({
     color: colors.amber[400],
     lineHeight: 18,
   },
-  upiCard: {
-    gap: 12,
+  qrContainer: {
+    alignItems: "center",
+    marginVertical: 8,
+    gap: 10,
   },
-  upiHeaderRow: {
+  qrWhiteFrame: {
+    backgroundColor: "#FFFFFF",
+    padding: 12,
+    borderRadius: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    elevation: 6,
+  },
+  qrImage: {
+    width: 200,
+    height: 200,
+    borderRadius: 8,
+  },
+  qrSubtext: {
+    fontSize: 12,
+    color: colors.slate[300],
+    fontWeight: "600",
+    textAlign: "center",
+  },
+  payUpiButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.brand[400],
+    paddingVertical: 14,
+    borderRadius: 14,
+    gap: 8,
+    marginTop: 4,
+    shadowColor: colors.brand[400],
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  payUpiButtonText: {
+    fontSize: 13.5,
+    fontWeight: "900",
+    color: "#0B132B",
+  },
+  upiCopyRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     padding: 12,
     borderRadius: 12,
     backgroundColor: "rgba(255, 255, 255, 0.04)",
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    marginTop: 8,
   },
-  upiLabel: {
-    fontSize: 11,
+  upiInfoColumn: {
+    flex: 1,
+    gap: 2,
+  },
+  upiInfoLabel: {
+    fontSize: 10.5,
+    fontWeight: "700",
     color: colors.slate[400],
+    textTransform: "uppercase",
   },
-  upiIdText: {
+  upiInfoValue: {
     fontSize: 13,
     fontWeight: "800",
     color: colors.amber[400],
     fontFamily: "monospace",
   },
+  copyBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "rgba(20, 184, 166, 0.15)",
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "rgba(20, 184, 166, 0.3)",
+  },
+  copyBtnText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: colors.brand[400],
+  },
+  utrNoticeBox: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    backgroundColor: "rgba(13, 148, 136, 0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(20, 184, 166, 0.2)",
+    borderRadius: 12,
+    padding: 12,
+    marginTop: 8,
+  },
+  utrNoticeHeading: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: colors.brand[300],
+    marginBottom: 4,
+  },
+  utrNoticeText: {
+    fontSize: 11,
+    color: colors.slate[300],
+    lineHeight: 16,
+  },
   utrInputWrapper: {
     gap: 6,
+    marginTop: 8,
+  },
+  utrHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
   },
   utrLabel: {
     fontSize: 11,
@@ -877,17 +1105,39 @@ const styles = StyleSheet.create({
     color: colors.slate[300],
     textTransform: "uppercase",
   },
+  pasteBadgeBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "rgba(245, 158, 11, 0.15)",
+    paddingVertical: 3,
+    paddingHorizontal: 8,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: "rgba(245, 158, 11, 0.3)",
+  },
+  pasteBadgeText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: colors.amber[400],
+  },
   utrInput: {
     backgroundColor: colors.slate[900],
     borderWidth: 1,
     borderColor: colors.amber[500],
     borderRadius: 12,
     paddingHorizontal: 14,
-    paddingVertical: 10,
-    fontSize: 14,
+    paddingVertical: 12,
+    fontSize: 15,
     fontWeight: "800",
     color: "#FFFFFF",
     fontFamily: "monospace",
+    letterSpacing: 1.5,
+  },
+  utrCounter: {
+    fontSize: 11,
+    color: colors.slate[400],
+    fontWeight: "600",
   },
   summaryCard: {
     padding: 20,
