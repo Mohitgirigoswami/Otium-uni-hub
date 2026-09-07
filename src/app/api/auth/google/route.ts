@@ -11,6 +11,10 @@ const googleClient = new OAuth2Client(
   process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID
 );
 
+export async function OPTIONS() {
+  return new NextResponse(null, { status: 204 });
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
