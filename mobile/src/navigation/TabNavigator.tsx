@@ -8,12 +8,14 @@ import { PrintStationScreen } from "../screens/PrintStationScreen";
 import { AttendanceScreen } from "../screens/AttendanceScreen";
 import { WhisperWallScreen } from "../screens/WhisperWallScreen";
 import { CgpaPredictorScreen } from "../screens/CgpaPredictorScreen";
+import { ProfileScreen } from "../screens/ProfileScreen";
 
 export type RootTabParamList = {
   Print: undefined;
   Attendance: undefined;
   Whispers: undefined;
   CGPA: undefined;
+  Profile: undefined;
 };
 
 const Tab = createBottomTabNavigator<RootTabParamList>();
@@ -94,6 +96,23 @@ export function TabNavigator() {
           ),
         }}
       />
+
+      <Tab.Screen
+        name="Profile"
+        component={ProfileScreen}
+        options={{
+          tabBarLabel: "Profile",
+          tabBarIcon: ({ color, focused }: { color: string; focused: boolean }) => (
+            <View style={[styles.iconContainer, focused && styles.iconContainerActive]}>
+              <Ionicons
+                name={focused ? "person" : "person-outline"}
+                size={20}
+                color={color}
+              />
+            </View>
+          ),
+        }}
+      />
     </Tab.Navigator>
   );
 }
@@ -116,7 +135,7 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
   },
   tabLabel: {
-    fontSize: 11,
+    fontSize: 10.5,
     fontWeight: "700",
     letterSpacing: -0.2,
     marginTop: 2,

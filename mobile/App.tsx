@@ -15,6 +15,8 @@ import * as SecureStore from "expo-secure-store";
 import { TabNavigator } from "./src/navigation/TabNavigator";
 import { Header } from "./src/components/Header";
 import { LoginScreen } from "./src/screens/LoginScreen";
+import { NotificationsModal } from "./src/components/NotificationsModal";
+import { UserProvider } from "./src/context/UserContext";
 import { colors } from "./src/theme/colors";
 import { apiClient } from "./src/services/apiClient";
 
@@ -79,6 +81,7 @@ class ErrorBoundary extends React.Component<
 export default function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [currentUser, setCurrentUser] = useState<any | null>(null);
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
 
   // Check SecureStore on app boot
   useEffect(() => {
@@ -121,33 +124,6 @@ export default function App() {
     setCurrentUser(user);
   };
 
-  const handleSignOut = () => {
-    Alert.alert(
-      "Sign Out",
-      "Are you sure you want to sign out of Otium?",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Sign Out",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              await SecureStore.deleteItemAsync("jwt");
-            } catch {}
-            try {
-              const RNSignIn = require("@react-native-google-signin/google-signin");
-              if (RNSignIn?.GoogleSignin?.signOut) {
-                await RNSignIn.GoogleSignin.signOut();
-              }
-            } catch {}
-            apiClient.clearAuthToken();
-            setCurrentUser(null);
-          },
-        },
-      ]
-    );
-  };
-
   if (isLoading) {
     return (
       <View style={styles.loadingContainer}>
@@ -169,15 +145,22 @@ export default function App() {
 
           <NavigationContainer>
             {currentUser ? (
-              <View style={styles.mainContainer}>
-                <Header
-                  title="Otium"
-                  badge="Campus Hub"
-                  campusName={currentUser.college?.name || "DTU Campus"}
-                  onNotificationPress={handleSignOut}
-                />
-                <TabNavigator />
-              </View>
+              <UserProvider onLogout={() => setCurrentUser(null)}>
+                <View style={styles.mainContainer}>
+                  <Header
+                    title="Otium"
+                    badge="Campus Hub"
+                    campusName={currentUser.college?.name || "Campus Hub"}
+                    onNotificationPress={() => setIsNotificationsOpen(true)}
+                  />
+                  <TabNavigator />
+                  <NotificationsModal
+                    visible={isNotificationsOpen}
+                    onClose={() => setIsNotificationsOpen(false)}
+                    campusName={currentUser.college?.name || "Campus Hub"}
+                  />
+                </View>
+              </UserProvider>
             ) : (
               <LoginScreen onLoginSuccess={handleLoginSuccess} />
             )}
@@ -272,4 +255,3 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
 });
-

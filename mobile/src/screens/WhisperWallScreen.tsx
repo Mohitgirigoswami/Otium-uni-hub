@@ -17,12 +17,14 @@ import { GlassCard } from "../components/GlassCard";
 import { Badge } from "../components/Badge";
 import { Button } from "../components/MintButton";
 import { apiClient } from "../services/apiClient";
+import { useUser } from "../context/UserContext";
 
 interface WhisperPost {
   id: string;
   handle: string;
   avatarSeed: string;
   campus: string;
+  collegeId?: string;
   category: "CONFESSION" | "ADVICE" | "MEME" | "CAMPUS_NEWS" | "GENERAL";
   content: string;
   timeAgo: string;
@@ -92,22 +94,57 @@ const CATEGORIES = [
 ];
 
 export function WhisperWallScreen() {
+  const { user, setUser } = useUser();
   const [posts, setPosts] = useState<WhisperPost[]>(INITIAL_WHISPERS);
   const [scope, setScope] = useState<"CAMPUS" | "GLOBAL">("CAMPUS");
   const [activeCategory, setActiveCategory] = useState<string>("ALL");
   const [isComposeOpen, setIsComposeOpen] = useState(false);
   const [composeContent, setComposeContent] = useState("");
   const [composeCategory, setComposeCategory] = useState<WhisperPost["category"]>("CONFESSION");
-  const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
 
-  const fetchWhispers = async () => {
+  // Campus Selector Modal State
+  const [isCampusModalOpen, setIsCampusModalOpen] = useState(false);
+  const [colleges, setColleges] = useState<any[]>([]);
+  const [isLoadingColleges, setIsLoadingColleges] = useState(false);
+  const [isSavingCampus, setIsSavingCampus] = useState(false);
+
+  // Fetch colleges list
+  const fetchColleges = async () => {
+    setIsLoadingColleges(true);
     try {
-      const query =
-        activeCategory !== "ALL"
-          ? `?feedType=${activeCategory}&scope=${scope}`
-          : `?scope=${scope}`;
+      const res = await apiClient.get("/colleges");
+      if (res.success && Array.isArray(res.data)) {
+        setColleges(res.data);
+      }
+    } catch (e) {
+      console.warn("Could not fetch colleges:", e);
+    } finally {
+      setIsLoadingColleges(false);
+    }
+  };
+
+  // Check if campus is assigned on initial load
+  useEffect(() => {
+    fetchColleges();
+    if (!user?.collegeId) {
+      // Automatically prompt user to choose campus
+      setIsCampusModalOpen(true);
+    }
+  }, [user?.collegeId]);
+
+  const fetchWhispers = async (targetCollegeId?: string) => {
+    try {
+      const activeCollegeId = targetCollegeId || user?.collegeId;
+      let query = `?scope=${scope}`;
+      if (activeCategory !== "ALL") {
+        query += `&feedType=${activeCategory}`;
+      }
+      if (scope === "CAMPUS" && activeCollegeId) {
+        query += `&collegeId=${activeCollegeId}`;
+      }
+
       const res = await apiClient.get(`/incognito${query}`);
       if (res.success && Array.isArray(res.data) && res.data.length > 0) {
         const mapped: WhisperPost[] = res.data.map((p: any) => ({
@@ -115,6 +152,7 @@ export function WhisperWallScreen() {
           handle: p.profile?.handle || "AnonBot",
           avatarSeed: p.profile?.handle || p.id,
           campus: p.college?.name || "Campus Feed",
+          collegeId: p.collegeId,
           category: p.feedType || "CONFESSION",
           content: p.content,
           timeAgo: new Date(p.createdAt).toLocaleTimeString([], {
@@ -134,7 +172,7 @@ export function WhisperWallScreen() {
 
   useEffect(() => {
     fetchWhispers();
-  }, [activeCategory, scope]);
+  }, [activeCategory, scope, user?.collegeId]);
 
   const onRefresh = async () => {
     setIsRefreshing(true);
@@ -142,10 +180,29 @@ export function WhisperWallScreen() {
     setIsRefreshing(false);
   };
 
+  const handleSelectCampus = async (college: any) => {
+    setIsSavingCampus(true);
+    try {
+      const res = await apiClient.patch("/profile", { collegeId: college.id });
+      if (res.success && res.data) {
+        setUser((prev: any) => ({ ...prev, collegeId: college.id, college }));
+        setIsCampusModalOpen(false);
+        setScope("CAMPUS");
+        fetchWhispers(college.id);
+        Alert.alert("Campus Selected", `Switched to ${college.name}!`);
+      } else {
+        Alert.alert("Error", res.error || "Failed to set campus.");
+      }
+    } catch (e: any) {
+      Alert.alert("Error", e.message || "Could not save campus.");
+    } finally {
+      setIsSavingCampus(false);
+    }
+  };
+
   const filteredPosts = posts.filter((p) => {
-    const matchesScope = scope === "GLOBAL" ? true : p.campus.includes("DTU") || p.campus.includes("Campus") || p.campus.includes("YMCA");
     const matchesCat = activeCategory === "ALL" ? true : p.category === activeCategory;
-    return matchesScope && matchesCat;
+    return matchesCat;
   });
 
   const handleVote = (postId: string, type: "UP" | "DOWN") => {
@@ -186,6 +243,7 @@ export function WhisperWallScreen() {
       const res = await apiClient.post("/incognito", {
         content: composeContent.trim(),
         feedType: composeCategory,
+        collegeId: user?.collegeId,
       });
       setIsPublishing(false);
 
@@ -215,11 +273,11 @@ export function WhisperWallScreen() {
           />
         }
       >
-        {/* Hero Header Banner (1:1 Web Port) */}
+        {/* Hero Header Banner */}
         <View style={styles.heroBanner}>
           <View style={styles.heroBadgeRow}>
             <Badge variant="purple" size="sm">
-              Anonymous Multi-Campus Wall & Whispers
+              Anonymous Campus Wall & Whispers
             </Badge>
           </View>
           <Text style={styles.heroTitle}>Whisper Wall</Text>
@@ -228,11 +286,42 @@ export function WhisperWallScreen() {
           </Text>
         </View>
 
+        {/* Campus Switcher Banner (Requirement: Open Whisper Wall asks/selects campus) */}
+        <TouchableOpacity
+          activeOpacity={0.8}
+          onPress={() => setIsCampusModalOpen(true)}
+          style={styles.campusSwitcherBanner}
+        >
+          <View style={styles.campusSwitcherLeft}>
+            <View style={styles.campusIconCircle}>
+              <Ionicons name="school" size={16} color={colors.brand[400]} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.campusSwitcherName} numberOfLines={1}>
+                {user?.college?.name || "Choose Your Campus Hub"}
+              </Text>
+              <Text style={styles.campusSwitcherSubtitle}>
+                {user?.college?.name ? "Tap to change university campus" : "Select campus to view local student whispers"}
+              </Text>
+            </View>
+          </View>
+          <View style={styles.campusSwitcherRight}>
+            <Text style={styles.campusSwitcherAction}>Switch</Text>
+            <Feather name="chevron-right" size={16} color={colors.brand[400]} />
+          </View>
+        </TouchableOpacity>
+
         {/* Scope Selector (My Campus vs Global Feed) */}
         <View style={styles.scopeTabsContainer}>
           <TouchableOpacity
             activeOpacity={0.8}
-            onPress={() => setScope("CAMPUS")}
+            onPress={() => {
+              if (!user?.collegeId) {
+                setIsCampusModalOpen(true);
+              } else {
+                setScope("CAMPUS");
+              }
+            }}
             style={[styles.scopeTab, scope === "CAMPUS" && styles.scopeTabActive]}
           >
             <Ionicons
@@ -392,7 +481,6 @@ export function WhisperWallScreen() {
                       <Ionicons name="chatbubble-outline" size={16} color={colors.slate[400]} />
                       <Text style={styles.actionCountText}>{post.commentCount}</Text>
                     </TouchableOpacity>
-
                     <TouchableOpacity style={styles.actionCountBtn}>
                       <Feather name="share-2" size={15} color={colors.slate[400]} />
                     </TouchableOpacity>
@@ -407,7 +495,13 @@ export function WhisperWallScreen() {
       {/* Floating Action Button (FAB) / Compose Trigger */}
       <TouchableOpacity
         activeOpacity={0.85}
-        onPress={() => setIsComposeOpen(true)}
+        onPress={() => {
+          if (!user?.collegeId) {
+            setIsCampusModalOpen(true);
+          } else {
+            setIsComposeOpen(true);
+          }
+        }}
         style={styles.fabButton}
       >
         <Feather name="edit-3" size={20} color="#FFFFFF" />
@@ -452,25 +546,102 @@ export function WhisperWallScreen() {
               ))}
             </View>
 
-            {/* Whisper Text Input */}
+            {/* Content Input */}
             <TextInput
               multiline
               numberOfLines={5}
+              placeholder="What's on your mind? Share confessions, exam tips, or campus tea... Identity is completely anonymous."
+              placeholderTextColor={colors.slate[500]}
               value={composeContent}
               onChangeText={setComposeContent}
-              placeholder="What's on your mind? Share confessions, exam tips, or campus stories safely..."
-              placeholderTextColor={colors.slate[500]}
-              style={styles.composeTextInput}
+              style={styles.composeInput}
             />
 
+            {/* Submit Button */}
             <Button
-              variant="purple"
-              size="lg"
-              title="Publish Whisper Anonymously"
+              title="Publish Anonymously"
+              variant="brand"
+              loading={isPublishing}
               onPress={handlePublishWhisper}
-              style={{ marginTop: 8 }}
+              style={{ marginTop: 14 }}
             />
           </GlassCard>
+        </View>
+      </Modal>
+
+      {/* Select Campus Modal (Prompt on open or tap switch) */}
+      <Modal visible={isCampusModalOpen} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.campusModalCard}>
+            <View style={styles.modalHeader}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                <View style={styles.campusIconCircle}>
+                  <Ionicons name="school" size={18} color={colors.brand[400]} />
+                </View>
+                <View>
+                  <Text style={styles.modalTitle}>Select Your Campus</Text>
+                  <Text style={styles.modalSubtitle}>Customizes your Whisper Wall & Local Feed</Text>
+                </View>
+              </View>
+              {user?.collegeId && (
+                <TouchableOpacity onPress={() => setIsCampusModalOpen(false)}>
+                  <Ionicons name="close" size={22} color={colors.slate[400]} />
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {isLoadingColleges ? (
+              <View style={{ padding: 40, alignItems: "center" }}>
+                <ActivityIndicator size="large" color={colors.brand[400]} />
+                <Text style={{ color: colors.slate[400], marginTop: 12, fontSize: 13 }}>
+                  Loading university campuses...
+                </Text>
+              </View>
+            ) : (
+              <ScrollView style={{ maxHeight: 380 }} showsVerticalScrollIndicator={false}>
+                {colleges.map((col) => {
+                  const isSelected = user?.collegeId === col.id;
+                  return (
+                    <TouchableOpacity
+                      key={col.id}
+                      activeOpacity={0.7}
+                      onPress={() => handleSelectCampus(col)}
+                      style={[
+                        styles.collegeItem,
+                        isSelected && styles.collegeItemActive,
+                      ]}
+                    >
+                      <View style={{ flex: 1, gap: 3 }}>
+                        <Text
+                          style={[
+                            styles.collegeNameText,
+                            isSelected && { color: colors.brand[400] },
+                          ]}
+                        >
+                          {col.name}
+                        </Text>
+                        <Text style={styles.collegeCityText}>
+                          📍 {col.city || "Campus"}, {col.state || "India"}
+                        </Text>
+                      </View>
+                      {isSelected ? (
+                        <Ionicons name="checkmark-circle" size={22} color={colors.brand[400]} />
+                      ) : (
+                        <Feather name="chevron-right" size={18} color={colors.slate[500]} />
+                      )}
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            )}
+
+            {isSavingCampus && (
+              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, marginTop: 10 }}>
+                <ActivityIndicator size="small" color={colors.brand[400]} />
+                <Text style={{ color: colors.slate[400], fontSize: 12 }}>Saving campus preference...</Text>
+              </View>
+            )}
+          </View>
         </View>
       </Modal>
     </View>
@@ -490,7 +661,7 @@ const styles = StyleSheet.create({
   heroBanner: {
     borderRadius: 24,
     padding: 20,
-    backgroundColor: "rgba(147, 51, 234, 0.12)",
+    backgroundColor: "rgba(168, 85, 247, 0.12)",
     borderWidth: 1,
     borderColor: "rgba(168, 85, 247, 0.3)",
   },
@@ -510,22 +681,69 @@ const styles = StyleSheet.create({
     marginTop: 6,
     lineHeight: 19,
   },
+  campusSwitcherBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 16,
+    backgroundColor: "rgba(20, 184, 166, 0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(20, 184, 166, 0.25)",
+  },
+  campusSwitcherLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    flex: 1,
+  },
+  campusIconCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: "rgba(20, 184, 166, 0.15)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  campusSwitcherName: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: "#FFFFFF",
+  },
+  campusSwitcherSubtitle: {
+    fontSize: 10.5,
+    color: colors.slate[400],
+    marginTop: 1,
+  },
+  campusSwitcherRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingLeft: 8,
+  },
+  campusSwitcherAction: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: colors.brand[400],
+  },
   scopeTabsContainer: {
     flexDirection: "row",
-    padding: 4,
     borderRadius: 14,
-    backgroundColor: colors.slate[900],
+    backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.cardBorder,
+    padding: 4,
+    gap: 6,
   },
   scopeTab: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    gap: 8,
     paddingVertical: 10,
     borderRadius: 10,
-    gap: 6,
   },
   scopeTabActive: {
     backgroundColor: colors.brand[600],
@@ -534,7 +752,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.purple[600],
   },
   scopeTabText: {
-    fontSize: 13,
+    fontSize: 12.5,
     fontWeight: "700",
     color: colors.slate[400],
   },
@@ -546,31 +764,31 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
   },
   categoryChip: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 12,
-    backgroundColor: colors.slate[900],
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 20,
+    backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.cardBorder,
   },
   categoryChipActive: {
-    backgroundColor: colors.purple[600],
-    borderColor: colors.purple[500],
+    backgroundColor: colors.slate[800],
+    borderColor: colors.brand[400],
   },
   categoryChipText: {
     fontSize: 12,
     fontWeight: "600",
-    color: colors.slate[300],
+    color: colors.slate[400],
   },
   categoryChipTextActive: {
     color: "#FFFFFF",
-    fontWeight: "800",
+    fontWeight: "700",
   },
   postsList: {
     gap: 14,
   },
   postCard: {
-    padding: 18,
+    padding: 16,
     gap: 12,
   },
   postHeader: {
@@ -586,66 +804,70 @@ const styles = StyleSheet.create({
   avatarCircle: {
     width: 34,
     height: 34,
-    borderRadius: 10,
-    backgroundColor: "rgba(168, 85, 247, 0.2)",
+    borderRadius: 17,
+    backgroundColor: "rgba(168, 85, 247, 0.15)",
+    borderWidth: 1,
+    borderColor: "rgba(168, 85, 247, 0.3)",
     alignItems: "center",
     justifyContent: "center",
   },
   authorHandle: {
-    fontSize: 13,
+    fontSize: 12.5,
     fontWeight: "800",
     color: "#FFFFFF",
   },
   postMeta: {
-    fontSize: 11,
+    fontSize: 10.5,
     color: colors.slate[400],
     marginTop: 1,
   },
   postContent: {
     fontSize: 13.5,
-    color: colors.slate[200],
     lineHeight: 20,
+    color: colors.slate[200],
   },
   postFooter: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingTop: 8,
+    marginTop: 4,
+    paddingTop: 10,
     borderTopWidth: 1,
     borderTopColor: "rgba(255, 255, 255, 0.05)",
   },
   voteGroup: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(255, 255, 255, 0.04)",
-    borderRadius: 10,
+    backgroundColor: colors.slate[900],
+    borderRadius: 18,
     borderWidth: 1,
     borderColor: colors.cardBorder,
+    paddingHorizontal: 4,
+    paddingVertical: 2,
   },
   voteBtn: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
     gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 14,
   },
   voteBtnUpActive: {
     backgroundColor: "rgba(20, 184, 166, 0.15)",
-    borderRadius: 10,
   },
   voteBtnDownActive: {
     backgroundColor: "rgba(244, 63, 94, 0.15)",
-    borderRadius: 10,
-  },
-  voteCount: {
-    fontSize: 12,
-    fontWeight: "800",
-    color: colors.slate[300],
   },
   voteDivider: {
     width: 1,
     height: 14,
     backgroundColor: colors.cardBorder,
+  },
+  voteCount: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: colors.slate[300],
   },
   rightActions: {
     flexDirection: "row",
@@ -655,13 +877,14 @@ const styles = StyleSheet.create({
   actionCountBtn: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 4,
-    padding: 6,
+    gap: 5,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
   },
   actionCountText: {
     fontSize: 12,
-    fontWeight: "700",
     color: colors.slate[400],
+    fontWeight: "600",
   },
   fabButton: {
     position: "absolute",
@@ -670,10 +893,10 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-    borderRadius: 24,
     backgroundColor: colors.purple[600],
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    borderRadius: 24,
     shadowColor: colors.purple[500],
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.4,
@@ -681,9 +904,9 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   fabText: {
+    color: "#FFFFFF",
     fontSize: 14,
     fontWeight: "800",
-    color: "#FFFFFF",
   },
   modalOverlay: {
     flex: 1,
@@ -691,17 +914,21 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
   },
   composeModalCard: {
+    backgroundColor: colors.surface,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    borderBottomLeftRadius: 0,
-    borderBottomRightRadius: 0,
-    padding: 24,
-    gap: 14,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.1)",
+    padding: 20,
+    gap: 12,
   },
   composeHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.cardBorder,
   },
   composeTitleRow: {
     flexDirection: "row",
@@ -709,15 +936,16 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   composeTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "800",
     color: "#FFFFFF",
   },
   composeLabel: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "700",
     color: colors.slate[400],
     textTransform: "uppercase",
+    marginTop: 4,
   },
   composeCatGrid: {
     flexDirection: "row",
@@ -727,8 +955,8 @@ const styles = StyleSheet.create({
   composeCatChip: {
     paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 10,
-    backgroundColor: colors.slate[800],
+    borderRadius: 8,
+    backgroundColor: colors.slate[900],
     borderWidth: 1,
     borderColor: colors.cardBorder,
   },
@@ -739,20 +967,73 @@ const styles = StyleSheet.create({
   composeCatChipText: {
     fontSize: 11,
     fontWeight: "700",
-    color: colors.slate[300],
+    color: colors.slate[400],
   },
   composeCatChipTextActive: {
     color: "#FFFFFF",
   },
-  composeTextInput: {
+  composeInput: {
     backgroundColor: colors.slate[900],
     borderWidth: 1,
     borderColor: colors.cardBorder,
     borderRadius: 14,
     padding: 14,
-    fontSize: 14,
+    fontSize: 13.5,
     color: "#FFFFFF",
     minHeight: 110,
     textAlignVertical: "top",
+    marginTop: 6,
+  },
+  campusModalCard: {
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.1)",
+    padding: 20,
+    gap: 14,
+    maxHeight: "85%",
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.cardBorder,
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: "#FFFFFF",
+  },
+  modalSubtitle: {
+    fontSize: 11,
+    color: colors.slate[400],
+    marginTop: 2,
+  },
+  collegeItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: 14,
+    borderRadius: 14,
+    backgroundColor: "rgba(255, 255, 255, 0.03)",
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    marginBottom: 8,
+  },
+  collegeItemActive: {
+    borderColor: colors.brand[400],
+    backgroundColor: "rgba(20, 184, 166, 0.1)",
+  },
+  collegeNameText: {
+    fontSize: 13.5,
+    fontWeight: "800",
+    color: "#FFFFFF",
+  },
+  collegeCityText: {
+    fontSize: 11,
+    color: colors.slate[400],
   },
 });
