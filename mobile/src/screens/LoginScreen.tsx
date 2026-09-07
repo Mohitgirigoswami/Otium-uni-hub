@@ -41,7 +41,8 @@ try {
   if (NativeGoogleSignin?.configure) {
     NativeGoogleSignin.configure({
       webClientId: GOOGLE_WEB_CLIENT_ID,
-      offlineAccess: true,
+      offlineAccess: false,
+      scopes: ["profile", "email"],
     });
   }
 } catch {
@@ -67,6 +68,21 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
     androidClientId: GOOGLE_ANDROID_CLIENT_ID,
     iosClientId: GOOGLE_WEB_CLIENT_ID,
   });
+
+  useEffect(() => {
+    // Ensure native SDK configured on component mount if available
+    if (NativeGoogleSignin?.configure) {
+      try {
+        NativeGoogleSignin.configure({
+          webClientId: GOOGLE_WEB_CLIENT_ID,
+          offlineAccess: false,
+          scopes: ["profile", "email"],
+        });
+      } catch (e) {
+        console.warn("NativeGoogleSignin configure error:", e);
+      }
+    }
+  }, []);
 
   useEffect(() => {
     if (response?.type === "success") {
@@ -129,12 +145,25 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
       if (NativeGoogleSignin?.hasPlayServices) {
         await NativeGoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
         const userInfo = await NativeGoogleSignin.signIn();
-        const idToken = (userInfo as any)?.data?.idToken || (userInfo as any)?.idToken;
-        const user = (userInfo as any)?.data?.user || (userInfo as any)?.user;
+        let idToken = (userInfo as any)?.data?.idToken || (userInfo as any)?.idToken;
+        let user = (userInfo as any)?.data?.user || (userInfo as any)?.user;
+        let accessToken: string | undefined;
 
-        if (idToken) {
+        // If idToken is not in the immediate payload, query tokens explicitly
+        if (!idToken && NativeGoogleSignin.getTokens) {
+          try {
+            const tokens = await NativeGoogleSignin.getTokens();
+            idToken = tokens.idToken;
+            accessToken = tokens.accessToken;
+          } catch (tErr) {
+            console.log("Could not fetch additional tokens:", tErr);
+          }
+        }
+
+        if (idToken || accessToken) {
           await processGoogleBackendAuth({
             idToken,
+            accessToken,
             email: user?.email,
             name: user?.name,
           });
@@ -154,11 +183,21 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
           Alert.alert("Google Play Error", "Google Play Services is not available on this device.");
           return;
         }
+        Alert.alert("Google Sign-In Failed", nativeErr.message || `Error code: ${nativeErr.code}`);
+        return;
       }
+
+      // If native module is present in standalone build but threw an unexpected error, report it
+      if (NativeGoogleSignin) {
+        setIsLoading(false);
+        Alert.alert("Google Sign-In Error", nativeErr?.message || "Failed to sign in with Google.");
+        return;
+      }
+
       console.log("Native Google Sign-In not linked in Expo Go, trying browser sheet:", nativeErr?.message);
     }
 
-    // 2. Try WebBrowser Google Sheet
+    // 2. Try WebBrowser Google Sheet (Expo Go fallback)
     try {
       if (request) {
         const result = await promptAsync();
@@ -177,7 +216,7 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
     }
 
     setIsLoading(false);
-    // Instant fallback to verified test account if browser blocked by Google security policy
+    // Instant fallback to verified test account if browser blocked by Google security policy in Expo Go
     await processGoogleBackendAuth({
       idToken: "google-token-student@dtu.ac.in",
       email: "student@dtu.ac.in",

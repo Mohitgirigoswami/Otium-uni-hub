@@ -28,7 +28,7 @@ const getApiBaseUrl = (): string => {
     }
 
     // Direct fallback to laptop Wi-Fi IP (replaces unreachable 10.0.2.2 emulator address)
-    return "http://10.23.241.16:3000/api";
+    return "http://192.168.31.146:3000/api";
   }
 
   // 3. Production Live Backend URL
