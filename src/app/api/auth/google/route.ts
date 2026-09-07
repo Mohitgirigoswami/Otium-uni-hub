@@ -52,17 +52,21 @@ export async function POST(req: NextRequest) {
       // Check if it's a real 3-part base64 JWT
       if (tokenToVerify.split(".").length === 3) {
         try {
-          const googleClientId =
-            process.env.GOOGLE_CLIENT_ID ||
-            process.env.NEXTAUTH_GOOGLE_ID ||
-            process.env.AUTH_GOOGLE_ID ||
-            process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ||
-            process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID;
+          const allowedAudiences = [
+            process.env.GOOGLE_CLIENT_ID,
+            process.env.AUTH_GOOGLE_ID,
+            process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID,
+            process.env.GOOGLE_ANDROID_CLIENT_ID,
+            process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
+            process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+            "182612765129-k94groidumjmdmb68s32a534sfqtoe10.apps.googleusercontent.com",
+            "182612765129-2kh8jfrrn176cscsnkdmqvoduema0p7p.apps.googleusercontent.com",
+          ].filter(Boolean) as string[];
 
-          if (googleClientId) {
+          if (allowedAudiences.length > 0) {
             const ticket = await googleClient.verifyIdToken({
               idToken: tokenToVerify,
-              audience: googleClientId,
+              audience: allowedAudiences,
             });
             payload = ticket.getPayload() || null;
           }

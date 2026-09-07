@@ -19,10 +19,13 @@ import { apiClient } from "../services/apiClient";
 
 WebBrowser.maybeCompleteAuthSession();
 
-const GOOGLE_CLIENT_ID =
-  process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID ||
+const GOOGLE_WEB_CLIENT_ID =
   process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ||
   "182612765129-k94groidumjmdmb68s32a534sfqtoe10.apps.googleusercontent.com";
+
+const GOOGLE_ANDROID_CLIENT_ID =
+  process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID ||
+  "182612765129-2kh8jfrrn176cscsnkdmqvoduema0p7p.apps.googleusercontent.com";
 
 // Safely resolve Native Google Sign-In SDK (present in standalone APK, safe in Expo Go)
 let NativeGoogleSignin: any = null;
@@ -37,7 +40,7 @@ try {
 
   if (NativeGoogleSignin?.configure) {
     NativeGoogleSignin.configure({
-      webClientId: GOOGLE_CLIENT_ID,
+      webClientId: GOOGLE_WEB_CLIENT_ID,
       offlineAccess: true,
     });
   }
@@ -59,10 +62,10 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
 
   // Initialize WebBrowser fallback request
   const [request, response, promptAsync] = Google.useAuthRequest({
-    clientId: GOOGLE_CLIENT_ID,
-    webClientId: GOOGLE_CLIENT_ID,
-    androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID || GOOGLE_CLIENT_ID,
-    iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || GOOGLE_CLIENT_ID,
+    clientId: GOOGLE_WEB_CLIENT_ID,
+    webClientId: GOOGLE_WEB_CLIENT_ID,
+    androidClientId: GOOGLE_ANDROID_CLIENT_ID,
+    iosClientId: GOOGLE_WEB_CLIENT_ID,
   });
 
   useEffect(() => {
