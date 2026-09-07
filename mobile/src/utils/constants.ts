@@ -31,8 +31,8 @@ const getApiBaseUrl = (): string => {
     return "http://192.168.31.146:3000/api";
   }
 
-  // 3. Production Live Backend URL
-  return "https://otium-uni-hub.vercel.app/api";
+  // 3. Fallback to laptop Wi-Fi backend URL (safe for preview builds)
+  return "http://192.168.31.146:3000/api";
 };
 
 export const API_BASE_URL = getApiBaseUrl();

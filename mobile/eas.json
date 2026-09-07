@@ -12,6 +12,11 @@
       "distribution": "internal",
       "android": {
         "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "http://192.168.31.146:3000/api",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "182612765129-k94groidumjmdmb68s32a534sfqtoe10.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "182612765129-2kh8jfrrn176cscsnkdmqvoduema0p7p.apps.googleusercontent.com"
       }
     },
     "production": {
