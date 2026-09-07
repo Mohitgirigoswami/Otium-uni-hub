@@ -51,11 +51,16 @@ class ApiClient {
     const cleanEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
     const url = `${this.baseUrl}${cleanEndpoint}`;
 
+    const isFormData = options.body instanceof FormData;
+
     const headers: Record<string, string> = {
-      "Content-Type": "application/json",
       Accept: "application/json",
       ...(options.headers as Record<string, string>),
     };
+
+    if (!isFormData && !headers["Content-Type"]) {
+      headers["Content-Type"] = "application/json";
+    }
 
     // Inject Bearer Authorization header if token is available
     if (this.authToken && !options.skipAuth) {
@@ -177,6 +182,22 @@ class ApiClient {
     return this.request<T>(endpoint, {
       ...options,
       method: "DELETE",
+    });
+  }
+
+  /**
+   * HTTP POST Multipart / FormData Upload
+   */
+  public async upload<T = any>(
+    endpoint: string,
+    formData: FormData,
+    options?: RequestOptions
+  ): Promise<ApiResponse<T>> {
+    return this.request<T>(endpoint, {
+      ...options,
+      method: "POST",
+      body: formData,
+      timeoutMs: options?.timeoutMs || 90000, // 90s for document upload
     });
   }
 }

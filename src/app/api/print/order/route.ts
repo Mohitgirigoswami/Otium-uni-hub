@@ -105,13 +105,16 @@ export async function POST(req: NextRequest) {
  */
 export async function GET(req: NextRequest) {
   try {
+    const auth = await verifyAuth(req);
     const { searchParams } = new URL(req.url);
-    const userId = searchParams.get("userId");
+    const userId =
+      (auth.authenticated && auth.user ? auth.user.id : null) ||
+      searchParams.get("userId");
 
     if (!userId) {
       return NextResponse.json(
-        { success: false, error: "Missing userId query parameter." },
-        { status: 400 }
+        { success: false, error: "Authentication required or missing userId parameter." },
+        { status: 401 }
       );
     }
 

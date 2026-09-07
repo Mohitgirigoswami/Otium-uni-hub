@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -8,6 +8,8 @@ import {
   Alert,
   Modal,
   TextInput,
+  ActivityIndicator,
+  RefreshControl,
 } from "react-native";
 import { Ionicons, Feather } from "@expo/vector-icons";
 import { colors } from "../theme/colors";
@@ -15,6 +17,7 @@ import { GlassCard } from "../components/GlassCard";
 import { Badge } from "../components/Badge";
 import { Button } from "../components/MintButton";
 import { CircularProgress } from "../components/CircularProgress";
+import { apiClient } from "../services/apiClient";
 
 interface SubjectItem {
   id: string;
@@ -69,6 +72,36 @@ export function AttendanceScreen() {
   const [newSubCode, setNewSubCode] = useState("");
   const [newSubAttended, setNewSubAttended] = useState("20");
   const [newSubTotal, setNewSubTotal] = useState("25");
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const fetchSubjects = async () => {
+    try {
+      const res = await apiClient.get("/attendance");
+      if (res.success && Array.isArray(res.data) && res.data.length > 0) {
+        const mapped: SubjectItem[] = res.data.map((s: any) => ({
+          id: s.id,
+          name: s.name,
+          code: s.code || "SUB",
+          attended: s.attendedClasses ?? s.attended ?? 0,
+          total: s.totalClasses ?? s.total ?? 0,
+        }));
+        setSubjects(mapped);
+      }
+    } catch (e) {
+      console.warn("Could not fetch subjects:", e);
+    }
+  };
+
+  useEffect(() => {
+    fetchSubjects();
+  }, []);
+
+  const onRefresh = async () => {
+    setIsRefreshing(true);
+    await fetchSubjects();
+    setIsRefreshing(false);
+  };
 
   // Calculate Aggregates
   const totalClasses = subjects.reduce((sum, s) => sum + s.total, 0);
@@ -76,7 +109,7 @@ export function AttendanceScreen() {
   const aggregatePercentage = totalClasses > 0 ? (totalAttended / totalClasses) * 100 : 100;
   const criticalCount = subjects.filter((s) => (s.attended / s.total) * 100 < 75).length;
 
-  const handleLogAttendance = (id: string, isPresent: boolean) => {
+  const handleLogAttendance = async (id: string, isPresent: boolean) => {
     setSubjects((prev) =>
       prev.map((sub) => {
         if (sub.id === id) {
@@ -91,9 +124,19 @@ export function AttendanceScreen() {
         return sub;
       })
     );
+
+    try {
+      await apiClient.post("/attendance", {
+        action: "LOG_SESSION",
+        subjectId: id,
+        isPresent,
+      });
+    } catch (e) {
+      console.warn("Could not log attendance session:", e);
+    }
   };
 
-  const handleAddSubject = () => {
+  const handleAddSubject = async () => {
     if (!newSubName.trim()) {
       Alert.alert("Error", "Please enter a subject name.");
       return;
@@ -105,18 +148,28 @@ export function AttendanceScreen() {
       return;
     }
 
-    const newSub: SubjectItem = {
-      id: Date.now().toString(),
-      name: newSubName.trim(),
-      code: newSubCode.trim().toUpperCase() || "SUB",
-      attended: att,
-      total: tot,
-    };
+    setIsSubmitting(true);
+    try {
+      const res = await apiClient.post("/attendance", {
+        name: newSubName.trim(),
+        code: newSubCode.trim().toUpperCase() || "SUB",
+        attendedClasses: att,
+        totalClasses: tot,
+      });
+      setIsSubmitting(false);
 
-    setSubjects([...subjects, newSub]);
-    setIsAddModalOpen(false);
-    setNewSubName("");
-    setNewSubCode("");
+      if (res.success) {
+        setIsAddModalOpen(false);
+        setNewSubName("");
+        setNewSubCode("");
+        fetchSubjects();
+      } else {
+        Alert.alert("Error", res.error || "Failed to add subject.");
+      }
+    } catch (e: any) {
+      setIsSubmitting(false);
+      Alert.alert("Network Error", e?.message || "Could not connect to backend.");
+    }
   };
 
   const calculateAdvice = (attended: number, total: number) => {

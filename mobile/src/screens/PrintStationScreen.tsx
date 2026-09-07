@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -7,7 +7,9 @@ import {
   TouchableOpacity,
   TextInput,
   Alert,
+  ActivityIndicator,
 } from "react-native";
+import * as DocumentPicker from "expo-document-picker";
 import { Ionicons, MaterialCommunityIcons, Feather } from "@expo/vector-icons";
 import { colors } from "../theme/colors";
 import { GlassCard } from "../components/GlassCard";
@@ -81,12 +83,10 @@ export function PrintStationScreen() {
     name: string;
     pages: number;
     size: string;
-  } | null>({
-    name: "Assignment_Module_3_Final.pdf",
-    pages: 4,
-    size: "2.4 MB",
-  });
+    fileUrl?: string;
+  } | null>(null);
 
+  const [isUploadingFile, setIsUploadingFile] = useState(false);
   const [selectedFormat, setSelectedFormat] = useState<string>("BW_DOUBLE");
   const [copies, setCopies] = useState<number>(1);
   const [deliveryWindow, setDeliveryWindow] = useState<string>("Morning Drop (8:30 AM - 9:00 AM)");
@@ -94,6 +94,73 @@ export function PrintStationScreen() {
   const [phone, setPhone] = useState<string>("9876543210");
   const [utrNumber, setUtrNumber] = useState<string>("423819823412");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [recentOrders, setRecentOrders] = useState<any[]>([]);
+  const [isLoadingOrders, setIsLoadingOrders] = useState(false);
+
+  const fetchOrders = async () => {
+    setIsLoadingOrders(true);
+    try {
+      const res = await apiClient.get("/print/order");
+      if (res.success && res.data) {
+        setRecentOrders(Array.isArray(res.data) ? res.data : []);
+      }
+    } catch (e) {
+      console.warn("Could not fetch print orders:", e);
+    } finally {
+      setIsLoadingOrders(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchOrders();
+  }, []);
+
+  const handlePickDocument = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: "application/pdf",
+        copyToCacheDirectory: true,
+      });
+
+      if (result.canceled || !result.assets || result.assets.length === 0) {
+        return;
+      }
+
+      const asset = result.assets[0];
+      setIsUploadingFile(true);
+
+      const formData = new FormData();
+      formData.append("file", {
+        uri: asset.uri,
+        name: asset.name || "document.pdf",
+        type: asset.mimeType || "application/pdf",
+      } as any);
+
+      const uploadRes = await apiClient.upload("/print/upload", formData);
+      setIsUploadingFile(false);
+
+      if (uploadRes.success && uploadRes.data) {
+        setSelectedFile({
+          name: uploadRes.data.fileName || asset.name,
+          pages: uploadRes.data.pageCount || 1,
+          size: `${((uploadRes.data.fileSizeBytes || asset.size || 1024) / (1024 * 1024)).toFixed(1)} MB`,
+          fileUrl: uploadRes.data.fileUrl,
+        });
+        Alert.alert(
+          "Document Verified",
+          `Detected ${uploadRes.data.pageCount} page(s). Total cost calculated automatically!`
+        );
+      } else {
+        Alert.alert(
+          "Upload Failed",
+          uploadRes.error || "Could not upload document. Please check your connection and try again."
+        );
+      }
+    } catch (err: any) {
+      setIsUploadingFile(false);
+      Alert.alert("File Selection Error", err?.message || "Failed to select document.");
+    }
+  };
 
   // Dynamic cost calculation with ₹5 Minimum Floor
   const pageCount = selectedFile?.pages || 1;
@@ -111,7 +178,7 @@ export function PrintStationScreen() {
 
   const handlePlaceOrder = async () => {
     if (!selectedFile) {
-      Alert.alert("Upload Required", "Please upload a document PDF first.");
+      Alert.alert("Upload Required", "Please upload a document PDF first using the dropzone.");
       return;
     }
     if (!deliveryLocation.trim()) {
@@ -128,6 +195,7 @@ export function PrintStationScreen() {
     try {
       const response = await apiClient.post("/print/order", {
         fileName: selectedFile.name,
+        fileUrl: selectedFile.fileUrl,
         pageCount: selectedFile.pages,
         copies,
         printType: selectedFormat,
@@ -144,6 +212,8 @@ export function PrintStationScreen() {
           "🚀 Print Order Placed!",
           `Order #${(response.data?.id || "ORD").slice(-6).toUpperCase()} confirmed for ₹${finalPayable.toFixed(2)}. Runner will deliver during ${deliveryWindow}.`
         );
+        setSelectedFile(null);
+        fetchOrders();
       } else {
         Alert.alert(
           "Order Failed",
@@ -178,7 +248,17 @@ export function PrintStationScreen() {
           <Text style={styles.sectionTitle}>Step 1: Upload Document PDF</Text>
         </View>
 
-        {selectedFile ? (
+        {isUploadingFile ? (
+          <View style={styles.dropzoneBox}>
+            <ActivityIndicator size="large" color={colors.brand[400]} />
+            <Text style={[styles.dropzoneTitle, { marginTop: 12 }]}>
+              Uploading & Verifying PDF...
+            </Text>
+            <Text style={styles.dropzoneSubtitle}>
+              Auto-calculating exact page count on server
+            </Text>
+          </View>
+        ) : selectedFile ? (
           <View style={styles.filePreviewBox}>
             <View style={styles.fileIconBox}>
               <Ionicons name="document-text" size={22} color={colors.brand[400]} />
@@ -201,19 +281,13 @@ export function PrintStationScreen() {
         ) : (
           <TouchableOpacity
             activeOpacity={0.7}
-            onPress={() =>
-              setSelectedFile({
-                name: "Submitted_Assignment_Final.pdf",
-                pages: 5,
-                size: "3.1 MB",
-              })
-            }
+            onPress={handlePickDocument}
             style={styles.dropzoneBox}
           >
             <Feather name="upload-cloud" size={32} color={colors.brand[400]} />
             <Text style={styles.dropzoneTitle}>Tap to select or upload PDF</Text>
             <Text style={styles.dropzoneSubtitle}>
-              Auto-calculates exact page count via pdf-lib (Max 50MB)
+              Select any PDF from your device storage (Max 50MB)
             </Text>
           </TouchableOpacity>
         )}
@@ -435,6 +509,55 @@ export function PrintStationScreen() {
           style={styles.submitBtn}
         />
       </GlassCard>
+
+      {/* Live Recent Print Orders */}
+      {recentOrders.length > 0 && (
+        <GlassCard style={styles.sectionCard}>
+          <View style={styles.sectionHeaderRow}>
+            <Ionicons name="time-outline" size={18} color={colors.brand[400]} />
+            <Text style={styles.sectionTitle}>My Recent Print Orders</Text>
+          </View>
+          <View style={{ gap: 10, marginTop: 8 }}>
+            {recentOrders.map((ord: any) => (
+              <View
+                key={ord.id}
+                style={{
+                  padding: 12,
+                  borderRadius: 14,
+                  backgroundColor: colors.slate[900],
+                  borderWidth: 1,
+                  borderColor: colors.slate[800],
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                }}
+              >
+                <View style={{ flex: 1, marginRight: 8 }}>
+                  <Text
+                    style={{ fontSize: 13, fontWeight: "700", color: "#FFFFFF" }}
+                    numberOfLines={1}
+                  >
+                    {ord.fileName}
+                  </Text>
+                  <Text style={{ fontSize: 11, color: colors.slate[400], marginTop: 2 }}>
+                    {ord.pageCount} pgs • {ord.printType} • {ord.copies}x
+                  </Text>
+                </View>
+                <Badge
+                  variant={
+                    ord.status === "COMPLETED" || ord.status === "DELIVERED"
+                      ? "success"
+                      : "warning"
+                  }
+                  size="sm"
+                >
+                  {ord.status}
+                </Badge>
+              </View>
+            ))}
+          </View>
+        </GlassCard>
+      )}
     </ScrollView>
   );
 }

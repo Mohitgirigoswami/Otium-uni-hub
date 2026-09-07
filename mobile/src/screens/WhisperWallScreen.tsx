@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -8,12 +8,15 @@ import {
   TextInput,
   Modal,
   Alert,
+  ActivityIndicator,
+  RefreshControl,
 } from "react-native";
 import { Ionicons, Feather, FontAwesome5 } from "@expo/vector-icons";
 import { colors } from "../theme/colors";
 import { GlassCard } from "../components/GlassCard";
 import { Badge } from "../components/Badge";
 import { Button } from "../components/MintButton";
+import { apiClient } from "../services/apiClient";
 
 interface WhisperPost {
   id: string;
@@ -95,9 +98,52 @@ export function WhisperWallScreen() {
   const [isComposeOpen, setIsComposeOpen] = useState(false);
   const [composeContent, setComposeContent] = useState("");
   const [composeCategory, setComposeCategory] = useState<WhisperPost["category"]>("CONFESSION");
+  const [isLoading, setIsLoading] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isPublishing, setIsPublishing] = useState(false);
+
+  const fetchWhispers = async () => {
+    try {
+      const query =
+        activeCategory !== "ALL"
+          ? `?feedType=${activeCategory}&scope=${scope}`
+          : `?scope=${scope}`;
+      const res = await apiClient.get(`/incognito${query}`);
+      if (res.success && Array.isArray(res.data) && res.data.length > 0) {
+        const mapped: WhisperPost[] = res.data.map((p: any) => ({
+          id: p.id,
+          handle: p.profile?.handle || "AnonBot",
+          avatarSeed: p.profile?.handle || p.id,
+          campus: p.college?.name || "Campus Feed",
+          category: p.feedType || "CONFESSION",
+          content: p.content,
+          timeAgo: new Date(p.createdAt).toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
+          upvotes: p._count?.likes || p.likesCount || 0,
+          downvotes: 0,
+          commentCount: p._count?.comments || 0,
+        }));
+        setPosts(mapped);
+      }
+    } catch (e) {
+      console.warn("Could not fetch whispers:", e);
+    }
+  };
+
+  useEffect(() => {
+    fetchWhispers();
+  }, [activeCategory, scope]);
+
+  const onRefresh = async () => {
+    setIsRefreshing(true);
+    await fetchWhispers();
+    setIsRefreshing(false);
+  };
 
   const filteredPosts = posts.filter((p) => {
-    const matchesScope = scope === "GLOBAL" ? true : p.campus.includes("DTU");
+    const matchesScope = scope === "GLOBAL" ? true : p.campus.includes("DTU") || p.campus.includes("Campus") || p.campus.includes("YMCA");
     const matchesCat = activeCategory === "ALL" ? true : p.category === activeCategory;
     return matchesScope && matchesCat;
   });
@@ -107,7 +153,6 @@ export function WhisperWallScreen() {
       prev.map((p) => {
         if (p.id === postId) {
           if (p.userVote === type) {
-            // Unvote
             return {
               ...p,
               upvotes: type === "UP" ? p.upvotes - 1 : p.upvotes,
@@ -115,7 +160,6 @@ export function WhisperWallScreen() {
               userVote: undefined,
             };
           } else {
-            // Apply new vote
             const oldUp = p.userVote === "UP" ? p.upvotes - 1 : p.upvotes;
             const oldDown = p.userVote === "DOWN" ? p.downvotes - 1 : p.downvotes;
             return {
@@ -131,35 +175,46 @@ export function WhisperWallScreen() {
     );
   };
 
-  const handlePublishWhisper = () => {
+  const handlePublishWhisper = async () => {
     if (!composeContent.trim()) {
       Alert.alert("Error", "Please write a whisper before publishing.");
       return;
     }
 
-    const newPost: WhisperPost = {
-      id: Date.now().toString(),
-      handle: `AnonStudent_${Math.floor(100 + Math.random() * 900)}`,
-      avatarSeed: Date.now().toString(),
-      campus: "DTU Campus",
-      category: composeCategory,
-      content: composeContent.trim(),
-      timeAgo: "Just now",
-      upvotes: 1,
-      downvotes: 0,
-      userVote: "UP",
-      commentCount: 0,
-    };
+    setIsPublishing(true);
+    try {
+      const res = await apiClient.post("/incognito", {
+        content: composeContent.trim(),
+        feedType: composeCategory,
+      });
+      setIsPublishing(false);
 
-    setPosts([newPost, ...posts]);
-    setIsComposeOpen(false);
-    setComposeContent("");
-    Alert.alert("🤫 Published!", "Your whisper is live on the anonymous wall.");
+      if (res.success) {
+        setComposeContent("");
+        setIsComposeOpen(false);
+        Alert.alert("🤫 Published!", "Your whisper is live on the anonymous wall.");
+        fetchWhispers();
+      } else {
+        Alert.alert("Publish Failed", res.error || "Could not publish whisper.");
+      }
+    } catch (e: any) {
+      setIsPublishing(false);
+      Alert.alert("Network Error", e?.message || "Could not reach backend.");
+    }
   };
 
   return (
     <View style={styles.container}>
-      <ScrollView contentContainerStyle={styles.contentContainer}>
+      <ScrollView
+        contentContainerStyle={styles.contentContainer}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.brand[400]}
+          />
+        }
+      >
         {/* Hero Header Banner (1:1 Web Port) */}
         <View style={styles.heroBanner}>
           <View style={styles.heroBadgeRow}>
