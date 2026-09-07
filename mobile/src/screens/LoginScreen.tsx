@@ -144,6 +144,12 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
     try {
       if (NativeGoogleSignin?.hasPlayServices) {
         await NativeGoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+
+        // Reset stale native Google session before re-login
+        try {
+          await NativeGoogleSignin.signOut();
+        } catch {}
+
         const userInfo = await NativeGoogleSignin.signIn();
         let idToken = (userInfo as any)?.data?.idToken || (userInfo as any)?.idToken;
         let user = (userInfo as any)?.data?.user || (userInfo as any)?.user;

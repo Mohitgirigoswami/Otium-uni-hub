@@ -1,13 +1,17 @@
 import React, { useState, useEffect } from "react";
-import { StyleSheet, View, StatusBar, ActivityIndicator, Text } from "react-native";
+import { StyleSheet, View, StatusBar, ActivityIndicator, Text, Alert } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { NavigationContainer } from "@react-navigation/native";
+import { enableScreens } from "react-native-screens";
 import * as SecureStore from "expo-secure-store";
 import { TabNavigator } from "./src/navigation/TabNavigator";
 import { Header } from "./src/components/Header";
 import { LoginScreen } from "./src/screens/LoginScreen";
 import { colors } from "./src/theme/colors";
 import { apiClient } from "./src/services/apiClient";
+
+// Prevent Android FragmentManager IllegalStateException crashes when unmounting/remounting screens
+enableScreens(false);
 
 export default function App() {
   const [isLoading, setIsLoading] = useState(true);
@@ -54,12 +58,31 @@ export default function App() {
     setCurrentUser(user);
   };
 
-  const handleSignOut = async () => {
-    try {
-      await SecureStore.deleteItemAsync("jwt");
-    } catch {}
-    apiClient.clearAuthToken();
-    setCurrentUser(null);
+  const handleSignOut = () => {
+    Alert.alert(
+      "Sign Out",
+      "Are you sure you want to sign out of Otium?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Sign Out",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await SecureStore.deleteItemAsync("jwt");
+            } catch {}
+            try {
+              const RNSignIn = require("@react-native-google-signin/google-signin");
+              if (RNSignIn?.GoogleSignin?.signOut) {
+                await RNSignIn.GoogleSignin.signOut();
+              }
+            } catch {}
+            apiClient.clearAuthToken();
+            setCurrentUser(null);
+          },
+        },
+      ]
+    );
   };
 
   if (isLoading) {
@@ -80,21 +103,21 @@ export default function App() {
       <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
         <StatusBar barStyle="light-content" backgroundColor={colors.background} />
 
-        {currentUser ? (
-          <>
-            <Header
-              title="Otium"
-              badge="Campus Hub"
-              campusName={currentUser.college?.name || "DTU Campus"}
-              onNotificationPress={handleSignOut}
-            />
-            <NavigationContainer>
+        <NavigationContainer>
+          {currentUser ? (
+            <>
+              <Header
+                title="Otium"
+                badge="Campus Hub"
+                campusName={currentUser.college?.name || "DTU Campus"}
+                onNotificationPress={handleSignOut}
+              />
               <TabNavigator />
-            </NavigationContainer>
-          </>
-        ) : (
-          <LoginScreen onLoginSuccess={handleLoginSuccess} />
-        )}
+            </>
+          ) : (
+            <LoginScreen onLoginSuccess={handleLoginSuccess} />
+          )}
+        </NavigationContainer>
       </SafeAreaView>
     </SafeAreaProvider>
   );
