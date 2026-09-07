@@ -366,25 +366,31 @@ export function AttendanceScreen() {
                   </TouchableOpacity>
                 </View>
 
-                {/* Lab 2-Period Fast Actions */}
-                <View style={styles.labRow}>
-                  <TouchableOpacity
-                    activeOpacity={0.8}
-                    onPress={() => handleLogAttendance(sub.id, true, 2)}
-                    style={styles.labPresentBtn}
-                  >
-                    <Ionicons name="flask-outline" size={13} color={colors.brand[400]} />
-                    <Text style={styles.labPresentText}>Lab Attended (+2)</Text>
-                  </TouchableOpacity>
+                {/* Lab Multi-Period Fast Actions (2, 3, or 4 Periods per Lab) */}
+                <View style={styles.labOptionsContainer}>
+                  <Text style={styles.labOptionTitle}>Lab / Multi-Period Session:</Text>
+                  <View style={styles.labPeriodRow}>
+                    {[2, 3, 4].map((periods) => (
+                      <View key={periods} style={styles.periodPair}>
+                        <TouchableOpacity
+                          activeOpacity={0.7}
+                          onPress={() => handleLogAttendance(sub.id, true, periods)}
+                          style={styles.periodPresentBtn}
+                        >
+                          <Ionicons name="flask-outline" size={11} color={colors.brand[400]} />
+                          <Text style={styles.periodPresentText}>+{periods} Lab</Text>
+                        </TouchableOpacity>
 
-                  <TouchableOpacity
-                    activeOpacity={0.8}
-                    onPress={() => handleLogAttendance(sub.id, false, 2)}
-                    style={styles.labAbsentBtn}
-                  >
-                    <Ionicons name="flask-outline" size={13} color={colors.rose[400]} />
-                    <Text style={styles.labAbsentText}>Lab Missed (-2)</Text>
-                  </TouchableOpacity>
+                        <TouchableOpacity
+                          activeOpacity={0.7}
+                          onPress={() => handleLogAttendance(sub.id, false, periods)}
+                          style={styles.periodAbsentBtn}
+                        >
+                          <Text style={styles.periodAbsentText}>-{periods}</Text>
+                        </TouchableOpacity>
+                      </View>
+                    ))}
+                  </View>
                 </View>
               </View>
             </GlassCard>
@@ -644,42 +650,60 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: colors.rose[400],
   },
-  labRow: {
-    flexDirection: "row",
-    gap: 8,
+  labOptionsContainer: {
+    backgroundColor: "rgba(255, 255, 255, 0.02)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.05)",
+    borderRadius: 10,
+    padding: 8,
+    gap: 6,
   },
-  labPresentBtn: {
+  labOptionTitle: {
+    fontSize: 10.5,
+    fontWeight: "700",
+    color: colors.slate[400],
+    textTransform: "uppercase",
+    letterSpacing: 0.3,
+  },
+  labPeriodRow: {
+    flexDirection: "row",
+    gap: 6,
+  },
+  periodPair: {
     flex: 1,
+    flexDirection: "row",
+    gap: 3,
+  },
+  periodPresentBtn: {
+    flex: 2,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 7,
+    paddingVertical: 6,
     borderRadius: 8,
-    backgroundColor: "rgba(20, 184, 166, 0.08)",
+    backgroundColor: "rgba(20, 184, 166, 0.12)",
     borderWidth: 1,
-    borderColor: "rgba(20, 184, 166, 0.25)",
-    gap: 4,
+    borderColor: "rgba(20, 184, 166, 0.3)",
+    gap: 2,
   },
-  labPresentText: {
-    fontSize: 11,
-    fontWeight: "700",
+  periodPresentText: {
+    fontSize: 10.5,
+    fontWeight: "800",
     color: colors.brand[400],
   },
-  labAbsentBtn: {
+  periodAbsentBtn: {
     flex: 1,
-    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 7,
+    paddingVertical: 6,
     borderRadius: 8,
-    backgroundColor: "rgba(244, 63, 94, 0.08)",
+    backgroundColor: "rgba(244, 63, 94, 0.1)",
     borderWidth: 1,
     borderColor: "rgba(244, 63, 94, 0.25)",
-    gap: 4,
   },
-  labAbsentText: {
-    fontSize: 11,
-    fontWeight: "700",
+  periodAbsentText: {
+    fontSize: 10.5,
+    fontWeight: "800",
     color: colors.rose[400],
   },
   modalOverlay: {
