@@ -3,7 +3,7 @@ import { StyleSheet, View } from "react-native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons, Feather, MaterialCommunityIcons } from "@expo/vector-icons";
-import { colors } from "../theme/colors";
+import { colors, useTheme } from "../theme/colors";
 
 import { DashboardScreen } from "../screens/DashboardScreen";
 import { PrintStationScreen } from "../screens/PrintStationScreen";
@@ -25,6 +25,7 @@ const Tab = createBottomTabNavigator<RootTabParamList>();
 
 export function TabNavigator() {
   const insets = useSafeAreaInsets();
+  const { theme, isDark } = useTheme();
 
   return (
     <Tab.Navigator
@@ -34,12 +35,14 @@ export function TabNavigator() {
         tabBarStyle: [
           styles.tabBar,
           {
+            backgroundColor: theme.surface,
+            borderTopColor: theme.cardBorder,
             height: 56 + Math.min(insets.bottom, 16),
             paddingBottom: Math.min(insets.bottom, 12) + 4,
           },
         ],
-        tabBarActiveTintColor: colors.brand[400],
-        tabBarInactiveTintColor: colors.slate[500],
+        tabBarActiveTintColor: isDark ? theme.brand[400] : theme.brand[600],
+        tabBarInactiveTintColor: isDark ? theme.slate[400] : theme.slate[400],
         tabBarLabelStyle: styles.tabLabel,
         tabBarItemStyle: styles.tabItem,
       }}
@@ -56,6 +59,7 @@ export function TabNavigator() {
                 size={19}
                 color={color}
               />
+              {focused && <View style={[styles.activeDot, { backgroundColor: isDark ? theme.brand[400] : theme.brand[600] }]} />}
             </View>
           ),
         }}
@@ -73,6 +77,7 @@ export function TabNavigator() {
                 size={19}
                 color={color}
               />
+              {focused && <View style={[styles.activeDot, { backgroundColor: isDark ? theme.brand[400] : theme.brand[600] }]} />}
             </View>
           ),
         }}
@@ -85,7 +90,12 @@ export function TabNavigator() {
           tabBarLabel: "Print",
           tabBarIcon: ({ color, focused }: { color: string; focused: boolean }) => (
             <View style={[styles.iconContainer, focused && styles.iconContainerActive]}>
-              <Feather name="printer" size={18} color={color} />
+              <Ionicons
+                name={focused ? "print" : "print-outline"}
+                size={19}
+                color={color}
+              />
+              {focused && <View style={[styles.activeDot, { backgroundColor: isDark ? theme.brand[400] : theme.brand[600] }]} />}
             </View>
           ),
         }}
@@ -103,6 +113,7 @@ export function TabNavigator() {
                 size={19}
                 color={color}
               />
+              {focused && <View style={[styles.activeDot, { backgroundColor: isDark ? theme.brand[400] : theme.brand[600] }]} />}
             </View>
           ),
         }}
@@ -117,9 +128,10 @@ export function TabNavigator() {
             <View style={[styles.iconContainer, focused && styles.iconContainerActive]}>
               <MaterialCommunityIcons
                 name={focused ? "calculator-variant" : "calculator-variant-outline"}
-                size={20}
+                size={19}
                 color={color}
               />
+              {focused && <View style={[styles.activeDot, { backgroundColor: isDark ? theme.brand[400] : theme.brand[600] }]} />}
             </View>
           ),
         }}
@@ -137,6 +149,7 @@ export function TabNavigator() {
                 size={19}
                 color={color}
               />
+              {focused && <View style={[styles.activeDot, { backgroundColor: isDark ? theme.brand[400] : theme.brand[600] }]} />}
             </View>
           ),
         }}
@@ -147,15 +160,13 @@ export function TabNavigator() {
 
 const styles = StyleSheet.create({
   tabBar: {
-    backgroundColor: colors.surface,
-    borderTopColor: "rgba(255, 255, 255, 0.08)",
     borderTopWidth: 1,
-    paddingTop: 6,
+    paddingTop: 5,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
-    elevation: 10,
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
+    elevation: 8,
   },
   tabItem: {
     paddingVertical: 1,
@@ -170,9 +181,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     width: 28,
-    height: 24,
+    height: 26,
   },
   iconContainerActive: {
-    transform: [{ scale: 1.08 }],
+    transform: [{ scale: 1.05 }],
+  },
+  activeDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    marginTop: 2,
   },
 });

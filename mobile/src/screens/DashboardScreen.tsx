@@ -10,7 +10,7 @@ import {
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { Ionicons, Feather, MaterialCommunityIcons } from "@expo/vector-icons";
-import { colors } from "../theme/colors";
+import { colors, useTheme } from "../theme/colors";
 import { GlassCard } from "../components/GlassCard";
 import { Badge } from "../components/Badge";
 import { useUser } from "../context/UserContext";
@@ -20,6 +20,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 export function DashboardScreen() {
   const navigation = useNavigation<any>();
   const { user, refreshUser } = useUser();
+  const { theme, isDark } = useTheme();
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Quick live metrics
@@ -108,54 +109,61 @@ export function DashboardScreen() {
 
   return (
     <ScrollView
-      style={styles.container}
+      style={[styles.container, { backgroundColor: theme.background }]}
       contentContainerStyle={styles.contentContainer}
       refreshControl={
-        <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} tintColor={colors.brand[400]} />
+        <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} tintColor={theme.brand[500]} />
       }
     >
       {/* Welcome Hero Card */}
-      <View style={styles.heroCard}>
+      <View style={[styles.heroCard, { backgroundColor: theme.surface, borderColor: theme.cardBorder }]}>
         <View style={styles.heroTopRow}>
           <View style={styles.heroBadge}>
             <Image source={require("../../assets/logo.png")} style={styles.heroLogo} resizeMode="contain" />
-            <Text style={styles.heroBadgeText}>Otium University Hub</Text>
+            <Text style={[styles.heroBadgeText, { color: isDark ? theme.brand[400] : theme.brand[600] }]}>Otium University Hub</Text>
           </View>
           <Badge variant="brand" size="sm">
             {campusName}
           </Badge>
         </View>
 
-        <Text style={styles.heroGreeting}>Welcome back, {displayName}!</Text>
-        <Text style={styles.heroSubtitle}>
+        <Text style={[styles.heroGreeting, { color: theme.text.primary }]}>Welcome back, {displayName}!</Text>
+        <Text style={[styles.heroSubtitle, { color: isDark ? theme.brand[300] : theme.brand[700] }]}>
           {user?.department ? `${user.department} • Year ${user.year || 1}` : "Campus Command Center"}
         </Text>
-        <Text style={styles.heroDesc}>
+        <Text style={[styles.heroDesc, { color: theme.text.secondary }]}>
           Your academic guardrails, print station orders, anonymous whisper wall, and grade calculators are synced live.
         </Text>
       </View>
 
       {/* Quick Launch Command Bar (Fast Module Access) */}
       <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Campus Quick Launch</Text>
+        <Text style={[styles.sectionTitle, { color: theme.text.primary }]}>Campus Quick Launch</Text>
       </View>
 
       <View style={styles.quickGrid}>
         <TouchableOpacity
           activeOpacity={0.8}
           onPress={() => navigation.navigate("Attendance")}
-          style={[styles.quickTile, styles.tileAttendance]}
+          style={[
+            styles.quickTile,
+            {
+              backgroundColor: isDark ? theme.surface : theme.pastel.mintBg,
+              borderColor: isDark ? theme.cardBorder : theme.pastel.mintBorder,
+              borderLeftColor: theme.pastel.mint,
+            },
+          ]}
         >
-          <View style={[styles.tileIconWrap, { backgroundColor: "rgba(16, 185, 129, 0.2)" }]}>
-            <Ionicons name="calendar" size={22} color={colors.emerald[400]} />
+          <View style={[styles.tileIconWrap, { backgroundColor: isDark ? "rgba(16, 185, 129, 0.2)" : theme.pastel.mintBorder }]}>
+            <Ionicons name="calendar" size={22} color={isDark ? theme.emerald[400] : theme.pastel.mintText} />
           </View>
-          <Text style={styles.tileTitle}>Attendance</Text>
-          <Text style={styles.tileDesc}>Bunk calculator & guardrails</Text>
+          <Text style={[styles.tileTitle, { color: theme.text.primary }]}>Attendance</Text>
+          <Text style={[styles.tileDesc, { color: theme.text.secondary }]}>Bunk calculator & guardrails</Text>
           <View style={styles.tileBadgeRow}>
             <Text
               style={[
                 styles.tileMetric,
-                { color: isSafeAttendance ? colors.emerald[400] : colors.rose[400] },
+                { color: isSafeAttendance ? (isDark ? theme.emerald[400] : theme.pastel.mintText) : theme.rose[500] },
               ]}
             >
               {attendanceData.percentage.toFixed(1)}%
@@ -166,45 +174,66 @@ export function DashboardScreen() {
         <TouchableOpacity
           activeOpacity={0.8}
           onPress={() => navigation.navigate("Print")}
-          style={[styles.quickTile, styles.tilePrint]}
+          style={[
+            styles.quickTile,
+            {
+              backgroundColor: isDark ? theme.surface : theme.pastel.skyBg,
+              borderColor: isDark ? theme.cardBorder : theme.pastel.skyBorder,
+              borderLeftColor: theme.pastel.sky,
+            },
+          ]}
         >
-          <View style={[styles.tileIconWrap, { backgroundColor: "rgba(20, 184, 166, 0.2)" }]}>
-            <Feather name="printer" size={22} color={colors.brand[400]} />
+          <View style={[styles.tileIconWrap, { backgroundColor: isDark ? "rgba(14, 165, 233, 0.2)" : theme.pastel.skyBorder }]}>
+            <Feather name="printer" size={22} color={isDark ? theme.brand[400] : theme.pastel.skyText} />
           </View>
-          <Text style={styles.tileTitle}>Print Station</Text>
-          <Text style={styles.tileDesc}>Instant file upload & UPI</Text>
+          <Text style={[styles.tileTitle, { color: theme.text.primary }]}>Print Station</Text>
+          <Text style={[styles.tileDesc, { color: theme.text.secondary }]}>Instant file upload & UPI</Text>
           <View style={styles.tileBadgeRow}>
-            <Text style={[styles.tileMetric, { color: colors.brand[400] }]}>Ready</Text>
+            <Text style={[styles.tileMetric, { color: isDark ? theme.brand[400] : theme.pastel.skyText }]}>Ready</Text>
           </View>
         </TouchableOpacity>
 
         <TouchableOpacity
           activeOpacity={0.8}
           onPress={() => navigation.navigate("Whispers")}
-          style={[styles.quickTile, styles.tileWhispers]}
+          style={[
+            styles.quickTile,
+            {
+              backgroundColor: isDark ? theme.surface : theme.pastel.lavenderBg,
+              borderColor: isDark ? theme.cardBorder : theme.pastel.lavenderBorder,
+              borderLeftColor: theme.pastel.lavender,
+            },
+          ]}
         >
-          <View style={[styles.tileIconWrap, { backgroundColor: "rgba(139, 92, 246, 0.2)" }]}>
-            <Ionicons name="eye-off" size={22} color="#A78BFA" />
+          <View style={[styles.tileIconWrap, { backgroundColor: isDark ? "rgba(124, 131, 253, 0.2)" : theme.pastel.lavenderBorder }]}>
+            <Ionicons name="eye-off" size={22} color={isDark ? "#A78BFA" : theme.pastel.lavenderText} />
           </View>
-          <Text style={styles.tileTitle}>Whisper Wall</Text>
-          <Text style={styles.tileDesc}>Anonymous campus memes</Text>
+          <Text style={[styles.tileTitle, { color: theme.text.primary }]}>Whisper Wall</Text>
+          <Text style={[styles.tileDesc, { color: theme.text.secondary }]}>Anonymous campus memes</Text>
           <View style={styles.tileBadgeRow}>
-            <Text style={[styles.tileMetric, { color: "#A78BFA" }]}>Live Feed</Text>
+            <Text style={[styles.tileMetric, { color: isDark ? "#A78BFA" : theme.pastel.lavenderText }]}>Live Feed</Text>
           </View>
         </TouchableOpacity>
 
         <TouchableOpacity
           activeOpacity={0.8}
           onPress={() => navigation.navigate("CGPA")}
-          style={[styles.quickTile, styles.tileCgpa]}
+          style={[
+            styles.quickTile,
+            {
+              backgroundColor: isDark ? theme.surface : theme.pastel.coralBg,
+              borderColor: isDark ? theme.cardBorder : theme.pastel.coralBorder,
+              borderLeftColor: theme.pastel.coral,
+            },
+          ]}
         >
-          <View style={[styles.tileIconWrap, { backgroundColor: "rgba(245, 158, 11, 0.2)" }]}>
-            <MaterialCommunityIcons name="calculator-variant" size={22} color="#FBBF24" />
+          <View style={[styles.tileIconWrap, { backgroundColor: isDark ? "rgba(255, 122, 89, 0.2)" : theme.pastel.coralBorder }]}>
+            <MaterialCommunityIcons name="calculator-variant" size={22} color={isDark ? "#FBBF24" : theme.pastel.coralText} />
           </View>
-          <Text style={styles.tileTitle}>CGPA Predictor</Text>
-          <Text style={styles.tileDesc}>Semester transcript & SGPA</Text>
+          <Text style={[styles.tileTitle, { color: theme.text.primary }]}>CGPA Predictor</Text>
+          <Text style={[styles.tileDesc, { color: theme.text.secondary }]}>Semester transcript & SGPA</Text>
           <View style={styles.tileBadgeRow}>
-            <Text style={[styles.tileMetric, { color: "#FBBF24" }]}>Forecaster</Text>
+            <Text style={[styles.tileMetric, { color: isDark ? "#FBBF24" : theme.pastel.coralText }]}>Forecaster</Text>
           </View>
         </TouchableOpacity>
       </View>
@@ -220,8 +249,8 @@ export function DashboardScreen() {
             />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.statusTitle}>75% Minimum Attendance Status</Text>
-            <Text style={styles.statusSubtitle}>
+            <Text style={[styles.statusTitle, { color: theme.text.primary }]}>75% Minimum Attendance Status</Text>
+            <Text style={[styles.statusSubtitle, { color: theme.text.secondary }]}>
               {isSafeAttendance
                 ? "You are safely above the university exam eligibility requirement."
                 : "Warning: Critical courses below 75% threshold. Attend next lectures!"}
@@ -229,30 +258,30 @@ export function DashboardScreen() {
           </View>
         </View>
 
-        <View style={styles.kpiRow}>
+        <View style={[styles.kpiRow, { backgroundColor: isDark ? "rgba(255, 255, 255, 0.03)" : theme.backgroundSecondary, borderColor: theme.cardBorder }]}>
           <View style={styles.kpiItem}>
-            <Text style={styles.kpiLabel}>Aggregate Rate</Text>
+            <Text style={[styles.kpiLabel, { color: theme.text.muted }]}>Aggregate Rate</Text>
             <Text
               style={[
                 styles.kpiValue,
-                { color: isSafeAttendance ? colors.emerald[400] : colors.rose[400] },
+                { color: isSafeAttendance ? (isDark ? theme.emerald[400] : theme.pastel.mintText) : theme.rose[500] },
               ]}
             >
               {attendanceData.percentage.toFixed(1)}%
             </Text>
           </View>
           <View style={styles.kpiItem}>
-            <Text style={styles.kpiLabel}>Total Classes</Text>
-            <Text style={[styles.kpiValue, { color: "#FFFFFF" }]}>
+            <Text style={[styles.kpiLabel, { color: theme.text.muted }]}>Total Classes</Text>
+            <Text style={[styles.kpiValue, { color: theme.text.primary }]}>
               {attendanceData.attended}/{attendanceData.total}
             </Text>
           </View>
           <View style={styles.kpiItem}>
-            <Text style={styles.kpiLabel}>At Risk Courses</Text>
+            <Text style={[styles.kpiLabel, { color: theme.text.muted }]}>At Risk Courses</Text>
             <Text
               style={[
                 styles.kpiValue,
-                { color: attendanceData.criticalCount > 0 ? colors.rose[400] : colors.emerald[400] },
+                { color: attendanceData.criticalCount > 0 ? theme.rose[500] : (isDark ? theme.emerald[400] : theme.pastel.mintText) },
               ]}
             >
               {attendanceData.criticalCount}

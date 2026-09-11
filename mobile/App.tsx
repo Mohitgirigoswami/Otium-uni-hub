@@ -20,7 +20,7 @@ import { Header } from "./src/components/Header";
 import { LoginScreen } from "./src/screens/LoginScreen";
 import { NotificationsModal } from "./src/components/NotificationsModal";
 import { UserProvider, STORAGE_KEYS } from "./src/context/UserContext";
-import { colors } from "./src/theme/colors";
+import { colors, ThemeProvider, useTheme } from "./src/theme/colors";
 import { apiClient } from "./src/services/apiClient";
 
 // Prevent Android FragmentManager IllegalStateException crashes when unmounting/remounting screens
@@ -83,7 +83,8 @@ class ErrorBoundary extends React.Component<
   }
 }
 
-export default function App() {
+function MainApp() {
+  const { theme, isDark } = useTheme();
   const [isLoading, setIsLoading] = useState(true);
   const [currentUser, setCurrentUser] = useState<any | null>(null);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
@@ -174,8 +175,8 @@ export default function App() {
 
   if (isLoading) {
     return (
-      <View style={styles.loadingContainer}>
-        <StatusBar barStyle="light-content" backgroundColor={colors.background} />
+      <View style={[styles.loadingContainer, { backgroundColor: theme.background }]}>
+        <StatusBar barStyle={isDark ? "light-content" : "dark-content"} backgroundColor={theme.background} />
         <View style={styles.splashLogoWrap}>
           <Animated.Image
             source={require("./assets/logo.png")}
@@ -183,41 +184,49 @@ export default function App() {
             resizeMode="contain"
           />
         </View>
-        <ActivityIndicator size="small" color={colors.brand[400]} style={{ marginTop: 24 }} />
-        <Text style={styles.loadingText}>Welcome to Otium • Syncing Campus Hub...</Text>
+        <ActivityIndicator size="small" color={theme.brand[500]} style={{ marginTop: 24 }} />
+        <Text style={[styles.loadingText, { color: theme.text.secondary }]}>Welcome to Otium • Syncing Campus Hub...</Text>
       </View>
     );
   }
 
   return (
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.background }]} edges={["top", "left", "right"]}>
+      <StatusBar barStyle={isDark ? "light-content" : "dark-content"} backgroundColor={theme.background} />
+
+      <NavigationContainer>
+        {currentUser ? (
+          <UserProvider initialUser={currentUser} onLogout={() => setCurrentUser(null)}>
+            <View style={styles.mainContainer}>
+              <Header
+                title="Otium"
+                badge="Campus Hub"
+                campusName={currentUser.college?.name || "Campus Hub"}
+                onNotificationPress={() => setIsNotificationsOpen(true)}
+              />
+              <TabNavigator />
+              <NotificationsModal
+                visible={isNotificationsOpen}
+                onClose={() => setIsNotificationsOpen(false)}
+                campusName={currentUser.college?.name || "Campus Hub"}
+              />
+            </View>
+          </UserProvider>
+        ) : (
+          <LoginScreen onLoginSuccess={handleLoginSuccess} />
+        )}
+      </NavigationContainer>
+    </SafeAreaView>
+  );
+}
+
+export default function App() {
+  return (
     <SafeAreaProvider>
       <ErrorBoundary>
-        <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
-          <StatusBar barStyle="light-content" backgroundColor={colors.background} />
-
-          <NavigationContainer>
-            {currentUser ? (
-              <UserProvider initialUser={currentUser} onLogout={() => setCurrentUser(null)}>
-                <View style={styles.mainContainer}>
-                  <Header
-                    title="Otium"
-                    badge="Campus Hub"
-                    campusName={currentUser.college?.name || "Campus Hub"}
-                    onNotificationPress={() => setIsNotificationsOpen(true)}
-                  />
-                  <TabNavigator />
-                  <NotificationsModal
-                    visible={isNotificationsOpen}
-                    onClose={() => setIsNotificationsOpen(false)}
-                    campusName={currentUser.college?.name || "Campus Hub"}
-                  />
-                </View>
-              </UserProvider>
-            ) : (
-              <LoginScreen onLoginSuccess={handleLoginSuccess} />
-            )}
-          </NavigationContainer>
-        </SafeAreaView>
+        <ThemeProvider>
+          <MainApp />
+        </ThemeProvider>
       </ErrorBoundary>
     </SafeAreaProvider>
   );

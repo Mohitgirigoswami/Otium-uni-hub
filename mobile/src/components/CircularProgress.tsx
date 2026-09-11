@@ -1,7 +1,7 @@
 import React from "react";
 import { View, Text, StyleSheet } from "react-native";
 import Svg, { Circle, Defs, LinearGradient, Stop } from "react-native-svg";
-import { colors } from "../theme/colors";
+import { colors, useTheme } from "../theme/colors";
 
 interface CircularProgressProps {
   percentage: number;
@@ -16,6 +16,7 @@ export function CircularProgress({
   strokeWidth = 14,
   subtitle = "Overall Attendance",
 }: CircularProgressProps) {
+  const { theme, isDark } = useTheme();
   const isSafe = percentage >= 75;
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
@@ -41,7 +42,7 @@ export function CircularProgress({
           cx={size / 2}
           cy={size / 2}
           r={radius}
-          stroke="rgba(255, 255, 255, 0.08)"
+          stroke={isDark ? "rgba(255, 255, 255, 0.08)" : "rgba(100, 116, 139, 0.12)"}
           strokeWidth={strokeWidth}
           fill="none"
         />
@@ -66,7 +67,7 @@ export function CircularProgress({
         <Text style={[styles.percentageText, { color: textColor }]}>
           {percentage.toFixed(0)}%
         </Text>
-        <Text style={styles.subtitleText}>{subtitle}</Text>
+        <Text style={[styles.subtitleText, { color: theme.text.secondary }]}>{subtitle}</Text>
         <View
           style={[
             styles.statusPill,
