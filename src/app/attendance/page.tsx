@@ -42,6 +42,7 @@ export default function AttendancePage() {
   const [code, setCode] = useState("");
   const [totalClasses, setTotalClasses] = useState("30");
   const [attendedClasses, setAttendedClasses] = useState("25");
+  const [periodWeight, setPeriodWeight] = useState<number>(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
 
@@ -80,6 +81,7 @@ export default function AttendancePage() {
       code: code || undefined,
       totalClasses: total,
       attendedClasses: attended,
+      periodWeight: Number(periodWeight) || 1,
     });
     setIsSubmitting(false);
 
@@ -92,6 +94,7 @@ export default function AttendancePage() {
       setCode("");
       setTotalClasses("30");
       setAttendedClasses("25");
+      setPeriodWeight(1);
       fetchSubjectsList();
     }
   };
@@ -106,6 +109,7 @@ export default function AttendancePage() {
       code: editingSubject.code,
       totalClasses: Number(editingSubject.totalClasses),
       attendedClasses: Number(editingSubject.attendedClasses),
+      periodWeight: Number(editingSubject.periodWeight) || 1,
     });
     setIsSubmitting(false);
 
@@ -118,20 +122,20 @@ export default function AttendancePage() {
     }
   };
 
-  const handleLogSession = async (subjectId: string, status: "PRESENT" | "ABSENT") => {
+  const handleLogSession = async (subjectId: string, status: "PRESENT" | "ABSENT", count: number = 1) => {
     if (!user) return;
     setActionLoadingId(`${subjectId}-${status}`);
 
-    const res = await logAttendanceSession(subjectId, user.id, status);
+    const res = await logAttendanceSession(subjectId, user.id, status, count);
     setActionLoadingId(null);
 
     if (res.error) {
       toast.error(res.error);
     } else {
       if (status === "PRESENT") {
-        toast.success("Class marked Present! Attendance increased.");
+        toast.success(`Class marked Present (+${count})! Attendance increased.`);
       } else {
-        toast.warning("Class marked Absent.");
+        toast.warning(`Class marked Absent (-${count}).`);
       }
       fetchSubjectsList();
     }
@@ -310,7 +314,7 @@ export default function AttendancePage() {
                   {/* Card Header */}
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-lg font-extrabold text-slate-900 dark:text-white">
                           {subject.name}
                         </span>
@@ -319,6 +323,11 @@ export default function AttendancePage() {
                             {subject.code}
                           </Badge>
                         )}
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-brand-500/10 text-brand-400 border border-brand-500/20">
+                          {subject.periodWeight && subject.periodWeight > 1
+                            ? `🧪 ${subject.periodWeight}-Period Lab`
+                            : "📚 1 Period"}
+                        </span>
                       </div>
                       <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                         {subject.attendedClasses} attended out of {subject.totalClasses} total lectures
@@ -427,29 +436,29 @@ export default function AttendancePage() {
                   </div>
                 </div>
 
-                {/* Quick Log Action Buttons */}
+                {/* Decluttered Quick Log Action Buttons (Uses Pre-configured Weight in Advance) */}
                 <div className="mt-6 pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-3">
                   <span className="text-[11px] font-semibold text-slate-400">
-                    Quick Log Today:
+                    Quick Log ({subject.periodWeight || 1} Period{(subject.periodWeight || 1) > 1 ? "s" : ""}):
                   </span>
                   <div className="flex items-center gap-2">
                     <Button
                       variant="outline"
                       size="sm"
                       isLoading={actionLoadingId === `${subject.id}-ABSENT`}
-                      onClick={() => handleLogSession(subject.id, "ABSENT")}
+                      onClick={() => handleLogSession(subject.id, "ABSENT", subject.periodWeight || 1)}
                       className="border-rose-300 dark:border-rose-900 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40"
                     >
-                      Missed Class
+                      Missed (-{subject.periodWeight || 1})
                     </Button>
                     <Button
                       variant="brand"
                       size="sm"
                       isLoading={actionLoadingId === `${subject.id}-PRESENT`}
-                      onClick={() => handleLogSession(subject.id, "PRESENT")}
+                      onClick={() => handleLogSession(subject.id, "PRESENT", subject.periodWeight || 1)}
                       className="bg-emerald-600 hover:bg-emerald-500"
                     >
-                      Attended (+1)
+                      Attended (+{subject.periodWeight || 1}{subject.periodWeight && subject.periodWeight > 1 ? " Lab" : ""})
                     </Button>
                   </div>
                 </div>
@@ -492,6 +501,38 @@ export default function AttendancePage() {
               onChange={(e) => setCode(e.target.value)}
               className="w-full px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 uppercase"
             />
+          </div>
+
+          {/* Lecture Duration Configured in Advance */}
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
+              Lecture Session Duration (In Advance) *
+            </label>
+            <p className="text-xs text-slate-400 mb-2">
+              Configures standard lecture or multi-period lab session weight in advance to eliminate cluttered action buttons.
+            </p>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {[
+                { weight: 1, label: "1 Period", desc: "Regular Class" },
+                { weight: 2, label: "2 Periods", desc: "Lab Session" },
+                { weight: 3, label: "3 Periods", desc: "3-Hour Lab" },
+                { weight: 4, label: "4 Periods", desc: "Workshop" },
+              ].map((opt) => (
+                <button
+                  key={opt.weight}
+                  type="button"
+                  onClick={() => setPeriodWeight(opt.weight)}
+                  className={`p-2.5 rounded-xl border text-left transition-all ${
+                    periodWeight === opt.weight
+                      ? "bg-brand-500/20 border-brand-500 text-brand-300 shadow-sm"
+                      : "bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-400 hover:border-slate-500"
+                  }`}
+                >
+                  <p className="text-xs font-bold">{opt.label}</p>
+                  <p className="text-[10px] opacity-75">{opt.desc}</p>
+                </button>
+              ))}
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -574,6 +615,37 @@ export default function AttendancePage() {
                 }
                 className="w-full px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 uppercase"
               />
+            </div>
+
+            {/* Edit Lecture Duration */}
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
+                Lecture Session Duration (In Advance)
+              </label>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {[
+                  { weight: 1, label: "1 Period", desc: "Regular Class" },
+                  { weight: 2, label: "2 Periods", desc: "Lab Session" },
+                  { weight: 3, label: "3 Periods", desc: "3-Hour Lab" },
+                  { weight: 4, label: "4 Periods", desc: "Workshop" },
+                ].map((opt) => (
+                  <button
+                    key={opt.weight}
+                    type="button"
+                    onClick={() =>
+                      setEditingSubject({ ...editingSubject, periodWeight: opt.weight })
+                    }
+                    className={`p-2.5 rounded-xl border text-left transition-all ${
+                      (editingSubject.periodWeight || 1) === opt.weight
+                        ? "bg-brand-500/20 border-brand-500 text-brand-300 shadow-sm"
+                        : "bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-400 hover:border-slate-500"
+                    }`}
+                  >
+                    <p className="text-xs font-bold">{opt.label}</p>
+                    <p className="text-[10px] opacity-75">{opt.desc}</p>
+                  </button>
+                ))}
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4">

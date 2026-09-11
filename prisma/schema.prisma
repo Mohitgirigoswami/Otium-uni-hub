@@ -332,6 +332,7 @@ model Subject {
   code            String?
   totalClasses    Int                @default(0)
   attendedClasses Int                @default(0)
+  periodWeight    Int                @default(1)
   userId          String
   user            User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   records         AttendanceRecord[]

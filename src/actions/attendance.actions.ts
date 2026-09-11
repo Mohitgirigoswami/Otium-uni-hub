@@ -42,6 +42,7 @@ export async function createSubject(data: {
   code?: string;
   totalClasses: number;
   attendedClasses: number;
+  periodWeight?: number;
 }): Promise<ActionResponse<any>> {
   try {
     const rateCheck = await checkRateLimit(data.userId);
@@ -63,6 +64,7 @@ export async function createSubject(data: {
         code: data.code?.trim().toUpperCase() || null,
         totalClasses: Number(data.totalClasses),
         attendedClasses: Number(data.attendedClasses),
+        periodWeight: Math.max(1, Math.min(Number(data.periodWeight) || 1, 4)),
         userId: data.userId,
       },
     });
@@ -172,7 +174,13 @@ export async function deleteSubject(
 export async function updateSubjectCounts(
   subjectId: string,
   userId: string,
-  data: { name: string; code?: string; totalClasses: number; attendedClasses: number }
+  data: {
+    name: string;
+    code?: string;
+    totalClasses: number;
+    attendedClasses: number;
+    periodWeight?: number;
+  }
 ): Promise<ActionResponse<any>> {
   try {
     const rateCheck = await checkRateLimit(userId);
@@ -191,6 +199,9 @@ export async function updateSubjectCounts(
         code: data.code?.trim().toUpperCase() || null,
         totalClasses: Number(data.totalClasses),
         attendedClasses: Number(data.attendedClasses),
+        ...(data.periodWeight
+          ? { periodWeight: Math.max(1, Math.min(Number(data.periodWeight), 4)) }
+          : {}),
       },
     });
 
