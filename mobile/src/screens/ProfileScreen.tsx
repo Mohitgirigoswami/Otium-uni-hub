@@ -249,10 +249,10 @@ export function ProfileScreen() {
         <View style={styles.settingItem}>
           <View style={styles.settingLeft}>
             <View style={styles.onlineDot} />
-            <Text style={styles.settingLabel}>Vercel Production API</Text>
+            <Text style={styles.settingLabel}>Otium Campus Network</Text>
           </View>
           <Badge variant="success" size="sm">
-            ONLINE
+            LIVE SYNC
           </Badge>
         </View>
 

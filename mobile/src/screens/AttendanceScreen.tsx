@@ -13,12 +13,16 @@ import {
   Platform,
 } from "react-native";
 import { Ionicons, Feather } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { colors } from "../theme/colors";
 import { GlassCard } from "../components/GlassCard";
 import { Badge } from "../components/Badge";
 import { Button } from "../components/MintButton";
 import { CircularProgress } from "../components/CircularProgress";
 import { apiClient } from "../services/apiClient";
+
+const STORAGE_KEY_ATTENDANCE = "@otium_attendance_subjects";
+const STORAGE_KEY_SYNC_QUEUE = "@otium_attendance_pending_sync";
 
 export interface SubjectItem {
   id: string;
@@ -83,6 +87,7 @@ export function AttendanceScreen() {
   const [subjects, setSubjects] = useState<SubjectItem[]>(INITIAL_SUBJECTS);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isOfflineMode, setIsOfflineMode] = useState(false);
 
   // Add Subject Modal State
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -99,8 +104,48 @@ export function AttendanceScreen() {
   // Quick Session Duration Picker Modal State
   const [activeWeightSubject, setActiveWeightSubject] = useState<SubjectItem | null>(null);
 
-  const fetchSubjects = async () => {
+  const flushOfflineSyncQueue = async () => {
     try {
+      const queueRaw = await AsyncStorage.getItem(STORAGE_KEY_SYNC_QUEUE);
+      if (!queueRaw) return;
+      const queue = JSON.parse(queueRaw);
+      if (!Array.isArray(queue) || queue.length === 0) return;
+
+      const remaining: any[] = [];
+      for (const item of queue) {
+        try {
+          await apiClient.post("/attendance", item);
+        } catch {
+          remaining.push(item);
+        }
+      }
+
+      if (remaining.length > 0) {
+        await AsyncStorage.setItem(STORAGE_KEY_SYNC_QUEUE, JSON.stringify(remaining));
+      } else {
+        await AsyncStorage.removeItem(STORAGE_KEY_SYNC_QUEUE);
+      }
+    } catch (e) {
+      console.log("Sync queue flush deferred:", e);
+    }
+  };
+
+  const fetchSubjects = async () => {
+    // 1. Instantly load from local storage if available (0ms instant render offline!)
+    try {
+      const cached = await AsyncStorage.getItem(STORAGE_KEY_ATTENDANCE);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setSubjects(parsed);
+        }
+      }
+    } catch {}
+
+    // 2. Fetch fresh from backend & flush pending sync queue
+    try {
+      await flushOfflineSyncQueue();
+
       const res = await apiClient.get("/attendance");
       if (res.success && Array.isArray(res.data) && res.data.length > 0) {
         const mapped: SubjectItem[] = res.data.map((s: any) => ({
@@ -112,9 +157,12 @@ export function AttendanceScreen() {
           periodWeight: s.periodWeight ?? 1,
         }));
         setSubjects(mapped);
+        setIsOfflineMode(false);
+        await AsyncStorage.setItem(STORAGE_KEY_ATTENDANCE, JSON.stringify(mapped));
       }
     } catch (e) {
-      console.warn("Could not fetch subjects:", e);
+      console.log("Could not fetch fresh subjects from backend, keeping local offline subjects");
+      setIsOfflineMode(true);
     }
   };
 
@@ -136,30 +184,47 @@ export function AttendanceScreen() {
 
   const handleLogAttendance = async (id: string, isPresent: boolean, count: number = 1) => {
     const weight = Math.max(1, count);
-    setSubjects((prev) =>
-      prev.map((sub) => {
-        if (sub.id === id) {
-          const newAttended = isPresent ? sub.attended + weight : sub.attended;
-          const newTotal = sub.total + weight;
-          return {
-            ...sub,
-            attended: newAttended,
-            total: newTotal,
-          };
-        }
-        return sub;
-      })
-    );
+    const updated = subjects.map((sub) => {
+      if (sub.id === id) {
+        const newAttended = isPresent ? sub.attended + weight : sub.attended;
+        const newTotal = sub.total + weight;
+        return {
+          ...sub,
+          attended: newAttended,
+          total: newTotal,
+        };
+      }
+      return sub;
+    });
+
+    // 1. Immediately update UI & local offline storage (0ms latency!)
+    setSubjects(updated);
+    AsyncStorage.setItem(STORAGE_KEY_ATTENDANCE, JSON.stringify(updated)).catch(() => {});
+
+    // 2. Queue for backend sync
+    const payload = {
+      action: "LOG_SESSION",
+      subjectId: id,
+      isPresent,
+      count: weight,
+    };
 
     try {
-      await apiClient.post("/attendance", {
-        action: "LOG_SESSION",
-        subjectId: id,
-        isPresent,
-        count: weight,
-      });
+      const res = await apiClient.post("/attendance", payload);
+      if (res.success) {
+        setIsOfflineMode(false);
+      } else {
+        throw new Error(res.error);
+      }
     } catch (e) {
-      console.warn("Could not log attendance session:", e);
+      // Offline: enqueue for sync when connection restores!
+      setIsOfflineMode(true);
+      try {
+        const queueRaw = await AsyncStorage.getItem(STORAGE_KEY_SYNC_QUEUE);
+        const queue = queueRaw ? JSON.parse(queueRaw) : [];
+        queue.push(payload);
+        await AsyncStorage.setItem(STORAGE_KEY_SYNC_QUEUE, JSON.stringify(queue));
+      } catch {}
     }
   };
 
@@ -199,7 +264,7 @@ export function AttendanceScreen() {
       }
     } catch (e: any) {
       setIsSubmitting(false);
-      Alert.alert("Network Error", e?.message || "Could not connect to backend.");
+      Alert.alert("Network Error", e?.message || "Could not connect to Otium services. Please check your internet connection.");
     }
   };
 
@@ -312,9 +377,15 @@ export function AttendanceScreen() {
       {/* Hero Header Banner */}
       <View style={styles.heroBanner}>
         <View style={styles.heroBadgeRow}>
-          <Badge variant="success" size="sm">
-            75% University Minimum Rule Engine
-          </Badge>
+          {isOfflineMode ? (
+            <Badge variant="warning" size="sm">
+              ☁️ Offline Mode • Attendance Saved Locally
+            </Badge>
+          ) : (
+            <Badge variant="success" size="sm">
+              75% University Minimum Rule Engine
+            </Badge>
+          )}
         </View>
         <Text style={styles.heroTitle}>Attendance Guardrail & Bunk Calculator</Text>
         <Text style={styles.heroSubtitle}>

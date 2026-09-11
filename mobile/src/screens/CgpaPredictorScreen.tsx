@@ -194,7 +194,7 @@ export function CgpaPredictorScreen() {
         Alert.alert("Save Failed", res.error || "Could not save semester.");
       }
     } catch (e: any) {
-      Alert.alert("Network Error", e?.message || "Could not reach backend.");
+      Alert.alert("Network Error", e?.message || "Could not connect to Otium services. Please check your internet connection.");
     } finally {
       setIsSaving(false);
     }
@@ -236,7 +236,7 @@ export function CgpaPredictorScreen() {
         Alert.alert("Save Failed", res.error || "Could not save semester record.");
       }
     } catch (e: any) {
-      Alert.alert("Network Error", e?.message || "Could not reach backend.");
+      Alert.alert("Network Error", e?.message || "Could not connect to Otium services. Please check your internet connection.");
     } finally {
       setIsSaving(false);
     }

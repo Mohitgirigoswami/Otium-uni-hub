@@ -15,6 +15,7 @@ import {
   Platform,
 } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons, Feather, FontAwesome5 } from "@expo/vector-icons";
 import { colors } from "../theme/colors";
 import { GlassCard } from "../components/GlassCard";
@@ -137,10 +138,28 @@ export function WhisperWallScreen() {
   // Check if campus is assigned on initial load
   useEffect(() => {
     fetchColleges();
-    if (!user?.collegeId) {
-      // Automatically prompt user to choose campus
-      setIsCampusModalOpen(true);
+    async function checkSavedCampus() {
+      try {
+        const storedCampus = await AsyncStorage.getItem("@otium_selected_campus");
+        if (storedCampus) {
+          const parsed = JSON.parse(storedCampus);
+          if (parsed?.id) {
+            // Already chosen in advance! Do NOT re-prompt
+            if (!user?.collegeId) {
+              setUser((prev: any) => ({ ...prev, collegeId: parsed.id, college: parsed }));
+            }
+            return;
+          }
+        }
+      } catch {}
+
+      if (!user?.collegeId) {
+        // Only prompt user if NO campus was ever selected
+        setIsCampusModalOpen(true);
+      }
     }
+
+    checkSavedCampus();
   }, [user?.collegeId]);
 
   const fetchWhispers = async (targetCollegeId?: string) => {
@@ -195,16 +214,20 @@ export function WhisperWallScreen() {
   const handleSelectCampus = async (college: any) => {
     setIsSavingCampus(true);
     try {
-      const res = await apiClient.patch("/profile", { collegeId: college.id });
-      if (res.success && res.data) {
-        setUser((prev: any) => ({ ...prev, collegeId: college.id, college }));
-        setIsCampusModalOpen(false);
-        setScope("CAMPUS");
-        fetchWhispers(college.id);
-        Alert.alert("Campus Selected", `Switched to ${college.name}!`);
-      } else {
-        Alert.alert("Error", res.error || "Failed to set campus.");
-      }
+      // 1. Immediately persist to AsyncStorage so it never prompts again!
+      await AsyncStorage.setItem(
+        "@otium_selected_campus",
+        JSON.stringify({ id: college.id, name: college.name, code: college.code })
+      );
+
+      setUser((prev: any) => ({ ...prev, collegeId: college.id, college }));
+      setIsCampusModalOpen(false);
+      setScope("CAMPUS");
+      fetchWhispers(college.id);
+
+      // 2. Persist to backend profile in background
+      apiClient.patch("/profile", { collegeId: college.id }).catch(() => {});
+      Alert.alert("Campus Selected", `Switched to ${college.name}!`);
     } catch (e: any) {
       Alert.alert("Error", e.message || "Could not save campus.");
     } finally {

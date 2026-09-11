@@ -27,6 +27,16 @@
         "ACCESS_NETWORK_STATE"
       ]
     },
+    "androidStatusBar": {
+      "barStyle": "light-content",
+      "backgroundColor": "#0A0F1D",
+      "translucent": false
+    },
+    "androidNavigationBar": {
+      "visible": "visible",
+      "barStyle": "light-content",
+      "backgroundColor": "#0A0F1D"
+    },
     "plugins": [
       "@react-native-google-signin/google-signin",
       [

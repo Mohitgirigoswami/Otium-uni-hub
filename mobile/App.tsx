@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   StyleSheet,
   View,
@@ -7,16 +7,19 @@ import {
   Text,
   Alert,
   TouchableOpacity,
+  Image,
+  Animated,
 } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { NavigationContainer } from "@react-navigation/native";
 import { enableScreens } from "react-native-screens";
 import * as SecureStore from "expo-secure-store";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { TabNavigator } from "./src/navigation/TabNavigator";
 import { Header } from "./src/components/Header";
 import { LoginScreen } from "./src/screens/LoginScreen";
 import { NotificationsModal } from "./src/components/NotificationsModal";
-import { UserProvider } from "./src/context/UserContext";
+import { UserProvider, STORAGE_KEYS } from "./src/context/UserContext";
 import { colors } from "./src/theme/colors";
 import { apiClient } from "./src/services/apiClient";
 
@@ -57,9 +60,11 @@ class ErrorBoundary extends React.Component<
       return (
         <View style={styles.errorContainer}>
           <StatusBar barStyle="light-content" backgroundColor={colors.background} />
-          <View style={styles.errorBadge}>
-            <Text style={styles.logoLetter}>!</Text>
-          </View>
+          <Image
+            source={require("./assets/logo.png")}
+            style={styles.errorLogo}
+            resizeMode="contain"
+          />
           <Text style={styles.errorTitle}>Something went wrong</Text>
           <Text style={styles.errorMessage}>
             {this.state.error?.message || "An unexpected error occurred."}
@@ -82,8 +87,26 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [currentUser, setCurrentUser] = useState<any | null>(null);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const pulseAnim = useRef(new Animated.Value(1)).current;
 
-  // Check SecureStore on app boot
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 1.08,
+          duration: 900,
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 900,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+  }, [pulseAnim]);
+
+  // Check SecureStore & Local Cache on app boot
   useEffect(() => {
     async function checkExistingAuth() {
       try {
@@ -94,21 +117,45 @@ export default function App() {
           console.warn("SecureStore unavailable on web/test:", storageErr);
         }
 
+        // 1. Immediately restore cached user from AsyncStorage (works 100% offline!)
+        let localUser: any = null;
+        try {
+          const storedUser = await AsyncStorage.getItem(STORAGE_KEYS.CACHED_USER);
+          if (storedUser) {
+            localUser = JSON.parse(storedUser);
+            setCurrentUser(localUser);
+          }
+        } catch (e) {
+          console.log("Could not load local cached user:", e);
+        }
+
         if (token) {
           apiClient.setAuthToken(token);
 
-          // Verify token against backend
-          const res = await apiClient.get("/auth/me");
-          if (res.success && res.data?.user) {
-            setCurrentUser(res.data.user);
-          } else {
-            // Token invalid or expired
-            try {
-              await SecureStore.deleteItemAsync("jwt");
-            } catch {}
-            apiClient.clearAuthToken();
-            setCurrentUser(null);
+          // 2. Verify token against backend non-destructively
+          try {
+            const res = await apiClient.get("/auth/me");
+            if (res.success && res.data?.user) {
+              setCurrentUser(res.data.user);
+              AsyncStorage.setItem(
+                STORAGE_KEYS.CACHED_USER,
+                JSON.stringify(res.data.user)
+              ).catch(() => {});
+            } else if (res.status === 401) {
+              // ONLY clear session if server explicitly returned 401 Unauthorized
+              try {
+                await SecureStore.deleteItemAsync("jwt");
+                await AsyncStorage.removeItem(STORAGE_KEYS.CACHED_USER);
+              } catch {}
+              apiClient.clearAuthToken();
+              setCurrentUser(null);
+            }
+          } catch (netErr) {
+            // Bad network / offline: NEVER log out user! Keep local cached session active.
+            console.log("Network unreachable during auth check, preserving local offline session");
           }
+        } else if (!localUser) {
+          setCurrentUser(null);
         }
       } catch (err) {
         console.error("Auth boot check failed:", err);
@@ -122,17 +169,22 @@ export default function App() {
 
   const handleLoginSuccess = (user: any) => {
     setCurrentUser(user);
+    AsyncStorage.setItem(STORAGE_KEYS.CACHED_USER, JSON.stringify(user)).catch(() => {});
   };
 
   if (isLoading) {
     return (
       <View style={styles.loadingContainer}>
         <StatusBar barStyle="light-content" backgroundColor={colors.background} />
-        <View style={styles.logoBadge}>
-          <Text style={styles.logoLetter}>O</Text>
+        <View style={styles.splashLogoWrap}>
+          <Animated.Image
+            source={require("./assets/logo.png")}
+            style={[styles.splashLogo, { transform: [{ scale: pulseAnim }] }]}
+            resizeMode="contain"
+          />
         </View>
-        <ActivityIndicator size="large" color={colors.brand[400]} style={{ marginTop: 20 }} />
-        <Text style={styles.loadingText}>Initializing campus connection...</Text>
+        <ActivityIndicator size="small" color={colors.brand[400]} style={{ marginTop: 24 }} />
+        <Text style={styles.loadingText}>Welcome to Otium • Syncing Campus Hub...</Text>
       </View>
     );
   }
@@ -140,12 +192,12 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <ErrorBoundary>
-        <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
+        <SafeAreaView style={styles.safeArea} edges={["top", "bottom", "left", "right"]}>
           <StatusBar barStyle="light-content" backgroundColor={colors.background} />
 
           <NavigationContainer>
             {currentUser ? (
-              <UserProvider onLogout={() => setCurrentUser(null)}>
+              <UserProvider initialUser={currentUser} onLogout={() => setCurrentUser(null)}>
                 <View style={styles.mainContainer}>
                   <Header
                     title="Otium"
@@ -185,6 +237,30 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  splashLogoWrap: {
+    width: 90,
+    height: 90,
+    borderRadius: 24,
+    backgroundColor: "rgba(20, 184, 166, 0.12)",
+    borderWidth: 1.5,
+    borderColor: "rgba(20, 184, 166, 0.35)",
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: colors.brand[500],
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.45,
+    shadowRadius: 16,
+    elevation: 10,
+  },
+  splashLogo: {
+    width: 60,
+    height: 60,
+  },
+  errorLogo: {
+    width: 64,
+    height: 64,
+    marginBottom: 16,
+  },
   errorContainer: {
     flex: 1,
     backgroundColor: colors.background,
@@ -192,24 +268,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     padding: 24,
   },
-  errorBadge: {
-    width: 64,
-    height: 64,
-    borderRadius: 20,
-    backgroundColor: colors.rose[500],
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: colors.rose[500],
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-    elevation: 8,
-  },
   errorTitle: {
     fontSize: 20,
     fontWeight: "800",
     color: "#FFFFFF",
-    marginTop: 18,
+    marginTop: 8,
   },
   errorMessage: {
     fontSize: 13,
@@ -230,28 +293,10 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     fontSize: 14,
   },
-  logoBadge: {
-    width: 64,
-    height: 64,
-    borderRadius: 20,
-    backgroundColor: colors.brand[600],
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: colors.brand[500],
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  logoLetter: {
-    fontSize: 34,
-    fontWeight: "900",
-    color: "#FFFFFF",
-  },
   loadingText: {
-    fontSize: 13,
-    color: colors.slate[400],
+    fontSize: 12.5,
+    color: colors.slate[300],
     fontWeight: "600",
-    marginTop: 12,
+    marginTop: 14,
   },
 });

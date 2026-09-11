@@ -7,6 +7,7 @@ import {
   Alert,
   ScrollView,
   ActivityIndicator,
+  Image,
 } from "react-native";
 import * as WebBrowser from "expo-web-browser";
 import * as Google from "expo-auth-session/providers/google";
@@ -131,7 +132,7 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
       setIsLoading(false);
       Alert.alert(
         "Network Connection Error",
-        err?.message || "Could not connect to laptop backend. Make sure Next.js is running on laptop."
+        "Unable to reach Otium Campus Network. Please check your internet connection."
       );
     }
   };
@@ -236,7 +237,11 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
         {/* Top Logo & Hero Badge */}
         <View style={styles.heroSection}>
           <View style={styles.logoBadge}>
-            <Text style={styles.logoLetter}>O</Text>
+            <Image
+              source={require("../../assets/logo.png")}
+              style={styles.logoImg}
+              resizeMode="contain"
+            />
           </View>
           <View style={styles.brandBadgeRow}>
             <Badge variant="brand" size="sm">
@@ -336,7 +341,9 @@ const styles = StyleSheet.create({
     width: 68,
     height: 68,
     borderRadius: 22,
-    backgroundColor: colors.brand[600],
+    backgroundColor: "rgba(20, 184, 166, 0.15)",
+    borderWidth: 1.5,
+    borderColor: "rgba(20, 184, 166, 0.35)",
     alignItems: "center",
     justifyContent: "center",
     shadowColor: colors.brand[500],
@@ -346,10 +353,9 @@ const styles = StyleSheet.create({
     elevation: 10,
     marginBottom: 14,
   },
-  logoLetter: {
-    fontSize: 36,
-    fontWeight: "900",
-    color: "#FFFFFF",
+  logoImg: {
+    width: 44,
+    height: 44,
   },
   brandBadgeRow: {
     marginBottom: 10,

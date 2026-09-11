@@ -1,5 +1,5 @@
 import React from "react";
-import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity, Image } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { colors } from "../theme/colors";
 import { Badge } from "./Badge";
@@ -21,6 +21,11 @@ export function Header({
     <View style={styles.headerContainer}>
       <View style={styles.leftSection}>
         <View style={styles.titleRow}>
+          <Image
+            source={require("../../assets/logo.png")}
+            style={styles.logoImage}
+            resizeMode="contain"
+          />
           <Text style={styles.brandTitle}>Otium</Text>
           <Badge variant="brand" size="sm" style={styles.badge}>
             {badge}
@@ -49,9 +54,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 14,
+    paddingHorizontal: 18,
+    paddingTop: 10,
+    paddingBottom: 12,
     backgroundColor: colors.background,
     borderBottomWidth: 1,
     borderBottomColor: "rgba(255, 255, 255, 0.06)",
@@ -62,10 +67,14 @@ const styles = StyleSheet.create({
   titleRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: 7,
+  },
+  logoImage: {
+    width: 24,
+    height: 24,
   },
   brandTitle: {
-    fontSize: 22,
+    fontSize: 21,
     fontWeight: "900",
     color: "#FFFFFF",
     letterSpacing: -0.5,

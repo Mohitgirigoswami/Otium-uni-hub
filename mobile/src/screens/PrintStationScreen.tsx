@@ -284,12 +284,12 @@ export function PrintStationScreen() {
       } else {
         Alert.alert(
           "Order Failed",
-          response.error || "Failed to submit print order to backend."
+          response.error || "Failed to submit print order. Please try again."
         );
       }
     } catch (err: any) {
       setIsSubmitting(false);
-      Alert.alert("Network Error", err?.message || "Failed to connect to backend server.");
+      Alert.alert("Network Error", err?.message || "Failed to connect to Otium services. Please check your internet connection.");
     }
   };
 
