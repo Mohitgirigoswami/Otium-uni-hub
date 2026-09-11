@@ -216,3 +216,108 @@ export async function updateSubjectCounts(
     };
   }
 }
+
+/**
+ * Synchronize offline subjects and lecture updates with the database.
+ * Reconciles local counts with server data so offline updates are NEVER lost.
+ */
+export async function syncOfflineAttendance(
+  userId: string,
+  clientSubjects: Array<{
+    id: string;
+    name: string;
+    code?: string;
+    attended: number;
+    total: number;
+    periodWeight?: number;
+  }>
+): Promise<ActionResponse<any[]>> {
+  try {
+    const rateCheck = await checkRateLimit(userId);
+    if (!rateCheck.success) {
+      const existing = await prisma.subject.findMany({
+        where: { userId },
+        orderBy: { createdAt: "asc" },
+      });
+      return { success: true, data: existing };
+    }
+
+    if (!Array.isArray(clientSubjects) || clientSubjects.length === 0) {
+      const existing = await prisma.subject.findMany({
+        where: { userId },
+        orderBy: { createdAt: "asc" },
+      });
+      return { success: true, data: existing };
+    }
+
+    // Fetch existing subjects for this user
+    const dbSubjects = await prisma.subject.findMany({
+      where: { userId },
+    });
+
+    const dbMap = new Map(dbSubjects.map((s) => [s.id, s]));
+    const nameMap = new Map(dbSubjects.map((s) => [s.name.trim().toLowerCase(), s]));
+
+    for (const clientSub of clientSubjects) {
+      if (!clientSub.name?.trim()) continue;
+
+      const clientAttended = Math.max(0, Number(clientSub.attended) || 0);
+      const clientTotal = Math.max(clientAttended, Number(clientSub.total) || 0);
+      const weight = Math.max(1, Math.min(Number(clientSub.periodWeight) || 1, 4));
+
+      // 1. Match by database ID
+      let matched = dbMap.get(clientSub.id);
+
+      // 2. Or match by name for newly registered / seeded demo subjects
+      if (!matched) {
+        matched = nameMap.get(clientSub.name.trim().toLowerCase());
+      }
+
+      if (matched) {
+        // Reconcile: promote higher counts from offline attendance
+        const finalAttended = Math.max(clientAttended, matched.attendedClasses);
+        const finalTotal = Math.max(clientTotal, matched.totalClasses);
+
+        if (finalAttended !== matched.attendedClasses || finalTotal !== matched.totalClasses) {
+          await prisma.subject.update({
+            where: { id: matched.id },
+            data: {
+              attendedClasses: finalAttended,
+              totalClasses: finalTotal,
+              periodWeight: weight,
+            },
+          });
+        }
+      } else {
+        // Brand new subject created offline or first-time sync
+        await prisma.subject.create({
+          data: {
+            userId,
+            name: clientSub.name.trim(),
+            code: clientSub.code?.trim().toUpperCase() || "SUB",
+            attendedClasses: clientAttended,
+            totalClasses: clientTotal,
+            periodWeight: weight,
+          },
+        });
+      }
+    }
+
+    // Return full up-to-date database list with official Prisma IDs
+    const finalSubjects = await prisma.subject.findMany({
+      where: { userId },
+      orderBy: { createdAt: "asc" },
+    });
+
+    return {
+      success: true,
+      data: finalSubjects,
+    };
+  } catch (error: any) {
+    console.error("Error in syncOfflineAttendance:", error);
+    return {
+      error: error?.message || "Failed to synchronize offline attendance.",
+    };
+  }
+}
+

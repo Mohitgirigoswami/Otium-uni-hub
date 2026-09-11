@@ -93,8 +93,8 @@ export function AttendanceScreen() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [newSubName, setNewSubName] = useState("");
   const [newSubCode, setNewSubCode] = useState("");
-  const [newSubAttended, setNewSubAttended] = useState("20");
-  const [newSubTotal, setNewSubTotal] = useState("25");
+  const [newSubAttended, setNewSubAttended] = useState("");
+  const [newSubTotal, setNewSubTotal] = useState("");
   const [newSubPeriodWeight, setNewSubPeriodWeight] = useState<number>(1);
 
   // Edit Subject Modal State
@@ -132,21 +132,32 @@ export function AttendanceScreen() {
 
   const fetchSubjects = async () => {
     // 1. Instantly load from local storage if available (0ms instant render offline!)
+    let currentLocal: SubjectItem[] = [];
     try {
       const cached = await AsyncStorage.getItem(STORAGE_KEY_ATTENDANCE);
       if (cached) {
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed) && parsed.length > 0) {
+          currentLocal = parsed;
           setSubjects(parsed);
         }
       }
     } catch {}
 
-    // 2. Fetch fresh from backend & flush pending sync queue
-    try {
-      await flushOfflineSyncQueue();
+    if (currentLocal.length === 0) {
+      currentLocal = subjects;
+    }
 
-      const res = await apiClient.get("/attendance");
+    // 2. Flush legacy single-action queue if present
+    await flushOfflineSyncQueue();
+
+    // 3. Two-way reconciliation: send current local subjects to backend
+    try {
+      const res = await apiClient.post("/attendance", {
+        action: "SYNC_OFFLINE",
+        subjects: currentLocal,
+      });
+
       if (res.success && Array.isArray(res.data) && res.data.length > 0) {
         const mapped: SubjectItem[] = res.data.map((s: any) => ({
           id: s.id,
@@ -159,9 +170,25 @@ export function AttendanceScreen() {
         setSubjects(mapped);
         setIsOfflineMode(false);
         await AsyncStorage.setItem(STORAGE_KEY_ATTENDANCE, JSON.stringify(mapped));
+      } else {
+        // Fallback GET
+        const getRes = await apiClient.get("/attendance");
+        if (getRes.success && Array.isArray(getRes.data) && getRes.data.length > 0) {
+          const mapped: SubjectItem[] = getRes.data.map((s: any) => ({
+            id: s.id,
+            name: s.name,
+            code: s.code || "SUB",
+            attended: s.attendedClasses ?? s.attended ?? 0,
+            total: s.totalClasses ?? s.total ?? 0,
+            periodWeight: s.periodWeight ?? 1,
+          }));
+          setSubjects(mapped);
+          setIsOfflineMode(false);
+          await AsyncStorage.setItem(STORAGE_KEY_ATTENDANCE, JSON.stringify(mapped));
+        }
       }
     } catch (e) {
-      console.log("Could not fetch fresh subjects from backend, keeping local offline subjects");
+      console.log("Could not sync with backend, staying in offline mode with local subjects");
       setIsOfflineMode(true);
     }
   };
@@ -241,6 +268,16 @@ export function AttendanceScreen() {
     }
 
     setIsSubmitting(true);
+    const localId = `local_${Date.now()}`;
+    const newSubject: SubjectItem = {
+      id: localId,
+      name: newSubName.trim(),
+      code: newSubCode.trim().toUpperCase() || "SUB",
+      attended: att,
+      total: tot,
+      periodWeight: newSubPeriodWeight,
+    };
+
     try {
       const res = await apiClient.post("/attendance", {
         name: newSubName.trim(),
@@ -249,23 +286,25 @@ export function AttendanceScreen() {
         totalClasses: tot,
         periodWeight: newSubPeriodWeight,
       });
-      setIsSubmitting(false);
 
-      if (res.success) {
-        setIsAddModalOpen(false);
-        setNewSubName("");
-        setNewSubCode("");
-        setNewSubAttended("20");
-        setNewSubTotal("25");
-        setNewSubPeriodWeight(1);
-        fetchSubjects();
-      } else {
-        Alert.alert("Error", res.error || "Failed to add subject.");
+      if (res.success && res.data?.id) {
+        newSubject.id = res.data.id;
       }
     } catch (e: any) {
-      setIsSubmitting(false);
-      Alert.alert("Network Error", e?.message || "Could not connect to Otium services. Please check your internet connection.");
+      setIsOfflineMode(true);
     }
+
+    const updated = [newSubject, ...subjects];
+    setSubjects(updated);
+    await AsyncStorage.setItem(STORAGE_KEY_ATTENDANCE, JSON.stringify(updated));
+
+    setIsSubmitting(false);
+    setIsAddModalOpen(false);
+    setNewSubName("");
+    setNewSubCode("");
+    setNewSubAttended("");
+    setNewSubTotal("");
+    setNewSubPeriodWeight(1);
   };
 
   const handleSaveEditSubject = async () => {
@@ -749,6 +788,8 @@ export function AttendanceScreen() {
                   <TextInput
                     value={newSubAttended}
                     onChangeText={setNewSubAttended}
+                    placeholder="e.g. 18"
+                    placeholderTextColor={colors.slate[500]}
                     keyboardType="number-pad"
                     style={styles.modalInput}
                   />
@@ -759,6 +800,8 @@ export function AttendanceScreen() {
                   <TextInput
                     value={newSubTotal}
                     onChangeText={setNewSubTotal}
+                    placeholder="e.g. 24"
+                    placeholderTextColor={colors.slate[500]}
                     keyboardType="number-pad"
                     style={styles.modalInput}
                   />

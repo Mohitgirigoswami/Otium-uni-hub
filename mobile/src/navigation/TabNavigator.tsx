@@ -34,8 +34,8 @@ export function TabNavigator() {
         tabBarStyle: [
           styles.tabBar,
           {
-            height: 58 + Math.max(insets.bottom, 4),
-            paddingBottom: Math.max(insets.bottom, 6),
+            height: 56 + Math.min(insets.bottom, 16),
+            paddingBottom: Math.min(insets.bottom, 12) + 4,
           },
         ],
         tabBarActiveTintColor: colors.brand[400],

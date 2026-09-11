@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSubjects, createSubject, logAttendanceSession, deleteSubject } from "@/actions/attendance.actions";
+import { getSubjects, createSubject, logAttendanceSession, deleteSubject, syncOfflineAttendance } from "@/actions/attendance.actions";
 import { verifyAuth } from "@/utils/auth";
 
 export async function OPTIONS() {
@@ -41,6 +41,15 @@ export async function POST(req: NextRequest) {
         { success: false, error: "Authentication required." },
         { status: 401 }
       );
+    }
+
+    // If synchronizing offline subjects / bulk reconciliation
+    if (body.action === "SYNC_OFFLINE") {
+      const res = await syncOfflineAttendance(userId, body.subjects || []);
+      if (res.error) {
+        return NextResponse.json({ success: false, error: res.error }, { status: 400 });
+      }
+      return NextResponse.json({ success: true, data: res.data });
     }
 
     // If logging a session (mark present / absent, supports multi-period labs)

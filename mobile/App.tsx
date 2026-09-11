@@ -192,7 +192,7 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <ErrorBoundary>
-        <SafeAreaView style={styles.safeArea} edges={["top", "bottom", "left", "right"]}>
+        <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
           <StatusBar barStyle="light-content" backgroundColor={colors.background} />
 
           <NavigationContainer>

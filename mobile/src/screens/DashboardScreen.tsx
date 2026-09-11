@@ -28,7 +28,7 @@ export function DashboardScreen() {
     attended: number;
     total: number;
     criticalCount: number;
-  }>({ percentage: 84.5, attended: 24, total: 28, criticalCount: 0 });
+  }>({ percentage: 0, attended: 0, total: 0, criticalCount: 0 });
 
   const [recentWhisper, setRecentWhisper] = useState<any | null>(null);
 
@@ -48,9 +48,21 @@ export function DashboardScreen() {
       }
     } catch {}
 
-    // 2. Fetch fresh attendance from backend
+    // 2. Fetch fresh attendance from backend (with offline reconciliation)
     try {
-      const attRes = await apiClient.get("/attendance");
+      let syncPayload: any[] = [];
+      const cached = await AsyncStorage.getItem("@otium_attendance_subjects");
+      if (cached) {
+        try {
+          syncPayload = JSON.parse(cached);
+        } catch {}
+      }
+
+      const attRes = await apiClient.post("/attendance", {
+        action: "SYNC_OFFLINE",
+        subjects: syncPayload,
+      });
+
       if (attRes.success && Array.isArray(attRes.data) && attRes.data.length > 0) {
         const subjects = attRes.data;
         const tot = subjects.reduce((sum: number, s: any) => sum + (s.totalClasses || 0), 0);
@@ -58,6 +70,16 @@ export function DashboardScreen() {
         const pct = tot > 0 ? (att / tot) * 100 : 100;
         const crit = subjects.filter((s: any) => (s.totalClasses > 0 ? (s.attendedClasses / s.totalClasses) * 100 < 75 : false)).length;
         setAttendanceData({ percentage: pct, attended: att, total: tot, criticalCount: crit });
+
+        const mapped = subjects.map((s: any) => ({
+          id: s.id,
+          name: s.name,
+          code: s.code || "SUB",
+          attended: s.attendedClasses ?? 0,
+          total: s.totalClasses ?? 0,
+          periodWeight: s.periodWeight ?? 1,
+        }));
+        await AsyncStorage.setItem("@otium_attendance_subjects", JSON.stringify(mapped));
       }
     } catch {}
 
