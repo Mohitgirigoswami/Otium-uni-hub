@@ -717,13 +717,13 @@ const styles = StyleSheet.create({
   heroTitle: {
     fontSize: 22,
     fontWeight: "900",
-    color: colors.text.primary,
+    color: "#FFFFFF",
     letterSpacing: -0.4,
     lineHeight: 28,
   },
   heroSubtitle: {
     fontSize: 13,
-    color: colors.text.secondary,
+    color: colors.slate[300],
     marginTop: 6,
     lineHeight: 19,
   },
@@ -739,24 +739,24 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 14,
     fontWeight: "800",
-    color: colors.text.primary,
+    color: "#FFFFFF",
     letterSpacing: -0.2,
     marginBottom: 10,
   },
   dropzoneBox: {
     borderWidth: 2,
-    borderColor: "rgba(16, 185, 129, 0.35)",
+    borderColor: "rgba(20, 184, 166, 0.35)",
     borderStyle: "dashed",
     borderRadius: 16,
     padding: 24,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(16, 185, 129, 0.05)",
+    backgroundColor: "rgba(20, 184, 166, 0.05)",
   },
   dropzoneTitle: {
     fontSize: 14,
     fontWeight: "700",
-    color: colors.text.primary,
+    color: "#FFFFFF",
     marginTop: 10,
   },
   dropzoneSubtitle: {
@@ -789,7 +789,7 @@ const styles = StyleSheet.create({
   fileNameText: {
     fontSize: 13,
     fontWeight: "700",
-    color: colors.text.primary,
+    color: "#FFFFFF",
   },
   fileMetaText: {
     fontSize: 11,

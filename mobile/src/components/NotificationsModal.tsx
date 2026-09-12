@@ -8,7 +8,7 @@ import {
   ScrollView,
 } from "react-native";
 import { Ionicons, Feather, MaterialCommunityIcons } from "@expo/vector-icons";
-import { colors, useTheme } from "../theme/colors";
+import { colors } from "../theme/colors";
 import { Badge } from "./Badge";
 
 interface NotificationsModalProps {
@@ -22,8 +22,6 @@ export function NotificationsModal({
   onClose,
   campusName = "Campus Hub",
 }: NotificationsModalProps) {
-  const { theme, isDark } = useTheme();
-
   const notices = [
     {
       id: "1",
@@ -57,75 +55,61 @@ export function NotificationsModal({
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.backdrop}>
-        <View style={[styles.modalCard, { backgroundColor: theme.surface, borderColor: theme.cardBorder }]}>
+        <View style={styles.modalCard}>
           {/* Header */}
-          <View style={[styles.modalHeader, { borderBottomColor: theme.cardBorder }]}>
+          <View style={styles.modalHeader}>
             <View style={styles.headerLeft}>
               <View style={styles.bellBadge}>
-                <Ionicons name="notifications" size={18} color={theme.brand[500]} />
+                <Ionicons name="notifications" size={18} color={colors.brand[400]} />
               </View>
               <View>
-                <Text style={[styles.modalTitle, { color: theme.text.primary }]}>Campus Notifications</Text>
-                <Text style={[styles.modalSubtitle, { color: theme.text.secondary }]}>{campusName}</Text>
+                <Text style={styles.modalTitle}>Campus Notifications</Text>
+                <Text style={styles.modalSubtitle}>{campusName}</Text>
               </View>
             </View>
-            <TouchableOpacity
-              onPress={onClose}
-              style={[styles.closeBtn, { backgroundColor: isDark ? colors.slate[800] : colors.slate[200] }]}
-              activeOpacity={0.7}
-            >
-              <Ionicons name="close" size={20} color={theme.text.secondary} />
+            <TouchableOpacity onPress={onClose} style={styles.closeBtn} activeOpacity={0.7}>
+              <Ionicons name="close" size={20} color={colors.slate[400]} />
             </TouchableOpacity>
           </View>
 
           {/* List of Notices */}
           <ScrollView style={styles.noticesList} showsVerticalScrollIndicator={false}>
             {notices.map((n) => (
-              <View
-                key={n.id}
-                style={[
-                  styles.noticeItem,
-                  { backgroundColor: isDark ? "rgba(255, 255, 255, 0.03)" : theme.backgroundSecondary, borderColor: theme.cardBorder },
-                ]}
-              >
-                <View style={[styles.noticeIconBox, { backgroundColor: isDark ? colors.slate[800] : colors.slate[200] }]}>
+              <View key={n.id} style={styles.noticeItem}>
+                <View style={styles.noticeIconBox}>
                   {n.iconType === "feather" ? (
-                    <Feather name={n.icon as any} size={16} color={theme.brand[500]} />
+                    <Feather name={n.icon as any} size={16} color={colors.brand[400]} />
                   ) : n.iconType === "material" ? (
-                    <MaterialCommunityIcons name={n.icon as any} size={18} color={theme.brand[500]} />
+                    <MaterialCommunityIcons name={n.icon as any} size={18} color={colors.brand[400]} />
                   ) : (
-                    <Ionicons name={n.icon as any} size={18} color={theme.brand[500]} />
+                    <Ionicons name={n.icon as any} size={18} color={colors.brand[400]} />
                   )}
                 </View>
                 <View style={styles.noticeContent}>
                   <View style={styles.noticeTopRow}>
-                    <Text style={[styles.noticeTitle, { color: theme.text.primary }]}>{n.title}</Text>
+                    <Text style={styles.noticeTitle}>{n.title}</Text>
                     <Badge variant="neutral" size="sm">
                       {n.tag}
                     </Badge>
                   </View>
-                  <Text style={[styles.noticeMessage, { color: theme.text.secondary }]}>{n.message}</Text>
-                  <Text style={[styles.noticeTime, { color: theme.text.muted }]}>{n.time}</Text>
+                  <Text style={styles.noticeMessage}>{n.message}</Text>
+                  <Text style={styles.noticeTime}>{n.time}</Text>
                 </View>
               </View>
             ))}
 
             {/* All Caught Up Card */}
             <View style={styles.allCaughtUpCard}>
-              <Ionicons name="checkmark-circle-outline" size={22} color={colors.emerald[500]} />
+              <Ionicons name="checkmark-circle-outline" size={22} color={colors.emerald[400]} />
               <Text style={styles.allCaughtUpText}>You're all caught up!</Text>
-              <Text style={[styles.allCaughtUpSubtext, { color: theme.text.secondary }]}>
+              <Text style={styles.allCaughtUpSubtext}>
                 No urgent warnings or unread administrative notices.
               </Text>
             </View>
           </ScrollView>
 
           {/* Dismiss Button */}
-          <TouchableOpacity
-            onPress={onClose}
-            style={[styles.dismissBtn, { backgroundColor: theme.brand[500] }]}
-            activeOpacity={0.8}
-          >
+          <TouchableOpacity onPress={onClose} style={styles.dismissBtn} activeOpacity={0.8}>
             <Text style={styles.dismissBtnText}>Dismiss</Text>
           </TouchableOpacity>
         </View>

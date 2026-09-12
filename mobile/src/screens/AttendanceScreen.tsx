@@ -1041,13 +1041,13 @@ const styles = StyleSheet.create({
   heroTitle: {
     fontSize: 22,
     fontWeight: "900",
-    color: colors.text.primary,
+    color: "#FFFFFF",
     letterSpacing: -0.4,
     lineHeight: 28,
   },
   heroSubtitle: {
     fontSize: 13,
-    color: colors.text.secondary,
+    color: colors.slate[300],
     marginTop: 6,
     lineHeight: 19,
   },
@@ -1065,7 +1065,7 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 10,
     borderRadius: 12,
-    backgroundColor: colors.surface,
+    backgroundColor: "rgba(255, 255, 255, 0.04)",
     borderWidth: 1,
     borderColor: colors.cardBorder,
     alignItems: "center",
@@ -1073,13 +1073,12 @@ const styles = StyleSheet.create({
   kpiLabel: {
     fontSize: 10,
     fontWeight: "700",
-    color: colors.text.secondary,
+    color: colors.slate[400],
     textTransform: "uppercase",
   },
   kpiValue: {
     fontSize: 14,
     fontWeight: "800",
-    color: colors.text.primary,
     marginTop: 2,
   },
   prompterCard: {
@@ -1109,11 +1108,11 @@ const styles = StyleSheet.create({
   prompterTitle: {
     fontSize: 14,
     fontWeight: "800",
-    color: colors.text.primary,
+    color: "#FFFFFF",
   },
   prompterSubtitle: {
     fontSize: 11,
-    color: colors.text.secondary,
+    color: colors.slate[400],
     marginTop: 1,
   },
   prompterScroll: {
@@ -1124,7 +1123,7 @@ const styles = StyleSheet.create({
     width: 140,
     padding: 10,
     borderRadius: 12,
-    backgroundColor: colors.surface,
+    backgroundColor: "rgba(255, 255, 255, 0.03)",
     borderWidth: 1,
     borderColor: colors.cardBorder,
     gap: 6,
@@ -1137,23 +1136,23 @@ const styles = StyleSheet.create({
   prompterPillCode: {
     fontSize: 11,
     fontWeight: "800",
-    color: colors.brand[600],
+    color: colors.brand[400],
   },
   prompterWeightTag: {
     paddingHorizontal: 5,
     paddingVertical: 1,
     borderRadius: 6,
-    backgroundColor: colors.slate[200],
+    backgroundColor: "rgba(255, 255, 255, 0.06)",
   },
   prompterWeightTagText: {
     fontSize: 9.5,
     fontWeight: "700",
-    color: colors.slate[600],
+    color: colors.slate[300],
   },
   prompterPillName: {
     fontSize: 11.5,
     fontWeight: "700",
-    color: colors.text.primary,
+    color: "#FFFFFF",
   },
   prompterBtnRow: {
     flexDirection: "row",
@@ -1203,12 +1202,12 @@ const styles = StyleSheet.create({
   courseSectionTitle: {
     fontSize: 16,
     fontWeight: "800",
-    color: colors.text.primary,
+    color: "#FFFFFF",
     letterSpacing: -0.2,
   },
   courseSectionSubtitle: {
     fontSize: 11,
-    color: colors.text.secondary,
+    color: colors.slate[400],
     marginTop: 2,
   },
   subjectList: {
@@ -1235,12 +1234,12 @@ const styles = StyleSheet.create({
   subNameText: {
     fontSize: 15,
     fontWeight: "800",
-    color: colors.text.primary,
+    color: "#FFFFFF",
     flexShrink: 1,
   },
   subMetaText: {
     fontSize: 12,
-    color: colors.text.secondary,
+    color: colors.slate[400],
     marginTop: 3,
   },
   topRightActions: {

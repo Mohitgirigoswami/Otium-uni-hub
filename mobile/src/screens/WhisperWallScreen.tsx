@@ -1000,17 +1000,17 @@ const styles = StyleSheet.create({
   authorHandle: {
     fontSize: 12.5,
     fontWeight: "800",
-    color: colors.text.primary,
+    color: "#FFFFFF",
   },
   postMeta: {
     fontSize: 10.5,
-    color: colors.text.secondary,
+    color: colors.slate[400],
     marginTop: 1,
   },
   postContent: {
     fontSize: 13.5,
     lineHeight: 20,
-    color: colors.text.primary,
+    color: colors.slate[200],
   },
   postFooter: {
     flexDirection: "row",
@@ -1019,12 +1019,12 @@ const styles = StyleSheet.create({
     marginTop: 4,
     paddingTop: 10,
     borderTopWidth: 1,
-    borderTopColor: colors.cardBorder,
+    borderTopColor: "rgba(255, 255, 255, 0.05)",
   },
   voteGroup: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: colors.surface,
+    backgroundColor: colors.slate[900],
     borderRadius: 18,
     borderWidth: 1,
     borderColor: colors.cardBorder,

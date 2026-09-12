@@ -1,6 +1,6 @@
 import React from "react";
 import { View, StyleSheet, ViewStyle, TouchableOpacity } from "react-native";
-import { useTheme } from "../theme/ThemeContext";
+import { colors } from "../theme/colors";
 
 interface GlassCardProps {
   children: React.ReactNode;
@@ -17,35 +17,12 @@ export function GlassCard({
   onPress,
   style,
 }: GlassCardProps) {
-  const { theme, isDark } = useTheme();
-
-  const dynamicBase = {
-    backgroundColor: theme.card,
-    borderColor: theme.cardBorder,
-    shadowOpacity: isDark ? 0.25 : 0.06,
-    shadowColor: isDark ? "#000" : "#0F172A",
-  };
-
-  const dynamicVariants = {
-    default: {
-      borderColor: theme.cardBorder,
-    },
-    brand: {
-      borderColor: theme.cardBorderHighlight,
-      backgroundColor: theme.emerald.bg,
-    },
-    danger: {
-      borderColor: theme.rose.border,
-      backgroundColor: theme.rose.bg,
-    },
-    warning: {
-      borderColor: theme.amber.border,
-      backgroundColor: theme.amber.bg,
-    },
-    purple: {
-      borderColor: theme.purple.border,
-      backgroundColor: theme.purple.bg,
-    },
+  const variantStyles = {
+    default: styles.variantDefault,
+    brand: styles.variantBrand,
+    danger: styles.variantDanger,
+    warning: styles.variantWarning,
+    purple: styles.variantPurple,
   }[variant];
 
   if (interactive && onPress) {
@@ -53,28 +30,45 @@ export function GlassCard({
       <TouchableOpacity
         activeOpacity={0.8}
         onPress={onPress}
-        style={[styles.card, dynamicBase, dynamicVariants, style]}
+        style={[styles.card, variantStyles, style]}
       >
         {children}
       </TouchableOpacity>
     );
   }
 
-  return (
-    <View style={[styles.card, dynamicBase, dynamicVariants, style]}>
-      {children}
-    </View>
-  );
+  return <View style={[styles.card, variantStyles, style]}>{children}</View>;
 }
 
 const styles = StyleSheet.create({
   card: {
+    backgroundColor: colors.surface,
     borderRadius: 20,
     borderWidth: 1,
     padding: 18,
-    shadowOffset: { width: 0, height: 3 },
-    shadowRadius: 8,
-    elevation: 3,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    elevation: 4,
+  },
+  variantDefault: {
+    borderColor: colors.cardBorder,
+  },
+  variantBrand: {
+    borderColor: colors.cardBorderHighlight,
+    backgroundColor: "rgba(20, 184, 166, 0.08)",
+  },
+  variantDanger: {
+    borderColor: colors.rose.border,
+    backgroundColor: colors.rose.bg,
+  },
+  variantWarning: {
+    borderColor: colors.amber.border,
+    backgroundColor: colors.amber.bg,
+  },
+  variantPurple: {
+    borderColor: colors.purple.border,
+    backgroundColor: colors.purple.bg,
   },
 });
-

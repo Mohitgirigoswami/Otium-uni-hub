@@ -363,12 +363,12 @@ const styles = StyleSheet.create({
   heroTitle: {
     fontSize: 28,
     fontWeight: "900",
-    color: colors.text.primary,
+    color: "#FFFFFF",
     letterSpacing: -0.5,
   },
   heroSubtitle: {
     fontSize: 13.5,
-    color: colors.text.secondary,
+    color: colors.slate[300],
     textAlign: "center",
     marginTop: 8,
     lineHeight: 20,
@@ -386,12 +386,12 @@ const styles = StyleSheet.create({
   cardTitle: {
     fontSize: 18,
     fontWeight: "800",
-    color: colors.text.primary,
+    color: "#FFFFFF",
     letterSpacing: -0.3,
   },
   cardDesc: {
     fontSize: 13,
-    color: colors.text.secondary,
+    color: colors.slate[400],
     lineHeight: 19,
   },
   googleButton: {
@@ -431,16 +431,15 @@ const styles = StyleSheet.create({
   quickTestSection: {
     paddingTop: 12,
     borderTopWidth: 1,
-    borderTopColor: colors.cardBorder,
+    borderTopColor: "rgba(255, 255, 255, 0.08)",
     gap: 10,
   },
   quickTestLabel: {
     fontSize: 11.5,
     fontWeight: "700",
-    color: colors.text.secondary,
-    textAlign: "center",
+    color: colors.slate[400],
     textTransform: "uppercase",
-    letterSpacing: 0.5,
+    letterSpacing: 0.4,
   },
   quickProfileGrid: {
     gap: 8,

@@ -8,7 +8,7 @@ import {
   TextStyle,
   View,
 } from "react-native";
-import { colors, useTheme } from "../theme/colors";
+import { colors } from "../theme/colors";
 
 interface ButtonProps {
   title?: string;
@@ -41,7 +41,6 @@ export function Button({
   style,
   textStyle,
 }: ButtonProps) {
-  const { theme, isDark } = useTheme();
   const isInteractive = !loading && !disabled;
 
   const getVariantContainerStyle = () => {
@@ -50,13 +49,13 @@ export function Button({
       case "brand":
         return styles.btnBrand;
       case "outline":
-        return [styles.btnOutline, { borderColor: theme.cardBorder }];
+        return styles.btnOutline;
       case "danger":
         return styles.btnDanger;
       case "purple":
         return styles.btnPurple;
       case "subtle":
-        return [styles.btnSubtle, { backgroundColor: isDark ? colors.slate[800] : colors.slate[100] }];
+        return styles.btnSubtle;
       default:
         return styles.btnBrand;
     }
@@ -68,13 +67,13 @@ export function Button({
       case "brand":
         return styles.textBrand;
       case "outline":
-        return [styles.textOutline, { color: theme.text.primary }];
+        return styles.textOutline;
       case "danger":
         return styles.textDanger;
       case "purple":
         return styles.textPurple;
       case "subtle":
-        return [styles.textSubtle, { color: theme.text.secondary }];
+        return styles.textSubtle;
       default:
         return styles.textBrand;
     }

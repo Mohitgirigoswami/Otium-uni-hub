@@ -15,7 +15,7 @@ import {
   Platform,
 } from "react-native";
 import { Ionicons, Feather, MaterialCommunityIcons } from "@expo/vector-icons";
-import { colors, useTheme } from "../theme/colors";
+import { colors } from "../theme/colors";
 import { GlassCard } from "../components/GlassCard";
 import { Badge } from "../components/Badge";
 import { Button } from "../components/MintButton";
@@ -24,7 +24,6 @@ import { useUser } from "../context/UserContext";
 
 export function ProfileScreen() {
   const { user, setUser, signOut, refreshUser } = useUser();
-  const { theme, themeKey, setThemeKey, isDark } = useTheme();
   const [profileData, setProfileData] = useState<any>(user);
   const [colleges, setColleges] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -245,62 +244,12 @@ export function ProfileScreen() {
 
       {/* App & Connectivity Settings */}
       <GlassCard style={styles.settingsCard}>
-        <Text style={[styles.sectionTitle, { color: theme.text.primary }]}>Theme & Appearance</Text>
-
-        <View style={styles.themeSelectorRow}>
-          <TouchableOpacity
-            activeOpacity={0.8}
-            onPress={() => setThemeKey("emeraldLight")}
-            style={[
-              styles.themeOptionCard,
-              {
-                backgroundColor: themeKey === "emeraldLight" ? (isDark ? "#1E293B" : "#ECFDF5") : (isDark ? "#0F172A" : "#F8FAF9"),
-                borderColor: themeKey === "emeraldLight" ? theme.brand[500] : theme.cardBorder,
-              },
-            ]}
-          >
-            <View style={[styles.themeOptionIcon, { backgroundColor: "#10B981" }]}>
-              <Ionicons name="sunny" size={16} color="#FFFFFF" />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.themeOptionTitle, { color: theme.text.primary }]}>Emerald</Text>
-              <Text style={[styles.themeOptionDesc, { color: theme.text.secondary }]}>Campus Light</Text>
-            </View>
-            {themeKey === "emeraldLight" && (
-              <Ionicons name="checkmark-circle" size={18} color={theme.brand[500]} />
-            )}
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            activeOpacity={0.8}
-            onPress={() => setThemeKey("midnightDark")}
-            style={[
-              styles.themeOptionCard,
-              {
-                backgroundColor: themeKey === "midnightDark" ? (isDark ? "#1E293B" : "#ECFDF5") : (isDark ? "#0F172A" : "#F8FAF9"),
-                borderColor: themeKey === "midnightDark" ? theme.brand[500] : theme.cardBorder,
-              },
-            ]}
-          >
-            <View style={[styles.themeOptionIcon, { backgroundColor: "#0F172A" }]}>
-              <Ionicons name="moon" size={16} color="#FFFFFF" />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.themeOptionTitle, { color: theme.text.primary }]}>Midnight</Text>
-              <Text style={[styles.themeOptionDesc, { color: theme.text.secondary }]}>Cyber Dark</Text>
-            </View>
-            {themeKey === "midnightDark" && (
-              <Ionicons name="checkmark-circle" size={18} color={theme.brand[500]} />
-            )}
-          </TouchableOpacity>
-        </View>
-
-        <Text style={[styles.sectionTitle, { color: theme.text.primary, marginTop: 10 }]}>Network & Connectivity</Text>
+        <Text style={styles.sectionTitle}>App & Connectivity</Text>
 
         <View style={styles.settingItem}>
           <View style={styles.settingLeft}>
             <View style={styles.onlineDot} />
-            <Text style={[styles.settingLabel, { color: theme.text.primary }]}>Otium Campus Network</Text>
+            <Text style={styles.settingLabel}>Otium Campus Network</Text>
           </View>
           <Badge variant="success" size="sm">
             LIVE SYNC
@@ -308,8 +257,8 @@ export function ProfileScreen() {
         </View>
 
         <View style={styles.settingItem}>
-          <Text style={[styles.settingLabel, { color: theme.text.primary }]}>App Build Version</Text>
-          <Text style={[styles.versionText, { color: theme.text.secondary }]}>v1.0.0 (Release)</Text>
+          <Text style={styles.settingLabel}>App Build Version</Text>
+          <Text style={styles.versionText}>v1.0.0 (Release)</Text>
         </View>
       </GlassCard>
 
@@ -736,35 +685,5 @@ const styles = StyleSheet.create({
     color: "#0B132B",
     fontSize: 14,
     fontWeight: "800",
-  },
-  themeSelectorRow: {
-    flexDirection: "row",
-    gap: 10,
-    marginTop: 8,
-    marginBottom: 8,
-  },
-  themeOptionCard: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    padding: 12,
-    borderRadius: 14,
-    borderWidth: 1.5,
-  },
-  themeOptionIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  themeOptionTitle: {
-    fontSize: 12,
-    fontWeight: "800",
-  },
-  themeOptionDesc: {
-    fontSize: 9.5,
-    marginTop: 1,
   },
 });
