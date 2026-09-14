@@ -1,54 +1,54 @@
 import React from "react";
 import Link from "next/link";
-import { Sparkles, Shield, Lock, CheckCircle2, Heart, HelpCircle, FileText } from "lucide-react";
+import { Shield, Lock, CheckCircle2, Heart, HelpCircle, FileText } from "lucide-react";
 
 export function Footer() {
   return (
-    <footer className="mt-20 border-t border-slate-200/60 dark:border-slate-800/80 bg-white/50 dark:bg-[#060911]/80 backdrop-blur-md">
+    <footer className="mt-20 border-t border-border bg-card/40 backdrop-blur-md">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
           {/* Col 1: Brand */}
           <div className="space-y-3">
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-xl bg-black border border-white/15 p-1 flex items-center justify-center shadow-md">
+              <div className="w-8 h-8 rounded-xl bg-primary text-primary-foreground border border-border p-1 flex items-center justify-center shadow-sm">
                 <img
                   src="/logo.png"
                   alt="Otium Logo"
-                  className="w-full h-full object-contain"
+                  className="w-full h-full object-contain invert dark:invert-0"
                 />
               </div>
-              <span className="text-lg font-black tracking-tight bg-gradient-to-r from-brand-600 via-teal-500 to-electric-600 bg-clip-text text-transparent">
+              <span className="text-base font-extrabold tracking-tight font-heading text-foreground">
                 OTIUM UNI HUB
               </span>
             </div>
-            <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+            <p className="text-xs text-muted-foreground leading-relaxed">
               The all-in-one university Super App built to simplify academics, freelancing, peer commerce, and campus connectivity.
             </p>
           </div>
 
           {/* Col 2: Academic Suite */}
           <div>
-            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-slate-200 mb-3.5">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-foreground mb-3.5 font-heading">
               Academic Suite
             </h4>
-            <ul className="space-y-2.5 text-xs text-slate-600 dark:text-slate-400">
+            <ul className="space-y-2 text-xs text-muted-foreground">
               <li>
-                <Link href="/attendance" className="hover:text-brand-500 transition-colors">
+                <Link href="/attendance" className="hover:text-foreground transition-colors">
                   Attendance & Bunk Calculator
                 </Link>
               </li>
               <li>
-                <Link href="/cgpa" className="hover:text-brand-500 transition-colors">
+                <Link href="/cgpa" className="hover:text-foreground transition-colors">
                   CGPA Tracker & Grade Predictor
                 </Link>
               </li>
               <li>
-                <Link href="/print-station" className="hover:text-brand-500 transition-colors">
+                <Link href="/print-station" className="hover:text-foreground transition-colors">
                   Campus Print Station
                 </Link>
               </li>
               <li>
-                <Link href="/gigs" className="hover:text-brand-500 transition-colors">
+                <Link href="/gigs" className="hover:text-foreground transition-colors">
                   Project & Assignment Hub
                 </Link>
               </li>
@@ -57,69 +57,73 @@ export function Footer() {
 
           {/* Col 3: Campus Life */}
           <div>
-            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-slate-200 mb-3.5">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-foreground mb-3.5 font-heading">
               Campus Life
             </h4>
-            <ul className="space-y-2.5 text-xs text-slate-600 dark:text-slate-400">
+            <ul className="space-y-2 text-xs text-muted-foreground">
               <li>
-                <Link href="/incognito" className="hover:text-brand-500 transition-colors">
-                  Whisper Wall & Campus Feeds
+                <Link href="/incognito" className="hover:text-foreground transition-colors">
+                  Anonymous Whisper Wall
                 </Link>
               </li>
               <li>
-                <Link href="/rideshare" className="hover:text-brand-500 transition-colors">
-                  Airport & Station Cab Split
+                <Link href="/marketplace" className="hover:text-foreground transition-colors">
+                  Student Marketplace
                 </Link>
               </li>
               <li>
-                <Link href="/marketplace" className="hover:text-brand-500 transition-colors">
-                  Student Peer Marketplace
+                <Link href="/rideshare" className="hover:text-foreground transition-colors">
+                  Campus Cab & Auto Split
                 </Link>
               </li>
               <li>
-                <Link href="/lost-and-found" className="hover:text-brand-500 transition-colors">
-                  Lost & Found Directory
+                <Link href="/lost-and-found" className="hover:text-foreground transition-colors">
+                  Lost & Found Desk
                 </Link>
               </li>
             </ul>
           </div>
 
-          {/* Col 4: Trust & Safety */}
+          {/* Col 4: Trust & Policies */}
           <div>
-            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-slate-200 mb-3.5">
-              Trust & Safety
+            <h4 className="text-xs font-bold uppercase tracking-wider text-foreground mb-3.5 font-heading">
+              Trust & Security
             </h4>
-            <div className="space-y-2.5 text-xs text-slate-600 dark:text-slate-400">
-              <div className="flex items-center gap-2">
-                <Lock className="w-3.5 h-3.5 text-purple-500 shrink-0" />
-                <span>100% Anonymous Whispers</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Shield className="w-3.5 h-3.5 text-brand-500 shrink-0" />
-                <span>Auto-Purged Print Documents</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                <span>Verified Campus Members</span>
-              </div>
-            </div>
+            <ul className="space-y-2 text-xs text-muted-foreground">
+              <li className="flex items-center gap-1.5">
+                <Shield className="w-3.5 h-3.5 text-muted-foreground" />
+                <span>Zero-Knowledge Incognito Wall</span>
+              </li>
+              <li className="flex items-center gap-1.5">
+                <Lock className="w-3.5 h-3.5 text-muted-foreground" />
+                <span>Direct-to-Cloud Uploads</span>
+              </li>
+              <li className="flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5 text-muted-foreground" />
+                <span>Anti-Hoarding Gig Escrow</span>
+              </li>
+              <li className="flex items-center gap-1.5">
+                <HelpCircle className="w-3.5 h-3.5 text-muted-foreground" />
+                <Link href="/support" className="hover:text-foreground transition-colors">
+                  Campus Help Desk
+                </Link>
+              </li>
+            </ul>
           </div>
         </div>
 
-        {/* Footer Legal & Copyright Bar */}
-        <div className="mt-10 pt-6 border-t border-slate-200/60 dark:border-slate-800/80 flex flex-col sm:flex-row items-center justify-between text-xs text-slate-500 dark:text-slate-400 gap-4">
-          <p>© 2026 Otium Uni Hub. Built for students, by students.</p>
-          <div className="flex items-center gap-4 flex-wrap text-xs">
-            <Link href="/support" className="hover:text-brand-500 transition-colors">
-              Campus Support
+        {/* Bottom Strip */}
+        <div className="mt-10 pt-6 border-t border-border flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-muted-foreground">
+          <p>© {new Date().getFullYear()} Otium Uni Hub. Built for university students.</p>
+          <div className="flex items-center gap-4">
+            <Link href="/support" className="hover:text-foreground transition-colors">
+              Privacy
             </Link>
-            <span>•</span>
-            <Link href="/support" className="hover:text-brand-500 transition-colors">
-              Privacy Policy
+            <Link href="/support" className="hover:text-foreground transition-colors">
+              Terms
             </Link>
-            <span>•</span>
-            <Link href="/support" className="hover:text-brand-500 transition-colors">
-              Terms of Service
+            <Link href="/support" className="hover:text-foreground transition-colors">
+              Support
             </Link>
           </div>
         </div>

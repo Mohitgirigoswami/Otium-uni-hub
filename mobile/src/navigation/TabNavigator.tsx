@@ -38,11 +38,12 @@ export function TabNavigator() {
             paddingBottom: Math.min(insets.bottom, 12) + 4,
           },
         ],
-        tabBarActiveTintColor: colors.brand[400],
-        tabBarInactiveTintColor: colors.slate[500],
+        tabBarActiveTintColor: "#FFFFFF",
+        tabBarInactiveTintColor: "#71717A",
         tabBarLabelStyle: styles.tabLabel,
         tabBarItemStyle: styles.tabItem,
       }}
+
     >
       <Tab.Screen
         name="Dashboard"
@@ -147,9 +148,10 @@ export function TabNavigator() {
 
 const styles = StyleSheet.create({
   tabBar: {
-    backgroundColor: colors.surface,
-    borderTopColor: "rgba(255, 255, 255, 0.08)",
+    backgroundColor: "#000000",
+    borderTopColor: "rgba(255, 255, 255, 0.12)",
     borderTopWidth: 1,
+
     paddingTop: 6,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: -4 },

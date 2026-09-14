@@ -53,7 +53,7 @@ export function Badge({
 
 const styles = StyleSheet.create({
   badgeBase: {
-    borderRadius: 20,
+    borderRadius: 8,
     borderWidth: 1,
     flexDirection: "row",
     alignItems: "center",
@@ -65,60 +65,60 @@ const styles = StyleSheet.create({
   },
   // Sizes
   sizeSm: {
-    paddingHorizontal: 8,
-    paddingVertical: 2.5,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
   },
   textSizeSm: {
     fontSize: 10.5,
   },
   sizeMd: {
-    paddingHorizontal: 12,
-    paddingVertical: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 3.5,
   },
   textSizeMd: {
-    fontSize: 12,
+    fontSize: 11.5,
   },
-  // Variants (1:1 Web Badge translation)
+  // Monochrome Variants
   variantBrand: {
-    backgroundColor: "rgba(20, 184, 166, 0.15)",
-    borderColor: "rgba(20, 184, 166, 0.35)",
+    backgroundColor: "rgba(255, 255, 255, 0.12)",
+    borderColor: "rgba(255, 255, 255, 0.25)",
   },
   textBrand: {
-    color: colors.brand[400],
+    color: "#FFFFFF",
   },
   variantNeutral: {
-    backgroundColor: "rgba(100, 116, 139, 0.15)",
-    borderColor: "rgba(100, 116, 139, 0.25)",
+    backgroundColor: "rgba(255, 255, 255, 0.05)",
+    borderColor: "rgba(255, 255, 255, 0.15)",
   },
   textNeutral: {
-    color: colors.slate[300],
+    color: colors.slate[400],
   },
   variantDanger: {
-    backgroundColor: colors.rose.bg,
-    borderColor: colors.rose.border,
+    backgroundColor: "rgba(239, 68, 68, 0.12)",
+    borderColor: "rgba(239, 68, 68, 0.3)",
   },
   textDanger: {
-    color: colors.rose[400],
+    color: "#f87171",
   },
   variantWarning: {
-    backgroundColor: colors.amber.bg,
-    borderColor: colors.amber.border,
+    backgroundColor: "rgba(245, 158, 11, 0.12)",
+    borderColor: "rgba(245, 158, 11, 0.3)",
   },
   textWarning: {
-    color: colors.amber[400],
+    color: "#fbbf24",
   },
   variantSuccess: {
-    backgroundColor: colors.emerald.bg,
-    borderColor: colors.emerald.border,
+    backgroundColor: "rgba(255, 255, 255, 0.1)",
+    borderColor: "rgba(255, 255, 255, 0.25)",
   },
   textSuccess: {
-    color: colors.emerald[400],
+    color: "#FFFFFF",
   },
   variantPurple: {
-    backgroundColor: colors.purple.bg,
-    borderColor: colors.purple.border,
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    borderColor: "rgba(255, 255, 255, 0.2)",
   },
   textPurple: {
-    color: colors.purple[400],
+    color: colors.slate[200],
   },
 });

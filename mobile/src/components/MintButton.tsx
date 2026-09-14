@@ -25,7 +25,7 @@ interface ButtonProps {
 }
 
 export function MintButton(props: ButtonProps) {
-  return <Button variant="mint" {...props} />;
+  return <Button variant="brand" {...props} />;
 }
 
 export function Button({
@@ -105,7 +105,7 @@ export function Button({
 
   return (
     <TouchableOpacity
-      activeOpacity={0.85}
+      activeOpacity={0.8}
       onPress={onPress}
       disabled={!isInteractive}
       style={[
@@ -119,7 +119,7 @@ export function Button({
       {loading ? (
         <ActivityIndicator
           size="small"
-          color={variant === "outline" ? colors.brand[400] : "#FFFFFF"}
+          color={variant === "brand" || variant === "mint" ? "#000000" : "#FFFFFF"}
         />
       ) : (
         <View style={styles.contentRow}>
@@ -147,7 +147,7 @@ export function Button({
 
 const styles = StyleSheet.create({
   base: {
-    borderRadius: 14,
+    borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
     flexDirection: "row",
@@ -167,59 +167,54 @@ const styles = StyleSheet.create({
   iconMarginRight: {
     marginLeft: 8,
   },
-  // Variant styles
+  // Monochrome Variant styles
   btnBrand: {
-    backgroundColor: colors.brand[600],
-    shadowColor: colors.brand[500],
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 8,
-    elevation: 4,
+    backgroundColor: "#FFFFFF",
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 2,
   },
   textBrand: {
-    color: "#FFFFFF",
+    color: "#000000",
+    fontWeight: "800",
   },
   btnOutline: {
     backgroundColor: "transparent",
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.15)",
+    borderColor: "rgba(255, 255, 255, 0.25)",
   },
   textOutline: {
-    color: colors.slate[200],
+    color: "#FFFFFF",
   },
   btnDanger: {
-    backgroundColor: colors.rose[600],
-    shadowColor: colors.rose[500],
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
+    backgroundColor: "#dc2626",
   },
   textDanger: {
     color: "#FFFFFF",
   },
   btnPurple: {
-    backgroundColor: colors.purple[600],
-    shadowColor: colors.purple[500],
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 8,
-    elevation: 4,
+    backgroundColor: "#27272a",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.2)",
   },
   textPurple: {
     color: "#FFFFFF",
   },
   btnSubtle: {
-    backgroundColor: colors.slate[800],
+    backgroundColor: "#18181b",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.1)",
   },
   textSubtle: {
-    color: colors.slate[300],
+    color: "#FFFFFF",
   },
   // Sizes
   sizeSm: {
     paddingVertical: 8,
     paddingHorizontal: 14,
-    borderRadius: 10,
+    borderRadius: 8,
   },
   textSizeSm: {
     fontSize: 12,
@@ -227,21 +222,21 @@ const styles = StyleSheet.create({
   sizeMd: {
     paddingVertical: 12,
     paddingHorizontal: 20,
-    borderRadius: 14,
+    borderRadius: 12,
   },
   textSizeMd: {
     fontSize: 14,
   },
   sizeLg: {
-    paddingVertical: 15,
+    paddingVertical: 14,
     paddingHorizontal: 24,
-    borderRadius: 16,
+    borderRadius: 14,
   },
   textSizeLg: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: "800",
   },
   disabled: {
-    opacity: 0.45,
+    opacity: 0.4,
   },
 });

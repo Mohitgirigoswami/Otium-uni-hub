@@ -1,89 +1,89 @@
 export const colors = {
-  // Base Backgrounds (1:1 Web Midnight Navy theme)
-  background: "#0A0F1D",
-  backgroundSecondary: "#060911",
-  surface: "#111A33",
-  surfaceGlass: "rgba(17, 26, 51, 0.85)",
-  surfaceLight: "#182449",
-  card: "#0F172A",
-  cardBorder: "rgba(255, 255, 255, 0.08)",
-  cardBorderHighlight: "rgba(20, 184, 166, 0.35)",
+  // Base Backgrounds (Pure OLED Black & Charcoal)
+  background: "#000000",
+  backgroundSecondary: "#080808",
+  surface: "#121212",
+  surfaceGlass: "rgba(18, 18, 18, 0.92)",
+  surfaceLight: "#1a1a1a",
+  card: "#121212",
+  cardBorder: "rgba(255, 255, 255, 0.12)",
+  cardBorderHighlight: "rgba(255, 255, 255, 0.3)",
 
-  // Brand Accents (Teal / Neon Mint)
+  // Monochrome Brand Accents (Pure High-Contrast White/Zinc)
   brand: {
-    50: "#f0fdfa",
-    100: "#ccfbf1",
-    200: "#99f6e4",
-    300: "#5eead4",
-    400: "#2dd4bf",
-    500: "#14b8a6", // Primary Teal
-    600: "#0d9488",
-    700: "#0f766e",
-    800: "#115e59",
-    900: "#134e4a",
-    mint: "#00FFC6", // Neon Mint Highlight
+    50: "#fafafa",
+    100: "#f4f4f5",
+    200: "#e4e4e7",
+    300: "#d4d4d8",
+    400: "#e4e4e7",
+    500: "#ffffff", // Primary Action (Pure White)
+    600: "#e4e4e7",
+    700: "#d4d4d8",
+    800: "#71717a",
+    900: "#27272a",
+    mint: "#ffffff", // Replaced neon mint with crisp white
   },
 
-  // Purple / Incognito Accents
+  // Incognito Monochrome Accents
   purple: {
-    300: "#d8b4fe",
-    400: "#c084fc",
-    500: "#a855f7",
-    600: "#9333ea",
-    700: "#7e22ce",
-    bg: "rgba(168, 85, 247, 0.12)",
-    border: "rgba(168, 85, 247, 0.3)",
+    300: "#e4e4e7",
+    400: "#d4d4d8",
+    500: "#a1a1aa",
+    600: "#71717a",
+    700: "#52525b",
+    bg: "rgba(255, 255, 255, 0.08)",
+    border: "rgba(255, 255, 255, 0.2)",
   },
 
-  // Electric Indigo Accents
+  // Electric Monochrome Accents
   electric: {
-    400: "#818cf8",
-    500: "#6366f1",
-    600: "#4f46e5",
+    400: "#e4e4e7",
+    500: "#d4d4d8",
+    600: "#a1a1aa",
   },
 
-  // Status & Alerts
+  // Status & Subtle Alerts (Monochrome with subtle tints)
   emerald: {
-    300: "#6ee7b7",
-    400: "#34d399",
-    500: "#10b981",
-    600: "#059669",
-    bg: "rgba(16, 185, 129, 0.12)",
-    border: "rgba(16, 185, 129, 0.3)",
+    300: "#e4e4e7",
+    400: "#d4d4d8",
+    500: "#ffffff",
+    600: "#a1a1aa",
+    bg: "rgba(255, 255, 255, 0.08)",
+    border: "rgba(255, 255, 255, 0.2)",
   },
   rose: {
-    300: "#fda4af",
-    400: "#fb7185",
-    500: "#f43f5e",
-    600: "#e11d48",
-    bg: "rgba(244, 63, 94, 0.12)",
-    border: "rgba(244, 63, 94, 0.3)",
+    300: "#fca5a5",
+    400: "#f87171",
+    500: "#ef4444",
+    600: "#dc2626",
+    bg: "rgba(239, 68, 68, 0.12)",
+    border: "rgba(239, 68, 68, 0.3)",
   },
   amber: {
-    300: "#fcd34d",
-    400: "#fbbf24",
+    300: "#fde68a",
+    400: "#fcd34d",
     500: "#f59e0b",
     600: "#d97706",
     bg: "rgba(245, 158, 11, 0.12)",
     border: "rgba(245, 158, 11, 0.3)",
   },
 
-  // Slate Text & Neutrals
+  // Typography & Neutrals
   text: {
     primary: "#FFFFFF",
-    secondary: "#94A3B8",
-    muted: "#64748B",
-    inverse: "#0F172A",
+    secondary: "#A1A1AA",
+    muted: "#71717A",
+    inverse: "#000000",
   },
   slate: {
-    100: "#f1f5f9",
-    200: "#e2e8f0",
-    300: "#cbd5e1",
-    400: "#94a3b8",
-    500: "#64748b",
-    600: "#475569",
-    700: "#334155",
-    800: "#1e293b",
-    900: "#0f172a",
+    100: "#f4f4f5",
+    200: "#e4e4e7",
+    300: "#d4d4d8",
+    400: "#a1a1aa",
+    500: "#71717a",
+    600: "#52525b",
+    700: "#3f3f46",
+    800: "#27272a",
+    900: "#18181b",
   },
 };

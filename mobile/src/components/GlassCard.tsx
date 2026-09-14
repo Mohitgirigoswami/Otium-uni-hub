@@ -42,22 +42,22 @@ export function GlassCard({
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: colors.surface,
-    borderRadius: 20,
+    backgroundColor: colors.card,
+    borderRadius: 16,
     borderWidth: 1,
     padding: 18,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 10,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    elevation: 3,
   },
   variantDefault: {
     borderColor: colors.cardBorder,
   },
   variantBrand: {
-    borderColor: colors.cardBorderHighlight,
-    backgroundColor: "rgba(20, 184, 166, 0.08)",
+    borderColor: "rgba(255, 255, 255, 0.25)",
+    backgroundColor: "rgba(255, 255, 255, 0.04)",
   },
   variantDanger: {
     borderColor: colors.rose.border,

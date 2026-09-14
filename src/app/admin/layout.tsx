@@ -11,11 +11,18 @@ import {
   Users,
   Building2,
   Briefcase,
+  Layers,
+  Settings,
+  FileText,
+  HelpCircle,
 } from "lucide-react";
 import Link from "next/link";
-import { GlassCard } from "@/components/ui/GlassCard";
+import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+
+import { Sidebar, SidebarGroup } from "@/components/layout/Sidebar";
+import { cn } from "@/lib/utils";
 
 export default function AdminLayout({
   children,
@@ -39,8 +46,8 @@ export default function AdminLayout({
   if (loading) {
     return (
       <div className="min-h-[60vh] flex flex-col items-center justify-center space-y-3">
-        <div className="w-10 h-10 border-4 border-amber-500/30 border-t-amber-500 rounded-full animate-spin" />
-        <p className="text-xs font-bold text-slate-400">Verifying Admin Access Credentials...</p>
+        <div className="w-8 h-8 border-2 border-border border-t-foreground rounded-full animate-spin" />
+        <p className="text-xs text-muted-foreground font-medium">Verifying Admin Credentials...</p>
       </div>
     );
   }
@@ -48,14 +55,14 @@ export default function AdminLayout({
   if (!user || !hasAccess) {
     return (
       <div className="min-h-[60vh] flex flex-col items-center justify-center p-4">
-        <GlassCard className="max-w-md w-full p-8 text-center space-y-4">
-          <div className="w-14 h-14 mx-auto rounded-2xl bg-rose-500/10 text-rose-500 flex items-center justify-center">
-            <AlertTriangle className="w-7 h-7" />
+        <Card className="max-w-md w-full p-8 text-center space-y-4">
+          <div className="w-12 h-12 mx-auto rounded-xl bg-destructive/10 text-destructive flex items-center justify-center">
+            <AlertTriangle className="w-6 h-6" />
           </div>
-          <h2 className="text-xl font-bold text-slate-900 dark:text-white">
+          <h2 className="text-lg font-bold text-foreground font-heading">
             Admin Access Restricted
           </h2>
-          <p className="text-xs text-slate-400 leading-relaxed">
+          <p className="text-xs text-muted-foreground leading-relaxed">
             This portal requires PRINT_MANAGER or SUPER_ADMIN role permissions.
           </p>
           <div className="pt-2 flex flex-col gap-2">
@@ -65,155 +72,210 @@ export default function AdminLayout({
               </Button>
             </Link>
           </div>
-        </GlassCard>
+        </Card>
       </div>
     );
   }
 
+  // Sidebar Group configuration
+  const sidebarGroups: SidebarGroup[] = [
+    {
+      title: "Operations",
+      items: [
+        { href: "/admin/print", label: "Print Station", icon: Printer },
+        ...(isSuperAdmin
+          ? [{ href: "/admin/gigs", label: "Gig Escrow", icon: Briefcase }]
+          : []),
+      ],
+    },
+    ...(isSuperAdmin
+      ? [
+          {
+            title: "Campus Management",
+            items: [
+              { href: "/admin/colleges", label: "Campuses", icon: Building2 },
+              { href: "/admin/services", label: "Campus Services", icon: Layers },
+              { href: "/admin/users", label: "User Roles", icon: Users },
+              { href: "/admin/support", label: "Support & Bans", icon: HelpCircle },
+              { href: "/admin/settings", label: "UPI Settings", icon: Settings },
+              { href: "/admin/logs", label: "Audit Logs", icon: FileText },
+            ],
+          },
+        ]
+      : []),
+  ];
+
   return (
-    <div className="space-y-6">
-      {/* Admin Header Navigation Bar */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 backdrop-blur-md">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-black border border-amber-500/40 p-1.5 flex items-center justify-center shadow-md">
-            <img
-              src="/logo.png"
-              alt="Otium Admin"
-              className="w-full h-full object-contain"
-            />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider">
-                Otium Admin Operations
-              </h2>
-              <Badge variant={isSuperAdmin ? "success" : "warning"} size="sm">
-                {user.role}
-              </Badge>
+    <div className="flex flex-col lg:flex-row min-h-[calc(100vh-4rem)] border-b border-border">
+      {/* Desktop Left Sidebar */}
+      <Sidebar
+        className="hidden lg:flex"
+        header={
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-primary text-primary-foreground flex items-center justify-center font-bold text-sm">
+              <img
+                src="/logo.png"
+                alt="Otium Admin"
+                className="w-5 h-5 object-contain invert dark:invert-0"
+              />
             </div>
-            <p className="text-xs text-slate-400">
-              Operator: <span className="font-semibold text-amber-600 dark:text-amber-400">{user.name}</span>
-            </p>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold uppercase tracking-wider text-foreground font-heading">
+                  Admin Hub
+                </span>
+                <Badge variant="outline" size="sm" className="text-[10px] py-0">
+                  {user.role}
+                </Badge>
+              </div>
+              <p className="text-[11px] text-muted-foreground truncate">{user.name}</p>
+            </div>
           </div>
-        </div>
-
-        {/* Tab Links */}
-        <div className="flex items-center gap-2 w-full sm:w-auto flex-wrap">
-          <Link href="/admin/print">
-            <button
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-                pathname === "/admin/print"
-                  ? "bg-amber-600 text-white shadow-md"
-                  : "bg-slate-100 dark:bg-slate-800 text-slate-400 hover:text-slate-200"
-              }`}
-            >
-              <Printer className="w-3.5 h-3.5" />
-              <span>Print Station</span>
-            </button>
-          </Link>
-
-          {isSuperAdmin && (
-            <>
-              <Link href="/admin/gigs">
-                <button
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-                    pathname === "/admin/gigs"
-                      ? "bg-purple-600 text-white shadow-md"
-                      : "bg-slate-100 dark:bg-slate-800 text-slate-400 hover:text-slate-200"
-                  }`}
-                >
-                  <Briefcase className="w-3.5 h-3.5" />
-                  <span>Gig Escrow</span>
-                </button>
-              </Link>
-
-              <Link href="/admin/colleges">
-                <button
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-                    pathname === "/admin/colleges"
-                      ? "bg-brand-600 text-white shadow-md"
-                      : "bg-slate-100 dark:bg-slate-800 text-slate-400 hover:text-slate-200"
-                  }`}
-                >
-                  <Building2 className="w-3.5 h-3.5" />
-                  <span>Campuses</span>
-                </button>
-              </Link>
-
-              <Link href="/admin/services">
-                <button
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-                    pathname === "/admin/services"
-                      ? "bg-indigo-600 text-white shadow-md"
-                      : "bg-slate-100 dark:bg-slate-800 text-slate-400 hover:text-slate-200"
-                  }`}
-                >
-                  <ShieldCheck className="w-3.5 h-3.5" />
-                  <span>Campus Services</span>
-                </button>
-              </Link>
-
-              <Link href="/admin/users">
-                <button
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-                    pathname === "/admin/users"
-                      ? "bg-emerald-600 text-white shadow-md"
-                      : "bg-slate-100 dark:bg-slate-800 text-slate-400 hover:text-slate-200"
-                  }`}
-                >
-                  <Users className="w-3.5 h-3.5" />
-                  <span>User Roles</span>
-                </button>
-              </Link>
-
-              <Link href="/admin/support">
-                <button
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-                    pathname === "/admin/support"
-                      ? "bg-rose-600 text-white shadow-md"
-                      : "bg-slate-100 dark:bg-slate-800 text-slate-400 hover:text-slate-200"
-                  }`}
-                >
-                  <ShieldCheck className="w-3.5 h-3.5" />
-                  <span>Support & Bans</span>
-                </button>
-              </Link>
-
-              <Link href="/admin/settings">
-                <button
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-                    pathname === "/admin/settings"
-                      ? "bg-amber-600 text-white shadow-md"
-                      : "bg-slate-100 dark:bg-slate-800 text-slate-400 hover:text-slate-200"
-                  }`}
-                >
-                  <span>UPI Settings</span>
-                </button>
-              </Link>
-
-              <Link href="/admin/logs">
-                <button
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-                    pathname === "/admin/logs"
-                      ? "bg-cyan-600 text-white shadow-md"
-                      : "bg-slate-100 dark:bg-slate-800 text-slate-400 hover:text-slate-200"
-                  }`}
-                >
-                  <span>Audit Logs</span>
-                </button>
-              </Link>
-            </>
-          )}
-
+        }
+        groups={sidebarGroups}
+        footer={
           <Link href="/">
-            <Button size="sm" variant="outline" className="text-xs h-[30px]" leftIcon={<ArrowLeft className="w-3 h-3" />}>
-              Student Hub
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full text-xs gap-1.5 justify-start"
+              leftIcon={<ArrowLeft className="w-3.5 h-3.5" />}
+            >
+              Back to Student Hub
             </Button>
           </Link>
-        </div>
+        }
+      />
+
+      {/* Mobile Top Scrollable Navigation Strip */}
+      <div className="lg:hidden p-3 border-b border-border bg-card/60 overflow-x-auto flex items-center gap-1.5 scrollbar-none">
+        <Link href="/admin/print">
+          <button
+            className={cn(
+              "px-3 py-1.5 rounded-md text-xs font-medium whitespace-nowrap transition-colors flex items-center gap-1.5",
+              pathname === "/admin/print"
+                ? "bg-primary text-primary-foreground font-semibold"
+                : "text-muted-foreground hover:text-foreground hover:bg-secondary"
+            )}
+          >
+            <Printer className="w-3.5 h-3.5" />
+            <span>Print Station</span>
+          </button>
+        </Link>
+
+        {isSuperAdmin && (
+          <>
+            <Link href="/admin/gigs">
+              <button
+                className={cn(
+                  "px-3 py-1.5 rounded-md text-xs font-medium whitespace-nowrap transition-colors flex items-center gap-1.5",
+                  pathname === "/admin/gigs"
+                    ? "bg-primary text-primary-foreground font-semibold"
+                    : "text-muted-foreground hover:text-foreground hover:bg-secondary"
+                )}
+              >
+                <Briefcase className="w-3.5 h-3.5" />
+                <span>Gigs</span>
+              </button>
+            </Link>
+
+            <Link href="/admin/colleges">
+              <button
+                className={cn(
+                  "px-3 py-1.5 rounded-md text-xs font-medium whitespace-nowrap transition-colors flex items-center gap-1.5",
+                  pathname === "/admin/colleges"
+                    ? "bg-primary text-primary-foreground font-semibold"
+                    : "text-muted-foreground hover:text-foreground hover:bg-secondary"
+                )}
+              >
+                <Building2 className="w-3.5 h-3.5" />
+                <span>Campuses</span>
+              </button>
+            </Link>
+
+            <Link href="/admin/services">
+              <button
+                className={cn(
+                  "px-3 py-1.5 rounded-md text-xs font-medium whitespace-nowrap transition-colors flex items-center gap-1.5",
+                  pathname === "/admin/services"
+                    ? "bg-primary text-primary-foreground font-semibold"
+                    : "text-muted-foreground hover:text-foreground hover:bg-secondary"
+                )}
+              >
+                <Layers className="w-3.5 h-3.5" />
+                <span>Services</span>
+              </button>
+            </Link>
+
+            <Link href="/admin/users">
+              <button
+                className={cn(
+                  "px-3 py-1.5 rounded-md text-xs font-medium whitespace-nowrap transition-colors flex items-center gap-1.5",
+                  pathname === "/admin/users"
+                    ? "bg-primary text-primary-foreground font-semibold"
+                    : "text-muted-foreground hover:text-foreground hover:bg-secondary"
+                )}
+              >
+                <Users className="w-3.5 h-3.5" />
+                <span>Roles</span>
+              </button>
+            </Link>
+
+            <Link href="/admin/support">
+              <button
+                className={cn(
+                  "px-3 py-1.5 rounded-md text-xs font-medium whitespace-nowrap transition-colors flex items-center gap-1.5",
+                  pathname === "/admin/support"
+                    ? "bg-primary text-primary-foreground font-semibold"
+                    : "text-muted-foreground hover:text-foreground hover:bg-secondary"
+                )}
+              >
+                <HelpCircle className="w-3.5 h-3.5" />
+                <span>Support</span>
+              </button>
+            </Link>
+
+            <Link href="/admin/settings">
+              <button
+                className={cn(
+                  "px-3 py-1.5 rounded-md text-xs font-medium whitespace-nowrap transition-colors flex items-center gap-1.5",
+                  pathname === "/admin/settings"
+                    ? "bg-primary text-primary-foreground font-semibold"
+                    : "text-muted-foreground hover:text-foreground hover:bg-secondary"
+                )}
+              >
+                <Settings className="w-3.5 h-3.5" />
+                <span>Settings</span>
+              </button>
+            </Link>
+
+            <Link href="/admin/logs">
+              <button
+                className={cn(
+                  "px-3 py-1.5 rounded-md text-xs font-medium whitespace-nowrap transition-colors flex items-center gap-1.5",
+                  pathname === "/admin/logs"
+                    ? "bg-primary text-primary-foreground font-semibold"
+                    : "text-muted-foreground hover:text-foreground hover:bg-secondary"
+                )}
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span>Logs</span>
+              </button>
+            </Link>
+          </>
+        )}
+
+        <Link href="/">
+          <Button size="sm" variant="outline" className="text-xs h-7 px-2">
+            Student Hub
+          </Button>
+        </Link>
       </div>
 
-      {children}
+      {/* Main Admin Content View */}
+      <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
+        {children}
+      </main>
     </div>
   );
 }

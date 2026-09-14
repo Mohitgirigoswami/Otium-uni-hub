@@ -15,7 +15,6 @@ import {
   EyeOff,
   ShoppingBag,
   Printer,
-  Sparkles,
   Menu,
   X,
   AlertTriangle,
@@ -29,6 +28,9 @@ import {
   LayoutDashboard,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+
 
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -68,24 +70,24 @@ export function Navbar() {
   const hasAdminAccess = isSuperAdmin || isPrintManager;
 
   return (
-    <header className="sticky top-0 z-40 w-full border-b border-slate-200/60 dark:border-slate-800/80 bg-white/75 dark:bg-[#090d16]/80 backdrop-blur-xl transition-colors duration-200">
+    <header className="sticky top-0 z-40 w-full border-b border-border bg-background/80 backdrop-blur-md transition-colors duration-200">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           {/* Logo & Brand */}
           <div className="flex items-center gap-6">
             <Link href="/" className="flex items-center gap-3 group">
-              <div className="w-10 h-10 rounded-2xl bg-black border border-white/15 p-1.5 flex items-center justify-center shadow-lg shadow-black/30 group-hover:scale-105 group-hover:border-brand-500/50 transition-all">
+              <div className="w-9 h-9 rounded-xl bg-primary text-primary-foreground border border-border p-1.5 flex items-center justify-center shadow-sm group-hover:scale-105 transition-all">
                 <img
                   src="/logo.png"
                   alt="Otium Uni Hub Logo"
-                  className="w-full h-full object-contain"
+                  className="w-full h-full object-contain invert dark:invert-0"
                 />
               </div>
               <div className="flex flex-col">
-                <span className="text-xl font-black tracking-tight font-sans bg-gradient-to-r from-brand-600 via-teal-500 to-electric-600 bg-clip-text text-transparent">
+                <span className="text-lg font-extrabold tracking-tight font-heading text-foreground">
                   OTIUM
                 </span>
-                <span className="text-[10px] font-bold tracking-wider uppercase text-slate-500 dark:text-slate-400">
+                <span className="text-[10px] font-semibold tracking-wider uppercase text-muted-foreground">
                   Uni Super App
                 </span>
               </div>
@@ -102,18 +104,22 @@ export function Navbar() {
                     key={item.href}
                     href={item.href}
                     className={cn(
-                      "flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl transition-all duration-200",
+                      "flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors",
                       isActive
-                        ? "bg-brand-500/15 text-brand-700 dark:text-brand-300 font-bold shadow-sm"
-                        : "text-slate-600 dark:text-slate-300 hover:text-brand-600 dark:hover:text-brand-400 hover:bg-slate-100/60 dark:hover:bg-slate-800/50"
+                        ? "bg-primary text-primary-foreground font-semibold shadow-sm"
+                        : "text-muted-foreground hover:text-foreground hover:bg-secondary"
                     )}
                   >
                     <Icon className="w-3.5 h-3.5" />
                     <span>{item.label}</span>
                     {item.badge && (
-                      <span className="text-[9px] px-1.5 py-0.2 font-bold rounded-full bg-brand-500/20 text-brand-700 dark:text-brand-300">
+                      <Badge
+                        variant={isActive ? "secondary" : "outline"}
+                        size="sm"
+                        className="text-[9px] px-1.5 py-0 h-3.5"
+                      >
                         {item.badge}
-                      </span>
+                      </Badge>
                     )}
                   </Link>
                 );
@@ -122,27 +128,25 @@ export function Navbar() {
           </div>
 
           {/* Right Actions: Cooldown Alert, Admin Badge, User Dropdown & Theme Toggle */}
-          <div className="flex items-center gap-2.5 sm:gap-3">
+          <div className="flex items-center gap-2 sm:gap-2.5">
             {/* Anti-Hoarding Cooldown Pill */}
             {isOnCooldown && (
               <div
                 title="Anti-Hoarding Penalty: Dropped gig in last 24h"
-                className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-700 dark:text-rose-300 text-xs font-semibold animate-pulse"
+                className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-destructive/10 border border-destructive/30 text-destructive text-xs font-medium"
               >
-                <AlertTriangle className="w-3.5 h-3.5 text-rose-500" />
+                <AlertTriangle className="w-3.5 h-3.5" />
                 <span>Cooldown: {cooldownHoursRemaining}h</span>
               </div>
             )}
 
             {/* Admin Console Pill */}
             {hasAdminAccess && (
-              <Link
-                href="/admin/print"
-                className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-700 dark:text-amber-300 text-xs font-bold hover:bg-amber-500/25 transition-colors"
-                title="Open Admin Operations Console"
-              >
-                <ShieldCheck className="w-3.5 h-3.5 text-amber-500" />
-                <span className="hidden sm:inline">Admin Hub</span>
+              <Link href="/admin/print">
+                <Button variant="outline" size="sm" className="h-8 gap-1 text-xs">
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Admin Hub</span>
+                </Button>
               </Link>
             )}
 
@@ -151,38 +155,38 @@ export function Navbar() {
               <div className="relative">
                 <button
                   onClick={() => setUserMenuOpen(!userMenuOpen)}
-                  className="flex items-center gap-2 p-1.5 sm:px-2.5 sm:py-1 rounded-xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700 text-xs font-medium hover:border-brand-400 transition-colors"
+                  className="flex items-center gap-2 p-1.5 sm:px-2.5 sm:py-1 rounded-md bg-secondary/60 hover:bg-secondary border border-border text-xs font-medium transition-colors"
                 >
                   <img
                     src={currentAvatar}
                     alt={currentDisplayName}
-                    className="w-6 h-6 rounded-full object-cover ring-1 ring-brand-500"
+                    className="w-5 h-5 rounded-full object-cover ring-1 ring-border"
                   />
-                  <span className="hidden md:inline-block font-semibold text-slate-800 dark:text-slate-200 truncate max-w-[100px]">
+                  <span className="hidden md:inline-block font-semibold text-foreground truncate max-w-[100px]">
                     {currentDisplayName.split(" ")[0]}
                   </span>
-                  <ChevronDown className="w-3 h-3 text-slate-400" />
+                  <ChevronDown className="w-3 h-3 text-muted-foreground" />
                 </button>
 
                 {/* Dropdown Menu */}
                 {userMenuOpen && (
-                  <div className="absolute right-0 mt-2 w-72 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl p-2 z-50 text-slate-900 dark:text-white">
+                  <div className="absolute right-0 mt-2 w-72 rounded-xl bg-card border border-border shadow-xl p-2 z-50 text-card-foreground">
                     {/* User Profile Info Card */}
-                    <div className="p-3 border-b border-slate-100 dark:border-slate-800 flex items-center gap-3">
+                    <div className="p-3 border-b border-border flex items-center gap-3">
                       <img
                         src={currentAvatar}
                         alt={currentDisplayName}
-                        className="w-10 h-10 rounded-full object-cover ring-2 ring-brand-500/30"
+                        className="w-9 h-9 rounded-full object-cover ring-1 ring-border"
                       />
                       <div className="flex-1 min-w-0">
-                        <p className="font-bold text-xs truncate text-slate-900 dark:text-white">
+                        <p className="font-bold text-xs truncate text-foreground">
                           {currentDisplayName}
                         </p>
-                        <p className="text-[10px] text-slate-400 truncate">
+                        <p className="text-[10px] text-muted-foreground truncate">
                           {user?.email || session?.user?.email || ""}
                         </p>
                         {user?.incognitoProfile && (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold text-purple-600 dark:text-purple-400 mt-0.5">
+                          <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-muted-foreground mt-0.5">
                             <EyeOff className="w-2.5 h-2.5" />
                             <span>@{user.incognitoProfile.handle}</span>
                           </span>
@@ -191,162 +195,125 @@ export function Navbar() {
                     </div>
 
                     {/* Primary Actions */}
-                    <div className="py-2 space-y-1">
+                    <div className="py-2 space-y-0.5">
                       <Link
                         href="/dashboard"
                         onClick={() => setUserMenuOpen(false)}
-                        className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-teal-600 dark:text-teal-400 hover:bg-teal-500/10 transition-colors"
+                        className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium hover:bg-secondary transition-colors"
                       >
-                        <LayoutDashboard className="w-4 h-4 text-teal-500" />
+                        <LayoutDashboard className="w-4 h-4 text-muted-foreground" />
                         <span>Student Dashboard</span>
                       </Link>
 
                       <Link
                         href="/profile"
                         onClick={() => setUserMenuOpen(false)}
-                        className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-brand-500/10 hover:text-brand-600 transition-colors"
+                        className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium hover:bg-secondary transition-colors"
                       >
-                        <User className="w-4 h-4 text-brand-500" />
-                        <span>Edit Profile & Whisper Alias</span>
+                        <User className="w-4 h-4 text-muted-foreground" />
+                        <span>Edit Profile & Alias</span>
                       </Link>
 
                       <Link
                         href="/messages"
                         onClick={() => setUserMenuOpen(false)}
-                        className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-brand-500/10 hover:text-brand-600 transition-colors"
+                        className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium hover:bg-secondary transition-colors"
                       >
-                        <MessageSquare className="w-4 h-4 text-emerald-500" />
+                        <MessageSquare className="w-4 h-4 text-muted-foreground" />
                         <span>Direct Messages</span>
                       </Link>
 
                       <Link
                         href="/support"
                         onClick={() => setUserMenuOpen(false)}
-                        className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-brand-500/10 hover:text-brand-600 transition-colors"
+                        className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium hover:bg-secondary transition-colors"
                       >
-                        <LifeBuoy className="w-4 h-4 text-sky-500" />
-                        <span>Support & Helpdesk</span>
+                        <LifeBuoy className="w-4 h-4 text-muted-foreground" />
+                        <span>Support & Feedback</span>
                       </Link>
-
-                      {hasAdminAccess && (
-                        <Link
-                          href="/admin/print"
-                          onClick={() => setUserMenuOpen(false)}
-                          className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 transition-colors"
-                        >
-                          <ShieldCheck className="w-4 h-4 text-amber-500" />
-                          <span>Admin Console & Operations</span>
-                        </Link>
-                      )}
                     </div>
 
-                    {/* Sign Out Action */}
-                    <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
+                    {/* Sign Out Button */}
+                    <div className="pt-2 border-t border-border">
                       <button
                         onClick={() => {
                           setUserMenuOpen(false);
                           handleSignOut();
                         }}
-                        className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-rose-600 hover:bg-rose-500/10 transition-colors"
+                        className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium text-destructive hover:bg-destructive/10 transition-colors"
                       >
                         <LogOut className="w-4 h-4" />
-                        <span>Sign Out from Otium</span>
+                        <span>Sign Out</span>
                       </button>
                     </div>
                   </div>
                 )}
               </div>
             ) : (
-              <Link
-                href="/login"
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-brand-600 text-white text-xs font-bold hover:bg-brand-500 shadow-md shadow-brand-600/20 transition-all"
-              >
-                <LogIn className="w-3.5 h-3.5" />
-                <span>Sign In</span>
+              <Link href="/login">
+                <Button variant="default" size="sm" className="h-8 gap-1.5 text-xs font-semibold">
+                  <LogIn className="w-3.5 h-3.5" />
+                  <span>Sign In</span>
+                </Button>
               </Link>
             )}
 
-            {/* Theme Switcher */}
+            {/* Dark / Light Mode Switcher */}
             <ThemeToggle />
 
-            {/* Mobile menu trigger */}
-            <button
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="xl:hidden p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:text-brand-500"
-              aria-label="Open mobile menu"
-            >
-              {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-            </button>
+            {/* Mobile Hamburger Button */}
+            <div className="xl:hidden">
+              <button
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                className="p-2 rounded-md bg-secondary text-muted-foreground hover:text-foreground border border-border"
+                aria-label="Toggle Mobile Menu"
+              >
+                {mobileMenuOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
+              </button>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Mobile Drawer Menu */}
+      {/* Mobile Drawer Navigation Menu */}
       {mobileMenuOpen && (
-        <div className="xl:hidden border-t border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-[#090d16]/95 backdrop-blur-xl px-4 pt-3 pb-6 space-y-1">
-          {isOnCooldown && (
-            <div className="p-3 mb-3 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-700 dark:text-rose-300 text-xs font-semibold flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 text-rose-500 shrink-0" />
-              <span>Anti-Hoarding Cooldown Active: {cooldownHoursRemaining}h remaining</span>
-            </div>
-          )}
-
-          <div className="grid grid-cols-2 gap-2">
+        <div className="xl:hidden border-b border-border bg-background px-4 pt-3 pb-6 space-y-2">
+          <div className="grid grid-cols-2 gap-1.5">
             {NAV_ITEMS.map((item) => {
               const Icon = item.icon;
-              const isActive = pathname === item.href;
+              const isActive =
+                pathname === item.href || pathname.startsWith(`${item.href}/`);
               return (
                 <Link
                   key={item.href}
                   href={item.href}
                   onClick={() => setMobileMenuOpen(false)}
                   className={cn(
-                    "flex items-center gap-2.5 p-3 rounded-xl text-xs font-semibold transition-colors",
+                    "flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-colors",
                     isActive
-                      ? "bg-brand-500/15 text-brand-700 dark:text-brand-300 border border-brand-500/30"
-                      : "bg-slate-100/60 dark:bg-slate-800/40 text-slate-700 dark:text-slate-300 hover:bg-slate-200/60"
+                      ? "bg-primary text-primary-foreground font-semibold"
+                      : "text-muted-foreground hover:text-foreground hover:bg-secondary"
                   )}
                 >
-                  <Icon className="w-4 h-4" />
-                  <span>{item.label}</span>
+                  <Icon className="w-4 h-4 shrink-0" />
+                  <span className="truncate">{item.label}</span>
                 </Link>
               );
             })}
           </div>
 
-          <div className="pt-3 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between">
-            {session || user ? (
-              <>
-                <Link
-                  href="/profile"
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="text-xs font-bold text-brand-600 dark:text-brand-400 flex items-center gap-1.5"
-                >
-                  <User className="w-4 h-4" />
-                  <span>My Student Profile</span>
-                </Link>
-                <button
-                  onClick={() => {
-                    setMobileMenuOpen(false);
-                    handleSignOut();
-                  }}
-                  className="text-xs font-bold text-rose-600 flex items-center gap-1"
-                >
-                  <LogOut className="w-3.5 h-3.5" />
-                  <span>Sign Out</span>
-                </button>
-              </>
-            ) : (
+          {hasAdminAccess && (
+            <div className="pt-2 border-t border-border">
               <Link
-                href="/login"
+                href="/admin/print"
                 onClick={() => setMobileMenuOpen(false)}
-                className="text-xs font-bold text-brand-600 flex items-center gap-1"
+                className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold bg-secondary text-foreground"
               >
-                <LogIn className="w-3.5 h-3.5" />
-                <span>Sign In</span>
+                <ShieldCheck className="w-4 h-4" />
+                <span>Admin Operations Console</span>
               </Link>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       )}
     </header>
