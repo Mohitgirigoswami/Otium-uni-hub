@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { PDFDocument } from "pdf-lib";
 import { toast } from "sonner";
 import {
@@ -8,14 +8,13 @@ import {
   UploadCloud,
   X,
   CheckCircle2,
-  RefreshCw,
-  ExternalLink,
   HardDrive,
   FileCheck,
-  Sparkles,
+  Loader2,
 } from "lucide-react";
-import { uploadPrintDocument, deletePrintDocument } from "@/actions/print-upload.actions";
-import { Badge } from "@/components/ui/Badge";
+import { uploadPrintDocument } from "@/actions/print-upload.actions";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 
 interface DocumentUploadProps {
   onUploadComplete: (fileUrl: string, fileId?: string, fileName?: string) => void;
@@ -39,9 +38,9 @@ export function DocumentUpload({
   userId = "student",
   existingFileUrl = "",
   existingFileName = "",
-  label = "Upload Document (Supabase Storage Direct)",
+  label = "Upload PDF Document",
   acceptedFileTypes = "application/pdf,.pdf",
-  maxSizeBytes = 50 * 1024 * 1024, // 50MB
+  maxSizeBytes = 50 * 1024 * 1024,
   className = "",
 }: DocumentUploadProps) {
   const [fileUrl, setFileUrl] = useState<string>(existingFileUrl || "");
@@ -53,39 +52,18 @@ export function DocumentUpload({
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Sync with prop changes if parent clears the fileUrl upon order submission
-  React.useEffect(() => {
+  useEffect(() => {
     setFileUrl(existingFileUrl || "");
     setFileName(existingFileName || "");
   }, [existingFileUrl, existingFileName]);
 
-  // Clean up uncommitted file on tab close / navigation
-  React.useEffect(() => {
-    const handleUnload = () => {
-      if (fileUrl) {
-        const payload = JSON.stringify({ fileUrl });
-        if (navigator.sendBeacon) {
-          const blob = new Blob([payload], { type: "application/json" });
-          navigator.sendBeacon("/api/print/cleanup-orphan", blob);
-        } else {
-          fetch("/api/print/cleanup-orphan", {
-            method: "POST",
-            body: payload,
-            headers: { "Content-Type": "application/json" },
-            keepalive: true,
-          }).catch(() => {});
-        }
-      }
-    };
+  const setUploading = (val: boolean) => {
+    setIsUploading(val);
+    onUploadingChange?.(val);
+  };
 
-    window.addEventListener("pagehide", handleUnload);
-    return () => {
-      window.removeEventListener("pagehide", handleUnload);
-    };
-  }, [fileUrl]);
-
-  // Client-side quick page count preview using pdf-lib
-  const calculatePdfPagesClient = async (file: File): Promise<number | null> => {
+  // Client-side quick page count extraction via pdf-lib
+  const detectPdfPages = async (file: File): Promise<number | null> => {
     if (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")) {
       try {
         const arrayBuffer = await file.arrayBuffer();
@@ -95,118 +73,96 @@ export function DocumentUpload({
         onPageCountDetected?.(count);
         return count;
       } catch (err) {
-        console.warn("[Client PDF-Lib] Client parse preview skipped:", err);
+        console.warn("[PDF Page Parser] Quick preview skipped:", err);
       }
     }
     return null;
   };
 
-  const handleFileSelect = async (file: File) => {
-    if (!file) return;
+  const handleFileProcess = async (file: File) => {
+    if (!file.name.toLowerCase().endsWith(".pdf") && file.type !== "application/pdf") {
+      toast.error("Invalid file format. Please upload a valid PDF document.");
+      return;
+    }
 
     if (file.size > maxSizeBytes) {
       toast.error(
-        `File exceeds the ${(maxSizeBytes / (1024 * 1024)).toFixed(0)}MB limit.`
+        `File size exceeds ${Math.round(maxSizeBytes / (1024 * 1024))}MB limit.`
       );
       return;
     }
 
-    // If replacing an existing uncommitted upload, purge previous file from storage
-    if (fileUrl) {
-      deletePrintDocument(fileUrl).catch(() => {});
-    }
-
+    setUploading(true);
+    setUploadProgress(15);
     setFileName(file.name);
     setFileSizeBytes(file.size);
-    setIsUploading(true);
-    setUploadProgress(20);
-    onUploadingChange?.(true);
 
-    // Step 1: Client-side quick page calculation
-    await calculatePdfPagesClient(file);
+    const clientPages = await detectPdfPages(file);
+    setUploadProgress(35);
 
     try {
-      setUploadProgress(45);
-
-      // Step 2: Upload to Supabase Storage via server action
       const formData = new FormData();
       formData.append("file", file);
       formData.append("campusId", campusId);
       formData.append("userId", userId);
 
-      setUploadProgress(70);
+      setUploadProgress(60);
       const res = await uploadPrintDocument(formData);
+      setUploadProgress(100);
 
-      setIsUploading(false);
-      onUploadingChange?.(false);
-
-      if (res.success && res.data) {
-        setUploadProgress(100);
-        setFileUrl(res.data.fileUrl);
-        setFileName(res.data.fileName);
-        setPageCount(res.data.pageCount);
-        onPageCountDetected?.(res.data.pageCount);
-
-        toast.success(
-          `Document uploaded successfully! (${res.data.pageCount} page${
-            res.data.pageCount === 1 ? "" : "s"
-          })`
-        );
-        onUploadComplete(res.data.fileUrl, res.data.filePath, res.data.fileName);
-      } else {
-        const errorMsg = res.error || "Failed to upload document.";
-        toast.error(errorMsg);
-        setFileUrl("");
-        setFileName("");
+      if (!res.success || !res.data?.fileUrl) {
+        throw new Error(res.error || "Failed to upload document to cloud storage.");
       }
+
+      setFileUrl(res.data.fileUrl);
+      const finalPageCount = res.data.pageCount || clientPages || 1;
+      setPageCount(finalPageCount);
+      onPageCountDetected?.(finalPageCount);
+      onUploadComplete(res.data.fileUrl, res.data.filePath || "", file.name);
+
+      toast.success(
+        `Document uploaded: ${finalPageCount} page${finalPageCount > 1 ? "s" : ""} detected.`
+      );
     } catch (err: any) {
-      console.error("[Upload error]:", err);
-      setIsUploading(false);
-      onUploadingChange?.(false);
-      toast.error(err?.message || "Document upload failed.");
+      console.error("Document upload error:", err);
+      toast.error(err.message || "Failed to upload PDF document.");
+      setFileUrl("");
+      setFileName("");
+      setPageCount(null);
+    } finally {
+      setUploading(false);
+      setUploadProgress(0);
     }
   };
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      handleFileSelect(e.dataTransfer.files[0]);
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) {
+      handleFileProcess(files[0]);
     }
   };
 
-  const handleReset = (e: React.MouseEvent) => {
+  const handleClear = (e: React.MouseEvent) => {
     e.stopPropagation();
-    // Immediately delete orphaned file from storage
-    if (fileUrl) {
-      deletePrintDocument(fileUrl).catch(() => {});
-    }
     setFileUrl("");
     setFileName("");
     setPageCount(null);
     setFileSizeBytes(null);
-    setUploadProgress(0);
-    if (fileInputRef.current) fileInputRef.current.value = "";
     onUploadComplete("", "", "");
+    onPageCountDetected?.(0);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
   };
 
   return (
-    <div className={`space-y-3 ${className}`}>
+    <div className={`space-y-2 ${className}`}>
       {label && (
-        <div className="flex items-center justify-between">
-          <label className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
-            <FileText className="w-3.5 h-3.5 text-teal-500" />
-            <span>{label}</span>
-          </label>
-          {pageCount && (
-            <Badge variant="brand" size="sm" className="gap-1">
-              <FileCheck className="w-3 h-3 text-teal-400" />
-              <span>
-                {pageCount} {pageCount === 1 ? "Page" : "Pages"} (Auto-Calculated)
-              </span>
-            </Badge>
-          )}
-        </div>
+        <label className="block text-xs font-semibold text-foreground uppercase tracking-wider">
+          {label}
+        </label>
       )}
 
       <input
@@ -215,105 +171,93 @@ export function DocumentUpload({
         accept={acceptedFileTypes}
         className="hidden"
         onChange={(e) => {
-          if (e.target.files && e.target.files[0]) {
-            handleFileSelect(e.target.files[0]);
-          }
+          const file = e.target.files?.[0];
+          if (file) handleFileProcess(file);
         }}
       />
 
-      {fileUrl ? (
-        /* Uploaded Success Card */
-        <div className="p-4 rounded-2xl bg-teal-500/10 border border-teal-500/30 flex items-center justify-between gap-4 transition-all">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-10 h-10 rounded-xl bg-teal-500/20 text-teal-400 flex items-center justify-center shrink-0">
-              <CheckCircle2 className="w-5 h-5" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-xs font-bold text-slate-900 dark:text-white truncate">
-                {fileName || "Document.pdf"}
-              </p>
-              <div className="flex items-center gap-2 text-[11px] text-slate-400 mt-0.5">
-                {fileSizeBytes && (
-                  <span>{(fileSizeBytes / (1024 * 1024)).toFixed(2)} MB</span>
-                )}
-                {pageCount && (
-                  <>
-                    <span>•</span>
-                    <span className="font-semibold text-teal-600 dark:text-teal-400">
-                      {pageCount} Page{pageCount === 1 ? "" : "s"}
-                    </span>
-                  </>
-                )}
-                <span>•</span>
-                <a
-                  href={fileUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-teal-500 hover:underline flex items-center gap-0.5 font-semibold"
-                >
-                  <span>Preview PDF</span>
-                  <ExternalLink className="w-2.5 h-2.5" />
-                </a>
-              </div>
-            </div>
-          </div>
-
-          <button
-            type="button"
-            onClick={handleReset}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-500/10 transition-colors"
-            title="Remove document"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-      ) : (
-        /* Drag and Drop Zone */
+      {!fileUrl && !isUploading ? (
         <div
-          onClick={() => !isUploading && fileInputRef.current?.click()}
+          onClick={() => fileInputRef.current?.click()}
           onDragOver={(e) => {
             e.preventDefault();
             setIsDragging(true);
           }}
           onDragLeave={() => setIsDragging(false)}
           onDrop={handleDrop}
-          className={`relative overflow-hidden p-6 sm:p-8 rounded-2xl border-2 border-dashed cursor-pointer transition-all text-center flex flex-col items-center justify-center gap-3 ${
+          className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-all fluid-interactive ${
             isDragging
-              ? "border-teal-500 bg-teal-500/10 scale-[1.01]"
-              : "border-slate-300 dark:border-slate-700/80 hover:border-teal-500/50 hover:bg-slate-50 dark:hover:bg-slate-800/40"
+              ? "border-primary bg-primary/10"
+              : "border-border bg-card/60 hover:border-primary/50 hover:bg-secondary/40"
           }`}
         >
-          {isUploading ? (
-            <div className="w-full max-w-xs space-y-3 py-2">
-              <div className="flex items-center justify-center gap-2 text-teal-600 dark:text-teal-400 text-xs font-bold">
-                <RefreshCw className="w-4 h-4 animate-spin" />
-                <span>Uploading document ({uploadProgress}%)...</span>
-              </div>
-              <div className="w-full h-2 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
-                <div
-                  className="h-full bg-gradient-to-r from-teal-500 to-electric-500 transition-all duration-300 rounded-full"
-                  style={{ width: `${uploadProgress}%` }}
-                />
+          <div className="w-12 h-12 rounded-lg bg-secondary text-primary mx-auto flex items-center justify-center mb-3 border border-border">
+            <UploadCloud className="w-6 h-6" />
+          </div>
+          <p className="text-sm font-semibold text-foreground">
+            Click to upload or drag & drop PDF
+          </p>
+          <p className="text-xs text-muted-foreground mt-1">
+            Exact page count auto-detected. Maximum file size: 50MB.
+          </p>
+        </div>
+      ) : isUploading ? (
+        <div className="border border-border rounded-xl p-6 bg-card text-center space-y-3">
+          <div className="flex items-center justify-center gap-2 text-primary font-medium text-sm">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            <span>Processing document & detecting page count...</span>
+          </div>
+          <div className="w-full bg-secondary rounded-full h-1.5 overflow-hidden">
+            <div
+              className="bg-primary h-1.5 transition-all duration-300"
+              style={{ width: `${uploadProgress}%` }}
+            />
+          </div>
+          <p className="text-xs text-muted-foreground">{fileName}</p>
+        </div>
+      ) : (
+        <div className="border border-border rounded-xl p-4 bg-card flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-10 h-10 rounded-lg bg-primary/15 text-primary flex items-center justify-center flex-shrink-0 border border-primary/20">
+              <FileCheck className="w-5 h-5" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-foreground truncate">
+                {fileName || "Document Ready"}
+              </p>
+              <div className="flex items-center gap-2 mt-0.5">
+                {pageCount !== null && (
+                  <Badge variant="default" size="sm">
+                    {pageCount} {pageCount === 1 ? "page" : "pages"}
+                  </Badge>
+                )}
+                {fileSizeBytes && (
+                  <span className="text-[11px] text-muted-foreground">
+                    {(fileSizeBytes / (1024 * 1024)).toFixed(1)} MB
+                  </span>
+                )}
               </div>
             </div>
-          ) : (
-            <>
-              <div className="w-12 h-12 rounded-2xl bg-teal-500/10 text-teal-500 flex items-center justify-center">
-                <UploadCloud className="w-6 h-6" />
-              </div>
-              <div className="space-y-1">
-                <p className="text-sm font-bold text-slate-800 dark:text-slate-200">
-                  Click to select PDF or drag & drop here
-                </p>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Direct Cloud Storage • Auto-calculates exact page count
-                </p>
-              </div>
-              <Badge variant="neutral" size="sm" className="mt-1">
-                PDF up to 50MB
-              </Badge>
-            </>
-          )}
+          </div>
+
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              Replace
+            </Button>
+            <button
+              type="button"
+              onClick={handleClear}
+              className="p-1.5 rounded-lg border border-border hover:bg-destructive/10 hover:text-destructive text-muted-foreground transition-colors"
+              title="Remove document"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       )}
     </div>

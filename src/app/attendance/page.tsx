@@ -1,11 +1,11 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { GlassCard } from "@/components/ui/GlassCard";
-import { Button } from "@/components/ui/Button";
-import { Badge } from "@/components/ui/Badge";
-import { Modal } from "@/components/ui/Modal";
-import { SubmitButton } from "@/components/ui/SubmitButton";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Modal } from "@/components/ui/modal";
+import { Input } from "@/components/ui/input";
 import { useUser } from "@/components/providers/UserContext";
 import {
   getSubjects,
@@ -14,7 +14,8 @@ import {
   deleteSubject,
   updateSubjectCounts,
 } from "@/actions/attendance.actions";
-import { calculateAttendanceMetrics } from "@/lib/utils";
+import { calculateAttendanceMetrics, cn } from "@/lib/utils";
+import { parsePreferencesFromBio, syncUserPreferencesToCloud } from "@/lib/preferences";
 import { toast } from "sonner";
 import {
   CalendarCheck,
@@ -25,26 +26,90 @@ import {
   Edit2,
   TrendingUp,
   ShieldCheck,
-  Sparkles,
   BookOpen,
+  Sliders,
+  Cloud,
+  Check,
 } from "lucide-react";
 import { ClientServiceGuard } from "@/components/ClientServiceGuard";
 
 export default function AttendancePage() {
-  const { user } = useUser();
+  const { user, refreshUser } = useUser();
   const [subjects, setSubjects] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingSubject, setEditingSubject] = useState<any | null>(null);
 
+  // Dynamic attendance target threshold (configurable with slider and synced to cloud)
+  const [targetPercentage, setTargetPercentage] = useState<number>(75);
+  const [isSyncingTarget, setIsSyncingTarget] = useState(false);
+  const [targetSynced, setTargetSynced] = useState(true);
+
   // Form states
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
-  const [totalClasses, setTotalClasses] = useState("30");
-  const [attendedClasses, setAttendedClasses] = useState("25");
+  const [totalClasses, setTotalClasses] = useState("0");
+  const [attendedClasses, setAttendedClasses] = useState("0");
   const [periodWeight, setPeriodWeight] = useState<number>(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
+
+  // Dynamic per-card session weight selector (defaulting to course's periodWeight)
+  const [sessionWeights, setSessionWeights] = useState<Record<string, number>>({});
+
+  // Load target attendance from cloud preferences on user record
+  useEffect(() => {
+    if (user?.bio) {
+      const { preferences } = parsePreferencesFromBio(user.bio);
+      if (preferences.attendanceTarget) {
+        setTargetPercentage(preferences.attendanceTarget);
+      }
+    } else if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("otium_attendance_target");
+      if (saved) {
+        setTargetPercentage(Number(saved) || 75);
+      }
+    }
+  }, [user?.bio]);
+
+  const handleTargetChange = (newTarget: number) => {
+    const clamped = Math.max(50, Math.min(95, newTarget));
+    setTargetPercentage(clamped);
+    setTargetSynced(false);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("otium_attendance_target", String(clamped));
+    }
+  };
+
+  const handleSaveTargetToCloud = async () => {
+    if (!user) {
+      toast.info(`Target set to ${targetPercentage}%. Sign in to sync across devices.`);
+      setTargetSynced(true);
+      return;
+    }
+
+    setIsSyncingTarget(true);
+    const { res } = await syncUserPreferencesToCloud(user.id, user.bio, {
+      attendanceTarget: targetPercentage,
+    });
+    setIsSyncingTarget(false);
+
+    if (res.error) {
+      toast.error(res.error);
+    } else {
+      setTargetSynced(true);
+      toast.success(`Guardrail target updated to ${targetPercentage}% & synced to cloud!`);
+      if (refreshUser) refreshUser();
+    }
+  };
+
+  const getSessionWeight = (subId: string, defaultWeight: number) => {
+    return sessionWeights[subId] ?? (defaultWeight || 1);
+  };
+
+  const setSessionWeight = (subId: string, weight: number) => {
+    setSessionWeights((prev) => ({ ...prev, [subId]: weight }));
+  };
 
   const fetchSubjectsList = async () => {
     if (!user) return;
@@ -66,19 +131,19 @@ export default function AttendancePage() {
     e.preventDefault();
     if (!user) return;
 
-    const total = Number(totalClasses);
-    const attended = Number(attendedClasses);
+    const total = Number(totalClasses) || 0;
+    const attended = Number(attendedClasses) || 0;
 
     if (attended > total) {
-      toast.error("Attended classes cannot exceed total classes.");
+      toast.error("Attended classes cannot exceed total classes held.");
       return;
     }
 
     setIsSubmitting(true);
     const res = await createSubject({
       userId: user.id,
-      name,
-      code: code || undefined,
+      name: name.trim(),
+      code: code.trim() || undefined,
       totalClasses: total,
       attendedClasses: attended,
       periodWeight: Number(periodWeight) || 1,
@@ -88,12 +153,12 @@ export default function AttendancePage() {
     if (res.error) {
       toast.error(res.error);
     } else {
-      toast.success(`Subject "${name}" added successfully!`);
+      toast.success(`Course "${name}" added.`);
       setIsAddModalOpen(false);
       setName("");
       setCode("");
-      setTotalClasses("30");
-      setAttendedClasses("25");
+      setTotalClasses("0");
+      setAttendedClasses("0");
       setPeriodWeight(1);
       fetchSubjectsList();
     }
@@ -103,12 +168,20 @@ export default function AttendancePage() {
     e.preventDefault();
     if (!user || !editingSubject) return;
 
+    const total = Number(editingSubject.totalClasses) || 0;
+    const attended = Number(editingSubject.attendedClasses) || 0;
+
+    if (attended > total) {
+      toast.error("Attended classes cannot exceed total classes held.");
+      return;
+    }
+
     setIsSubmitting(true);
     const res = await updateSubjectCounts(editingSubject.id, user.id, {
       name: editingSubject.name,
       code: editingSubject.code,
-      totalClasses: Number(editingSubject.totalClasses),
-      attendedClasses: Number(editingSubject.attendedClasses),
+      totalClasses: total,
+      attendedClasses: attended,
       periodWeight: Number(editingSubject.periodWeight) || 1,
     });
     setIsSubmitting(false);
@@ -116,594 +189,628 @@ export default function AttendancePage() {
     if (res.error) {
       toast.error(res.error);
     } else {
-      toast.success("Subject updated successfully!");
+      toast.success("Course attendance updated.");
       setEditingSubject(null);
       fetchSubjectsList();
     }
   };
 
-  const handleLogSession = async (subjectId: string, status: "PRESENT" | "ABSENT", count: number = 1) => {
+  const handleQuickLog = async (
+    subjectId: string,
+    status: "PRESENT" | "ABSENT",
+    count: number = 1
+  ) => {
     if (!user) return;
-    setActionLoadingId(`${subjectId}-${status}`);
-
-    const res = await logAttendanceSession(subjectId, user.id, status, count);
+    setActionLoadingId(subjectId);
+    const res = await logAttendanceSession(
+      subjectId,
+      user.id,
+      status,
+      count
+    );
     setActionLoadingId(null);
 
     if (res.error) {
       toast.error(res.error);
     } else {
-      if (status === "PRESENT") {
-        toast.success(`Class marked Present (+${count})! Attendance increased.`);
-      } else {
-        toast.warning(`Class marked Absent (-${count}).`);
-      }
+      const label = count > 1 ? `${count} class hours` : "1 class";
+      toast.success(status === "PRESENT" ? `Marked Present (${label}).` : `Marked Absent (${label}).`);
       fetchSubjectsList();
     }
   };
 
-  const handleDeleteSubject = async (subjectId: string) => {
+  const handleDelete = async (id: string, subjectName: string) => {
     if (!user) return;
-    if (!window.confirm("Are you sure you want to delete this subject?")) return;
+    if (!confirm(`Delete "${subjectName}" from attendance tracking?`)) return;
 
-    const res = await deleteSubject(subjectId, user.id);
+    const res = await deleteSubject(id, user.id);
     if (res.error) {
       toast.error(res.error);
     } else {
-      toast.success("Subject removed.");
+      toast.success("Course removed.");
       fetchSubjectsList();
     }
   };
 
-  // Aggregate Metrics
-  let totalAllClasses = 0;
-  let totalAllAttended = 0;
-  let lowAttendanceCount = 0;
-
-  subjects.forEach((s) => {
-    totalAllClasses += s.totalClasses;
-    totalAllAttended += s.attendedClasses;
-    const { percentage } = calculateAttendanceMetrics(s.attendedClasses, s.totalClasses);
-    if (percentage < 75) lowAttendanceCount++;
-  });
-
-  const overallAggregate =
-    totalAllClasses > 0
-      ? Number(((totalAllAttended / totalAllClasses) * 100).toFixed(1))
-      : 100;
+  // Overall aggregate percentage
+  const totalHeldAcrossAll = subjects.reduce((sum, s) => sum + s.totalClasses, 0);
+  const totalAttendedAcrossAll = subjects.reduce((sum, s) => sum + s.attendedClasses, 0);
+  const overallMetrics = calculateAttendanceMetrics(
+    totalAttendedAcrossAll,
+    totalHeldAcrossAll,
+    targetPercentage
+  );
 
   return (
     <ClientServiceGuard campusId={user?.collegeId} serviceKey="ATTENDANCE">
-      <div className="space-y-8">
-      {/* Hero Header */}
-      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-emerald-950/90 via-slate-900/90 to-brand-950/90 p-8 sm:p-10 border border-emerald-500/30 text-white shadow-2xl backdrop-blur-2xl">
-        <div className="absolute top-0 right-0 -mr-16 -mt-16 w-80 h-80 bg-emerald-500/20 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute bottom-0 left-1/4 -mb-16 w-60 h-60 bg-brand-500/20 rounded-full blur-3xl pointer-events-none" />
-
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div className="space-y-2">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/20 border border-emerald-400/30 text-emerald-300 text-xs font-semibold">
-              <CalendarCheck className="w-3.5 h-3.5" />
-              <span>75% University Minimum Attendance Rule Engine</span>
+      <div className="space-y-8 pb-12">
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border pb-6">
+          <div className="space-y-1.5">
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-secondary text-foreground text-xs font-semibold border border-border">
+              <CalendarCheck className="w-3.5 h-3.5 text-primary" />
+              <span>Academic Guardrail</span>
             </div>
-            <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight">
-              Attendance Guardrail & Bunk Calculator
+            <h1 className="font-heading text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground">
+              {targetPercentage}% Attendance Guardrail
             </h1>
-            <p className="text-sm text-slate-300 max-w-2xl leading-relaxed">
-              Track real-time class attendance across all enrolled courses. Automatic mathematical deficit and safe bunk predictions prevent exam debarment.
+            <p className="text-xs sm:text-sm text-muted-foreground">
+              Track course lectures and determine safe bunk allowances or required recovery lectures for your {targetPercentage}% target.
             </p>
           </div>
 
           <Button
-            variant="brand"
-            size="lg"
-            leftIcon={<Plus className="w-5 h-5" />}
             onClick={() => setIsAddModalOpen(true)}
-            className="shadow-lg shadow-emerald-500/25"
+            size="md"
+            leftIcon={<Plus className="w-4 h-4" />}
           >
             Add Subject
           </Button>
         </div>
 
-        {/* Aggregate KPI Stats */}
-        <div className="mt-8 pt-6 border-t border-white/10 grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="flex items-center gap-3 p-3 rounded-2xl bg-white/5 border border-white/10">
-            <div className="w-10 h-10 rounded-xl bg-emerald-500/20 flex items-center justify-center text-emerald-400">
-              <TrendingUp className="w-5 h-5" />
-            </div>
-            <div>
-              <p className="text-[11px] text-slate-400 uppercase font-bold tracking-wider">
-                Overall Attendance
-              </p>
-              <p
-                className={`text-xl font-extrabold ${
-                  overallAggregate < 75 ? "text-rose-400" : "text-emerald-400"
-                }`}
-              >
-                {overallAggregate}%
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3 p-3 rounded-2xl bg-white/5 border border-white/10">
-            <div
-              className={`w-10 h-10 rounded-xl flex items-center justify-center ${
-                lowAttendanceCount > 0
-                  ? "bg-rose-500/20 text-rose-400 animate-pulse"
-                  : "bg-emerald-500/20 text-emerald-400"
-              }`}
-            >
-              <AlertTriangle className="w-5 h-5" />
-            </div>
-            <div>
-              <p className="text-[11px] text-slate-400 uppercase font-bold tracking-wider">
-                Critical Subjects (&lt;75%)
-              </p>
-              <p
-                className={`text-xl font-extrabold ${
-                  lowAttendanceCount > 0 ? "text-rose-400" : "text-emerald-400"
-                }`}
-              >
-                {lowAttendanceCount} Courses at Risk
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3 p-3 rounded-2xl bg-white/5 border border-white/10">
-            <div className="w-10 h-10 rounded-xl bg-brand-500/20 flex items-center justify-center text-brand-400">
-              <BookOpen className="w-5 h-5" />
-            </div>
-            <div>
-              <p className="text-[11px] text-slate-400 uppercase font-bold tracking-wider">
-                Total Classes Tracked
-              </p>
-              <p className="text-xl font-extrabold text-white">
-                {totalAllAttended} / {totalAllClasses} Attended
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Subject Cards Grid */}
-      {loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {[1, 2, 3, 4].map((i) => (
-            <div
-              key={i}
-              className="h-56 rounded-2xl bg-slate-200/50 dark:bg-slate-800/50 animate-pulse"
-            />
-          ))}
-        </div>
-      ) : subjects.length === 0 ? (
-        <GlassCard className="text-center py-16">
-          <CalendarCheck className="w-12 h-12 mx-auto text-slate-400 mb-3 opacity-60" />
-          <h3 className="text-lg font-bold text-slate-700 dark:text-slate-300">
-            No subjects added yet
-          </h3>
-          <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
-            Add your semester courses and current attendance numbers to unlock automatic 75% guardrails.
-          </p>
-          <Button
-            variant="brand"
-            size="sm"
-            className="mt-4"
-            onClick={() => setIsAddModalOpen(true)}
-          >
-            Add Your First Subject
-          </Button>
-        </GlassCard>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {subjects.map((subject) => {
-            const { percentage, status, consecutiveNeeded, canBunk } =
-              calculateAttendanceMetrics(subject.attendedClasses, subject.totalClasses);
-
-            const isDanger = percentage < 75;
-
-            return (
-              <GlassCard
-                key={subject.id}
-                variant={isDanger ? "danger" : "default"}
-                className={`flex flex-col justify-between transition-all duration-300 ${
-                  isDanger
-                    ? "border-rose-400/50 shadow-rose-500/10"
-                    : "hover:border-emerald-400/40"
-                }`}
-              >
-                <div className="space-y-4">
-                  {/* Card Header */}
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-lg font-extrabold text-slate-900 dark:text-white">
-                          {subject.name}
-                        </span>
-                        {subject.code && (
-                          <Badge variant="neutral" size="sm">
-                            {subject.code}
-                          </Badge>
-                        )}
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-brand-500/10 text-brand-400 border border-brand-500/20">
-                          {subject.periodWeight && subject.periodWeight > 1
-                            ? `🧪 ${subject.periodWeight}-Period Lab`
-                            : "📚 1 Period"}
-                        </span>
-                      </div>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                        {subject.attendedClasses} attended out of {subject.totalClasses} total lectures
-                      </p>
-                    </div>
-
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        onClick={() => setEditingSubject(subject)}
-                        className="p-1.5 rounded-lg text-slate-400 hover:text-brand-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                        title="Edit Subject"
-                      >
-                        <Edit2 className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        onClick={() => handleDeleteSubject(subject.id)}
-                        className="p-1.5 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                        title="Delete Subject"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Percentage & Progress Bar */}
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                        Attendance Rate
-                      </span>
-                      <span
-                        className={`text-2xl font-black ${
-                          isDanger ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400"
-                        }`}
-                      >
-                        {percentage}%
-                      </span>
-                    </div>
-
-                    {/* Progress Track */}
-                    <div className="relative w-full h-3 rounded-full bg-slate-200 dark:bg-slate-800 overflow-hidden">
-                      {/* 75% Target Line */}
-                      <div
-                        className="absolute top-0 bottom-0 w-0.5 bg-slate-400 dark:bg-slate-500 z-10"
-                        style={{ left: "75%" }}
-                        title="75% Minimum Requirement"
-                      />
-                      <div
-                        className={`h-full rounded-full transition-all duration-500 ${
-                          isDanger
-                            ? "bg-gradient-to-r from-rose-600 to-amber-500"
-                            : "bg-gradient-to-r from-emerald-500 to-teal-400"
-                        }`}
-                        style={{ width: `${Math.min(100, percentage)}%` }}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Mathematical Predictive Advice Box */}
-                  <div
-                    className={`p-3.5 rounded-xl text-xs font-medium flex items-start gap-2.5 ${
-                      isDanger
-                        ? "bg-rose-500/15 border border-rose-500/30 text-rose-800 dark:text-rose-200"
-                        : "bg-emerald-500/15 border border-emerald-500/30 text-emerald-800 dark:text-emerald-200"
-                    }`}
+        {/* Dynamic Target Guardrail Slider Card */}
+        <Card className="p-5 border-border bg-card">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <Sliders className="w-4 h-4 text-primary" />
+                <h2 className="font-heading font-bold text-sm text-foreground">
+                  Custom Attendance Threshold
+                </h2>
+                {targetSynced ? (
+                  <Badge
+                    variant="outline"
+                    size="sm"
+                    className="text-[10px] border-emerald-500/40 text-emerald-600 dark:text-emerald-400 gap-1 py-0 font-medium"
                   >
-                    {isDanger ? (
-                      <>
-                        <AlertTriangle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
-                        <div>
-                          <p className="font-bold text-rose-700 dark:text-rose-300">
-                            Below 75% Debarment Threshold!
-                          </p>
-                          <p className="mt-0.5 leading-relaxed">
-                            You need to attend{" "}
-                            <strong className="underline font-extrabold text-rose-900 dark:text-rose-100">
-                              exactly {consecutiveNeeded} more consecutive classes
-                            </strong>{" "}
-                            without missing to reach 75%.
-                          </p>
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        <ShieldCheck className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
-                        <div>
-                          <p className="font-bold text-emerald-700 dark:text-emerald-300">
-                            Attendance Safe & Compliant
-                          </p>
-                          <p className="mt-0.5 leading-relaxed">
-                            {canBunk > 0 ? (
-                              <>
-                                You can safely miss up to{" "}
-                                <strong className="underline font-extrabold text-emerald-900 dark:text-emerald-100">
-                                  {canBunk} classes
-                                </strong>{" "}
-                                and still remain above 75%.
-                              </>
-                            ) : (
-                              "On the 75% boundary. Attend the next class to maintain compliance."
-                            )}
-                          </p>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                </div>
+                    <Check className="w-2.5 h-2.5 text-emerald-500" />
+                    Synced to Cloud
+                  </Badge>
+                ) : (
+                  <Badge
+                    variant="outline"
+                    size="sm"
+                    className="text-[10px] border-amber-500/40 text-amber-600 dark:text-amber-400 gap-1 py-0 font-medium animate-pulse"
+                  >
+                    Unsaved Changes
+                  </Badge>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Set your university minimum requirement. Supports flexible rules for medical, sports, or strict quotas.
+              </p>
+            </div>
 
-                {/* Decluttered Quick Log Action Buttons (Uses Pre-configured Weight in Advance) */}
-                <div className="mt-6 pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-3">
-                  <span className="text-[11px] font-semibold text-slate-400">
-                    Quick Log ({subject.periodWeight || 1} Period{(subject.periodWeight || 1) > 1 ? "s" : ""}):
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      isLoading={actionLoadingId === `${subject.id}-ABSENT`}
-                      onClick={() => handleLogSession(subject.id, "ABSENT", subject.periodWeight || 1)}
-                      className="border-rose-300 dark:border-rose-900 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40"
-                    >
-                      Missed (-{subject.periodWeight || 1})
-                    </Button>
-                    <Button
-                      variant="brand"
-                      size="sm"
-                      isLoading={actionLoadingId === `${subject.id}-PRESENT`}
-                      onClick={() => handleLogSession(subject.id, "PRESENT", subject.periodWeight || 1)}
-                      className="bg-emerald-600 hover:bg-emerald-500"
-                    >
-                      Attended (+{subject.periodWeight || 1}{subject.periodWeight && subject.periodWeight > 1 ? " Lab" : ""})
-                    </Button>
-                  </div>
-                </div>
-              </GlassCard>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Add Subject Modal */}
-      <Modal
-        isOpen={isAddModalOpen}
-        onClose={() => setIsAddModalOpen(false)}
-        title="Add Enrolled Subject"
-        description="Configure your course name and existing attendance counts."
-      >
-        <form onSubmit={handleAddSubject} className="space-y-4 pt-2">
-          <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
-              Subject Name *
-            </label>
-            <input
-              type="text"
-              required
-              placeholder="e.g. Operating Systems & Kernel Architecture"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="w-full px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-            />
+            <div className="flex items-center gap-2 self-end md:self-auto">
+              <Button
+                variant={targetSynced ? "secondary" : "default"}
+                size="sm"
+                onClick={handleSaveTargetToCloud}
+                disabled={isSyncingTarget}
+                isLoading={isSyncingTarget}
+                leftIcon={<Cloud className="w-3.5 h-3.5" />}
+              >
+                {targetSynced ? "Target Synced" : `Sync ${targetPercentage}% to Cloud`}
+              </Button>
+            </div>
           </div>
 
-          <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
-              Course Code (Optional)
-            </label>
-            <input
-              type="text"
-              placeholder="e.g. CSE-312"
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
-              className="w-full px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 uppercase"
-            />
-          </div>
+          <div className="pt-4 space-y-3">
+            {/* Liquid Slider Container */}
+            <div className="space-y-2">
+              <div className="flex justify-between items-center text-xs font-semibold text-foreground">
+                <span className="text-muted-foreground">Threshold Gauge:</span>
+                <span className="font-heading text-lg font-extrabold text-primary">
+                  {targetPercentage}%
+                </span>
+              </div>
 
-          {/* Lecture Duration Configured in Advance */}
-          <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
-              Lecture Session Duration (In Advance) *
-            </label>
-            <p className="text-xs text-slate-400 mb-2">
-              Configures standard lecture or multi-period lab session weight in advance to eliminate cluttered action buttons.
-            </p>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <div className="relative flex items-center">
+                <input
+                  type="range"
+                  min={50}
+                  max={95}
+                  step={1}
+                  value={targetPercentage}
+                  onChange={(e) => handleTargetChange(Number(e.target.value))}
+                  className="w-full h-2.5 bg-secondary rounded-lg appearance-none cursor-pointer accent-primary"
+                />
+              </div>
+
+              <div className="flex justify-between text-[10px] text-muted-foreground font-mono">
+                <span>50% (Min)</span>
+                <span>65% (Medical/Duty)</span>
+                <span className="font-bold text-foreground">75% (Standard)</span>
+                <span>85% (Honors)</span>
+                <span>95% (Max)</span>
+              </div>
+            </div>
+
+            {/* Quick Presets */}
+            <div className="flex flex-wrap items-center gap-1.5 pt-1">
+              <span className="text-[11px] text-muted-foreground mr-1">Quick Select:</span>
               {[
-                { weight: 1, label: "1 Period", desc: "Regular Class" },
-                { weight: 2, label: "2 Periods", desc: "Lab Session" },
-                { weight: 3, label: "3 Periods", desc: "3-Hour Lab" },
-                { weight: 4, label: "4 Periods", desc: "Workshop" },
-              ].map((opt) => (
+                { label: "65% Medical / Duty", value: 65 },
+                { label: "75% AICTE Standard", value: 75 },
+                { label: "80% Dept Strict", value: 80 },
+                { label: "85% Honors Quota", value: 85 },
+              ].map((preset) => (
                 <button
-                  key={opt.weight}
+                  key={preset.value}
                   type="button"
-                  onClick={() => setPeriodWeight(opt.weight)}
-                  className={`p-2.5 rounded-xl border text-left transition-all ${
-                    periodWeight === opt.weight
-                      ? "bg-brand-500/20 border-brand-500 text-brand-300 shadow-sm"
-                      : "bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-400 hover:border-slate-500"
-                  }`}
+                  onClick={() => handleTargetChange(preset.value)}
+                  className={cn(
+                    "text-[10px] px-2.5 py-1 rounded-md transition-all font-medium border",
+                    targetPercentage === preset.value
+                      ? "bg-primary text-primary-foreground border-primary font-bold shadow-xs"
+                      : "bg-secondary/70 hover:bg-secondary text-muted-foreground hover:text-foreground border-border"
+                  )}
                 >
-                  <p className="text-xs font-bold">{opt.label}</p>
-                  <p className="text-[10px] opacity-75">{opt.desc}</p>
+                  {preset.label}
                 </button>
               ))}
             </div>
           </div>
+        </Card>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
-                Total Classes Held *
-              </label>
-              <input
-                type="number"
-                min="0"
-                required
-                value={totalClasses}
-                onChange={(e) => setTotalClasses(e.target.value)}
-                className="w-full px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-              />
+        {/* Aggregate Overview Card */}
+        {subjects.length > 0 && (
+          <Card className="p-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
+              <div className="space-y-1.5">
+                <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                  Cumulative Term Attendance
+                </div>
+                <div className="flex items-baseline gap-3">
+                  <span className="font-heading text-4xl font-extrabold text-foreground">
+                    {overallMetrics.percentage}%
+                  </span>
+                  <Badge
+                    variant={overallMetrics.status === "SAFE" ? "success" : "destructive"}
+                    size="md"
+                  >
+                    {overallMetrics.status === "SAFE"
+                      ? `Eligible (Above ${targetPercentage}%)`
+                      : `At Risk (Below ${targetPercentage}%)`}
+                  </Badge>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {totalAttendedAcrossAll} of {totalHeldAcrossAll} lectures attended across {subjects.length} registered courses.
+                </p>
+              </div>
+
+              <div className="p-4 rounded-lg bg-secondary/50 border border-border text-xs space-y-1 min-w-56">
+                <span className="font-bold text-foreground">Term Guardrail Rule:</span>
+                {overallMetrics.status === "SAFE" ? (
+                  <p className="text-muted-foreground">
+                    You can safely bunk up to <strong className="text-foreground">{overallMetrics.canBunk}</strong> more lectures overall.
+                  </p>
+                ) : (
+                  <p className="text-destructive font-medium">
+                    You must attend the next <strong className="text-foreground">{overallMetrics.consecutiveNeeded}</strong> lectures consecutively to clear the {targetPercentage}% threshold.
+                  </p>
+                )}
+              </div>
             </div>
+          </Card>
+        )}
 
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
-                Classes Attended *
-              </label>
-              <input
-                type="number"
-                min="0"
-                required
-                value={attendedClasses}
-                onChange={(e) => setAttendedClasses(e.target.value)}
-                className="w-full px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-              />
+        {/* Subjects List Grid */}
+        <div className="space-y-4">
+          <h2 className="font-heading text-lg font-bold text-foreground">
+            Registered Subjects ({subjects.length})
+          </h2>
+
+          {loading ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="h-44 rounded-xl bg-secondary/60 animate-pulse border border-border" />
+              ))}
             </div>
-          </div>
+          ) : subjects.length === 0 ? (
+            <Card className="p-8 text-center space-y-3">
+              <BookOpen className="w-10 h-10 text-muted-foreground mx-auto" />
+              <div className="space-y-1">
+                <h3 className="font-bold text-foreground text-sm">No courses added</h3>
+                <p className="text-xs text-muted-foreground">
+                  Add your courses and timetable to start monitoring the 75% rule.
+                </p>
+              </div>
+              <Button
+                onClick={() => setIsAddModalOpen(true)}
+                variant="outline"
+                size="sm"
+                leftIcon={<Plus className="w-4 h-4" />}
+              >
+                Add First Subject
+              </Button>
+            </Card>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {subjects.map((sub) => {
+                const metric = calculateAttendanceMetrics(
+                  sub.attendedClasses,
+                  sub.totalClasses,
+                  targetPercentage
+                );
+                const isSafe = metric.status === "SAFE";
+                const isWorking = actionLoadingId === sub.id;
 
-          <div className="pt-4 border-t border-slate-200 dark:border-slate-800 flex justify-end gap-3">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setIsAddModalOpen(false)}
-            >
-              Cancel
-            </Button>
-            <SubmitButton isSubmitting={isSubmitting} loadingText="Adding Subject...">
-              Save Subject
-            </SubmitButton>
-          </div>
-        </form>
-      </Modal>
+                return (
+                  <Card key={sub.id} className="p-5 flex flex-col justify-between space-y-4">
+                    <div className="space-y-3">
+                      {/* Top Row */}
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 space-y-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h3 className="font-heading font-bold text-base text-foreground truncate">
+                              {sub.name}
+                            </h3>
+                            {sub.periodWeight > 1 && (
+                              <Badge variant="outline" size="sm" className="text-[10px] font-mono">
+                                {sub.periodWeight >= 3
+                                  ? `Lab (${sub.periodWeight}h)`
+                                  : `Tutorial (${sub.periodWeight}h)`}
+                              </Badge>
+                            )}
+                          </div>
+                          {sub.code && (
+                            <span className="text-[11px] font-mono text-muted-foreground block">
+                              {sub.code}
+                            </span>
+                          )}
+                        </div>
 
-      {/* Edit Subject Modal */}
-      {editingSubject && (
+                        <Badge variant={isSafe ? "success" : "destructive"} size="md">
+                          {metric.percentage}%
+                        </Badge>
+                      </div>
+
+                      {/* Progress Bar */}
+                      <div className="space-y-1.5">
+                        <div className="flex justify-between text-[11px] text-muted-foreground">
+                          <span>
+                            {sub.attendedClasses} / {sub.totalClasses} attended
+                          </span>
+                          <span>Target: {targetPercentage}%</span>
+                        </div>
+                        <div className="w-full bg-secondary rounded-full h-2 overflow-hidden">
+                          <div
+                            className={`h-2 rounded-full transition-all duration-300 ${
+                              isSafe ? "bg-emerald-500" : "bg-destructive"
+                            }`}
+                            style={{ width: `${Math.min(100, metric.percentage)}%` }}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Status Advice Notice */}
+                      <div className="p-2.5 rounded-lg bg-secondary/40 border border-border text-xs leading-normal">
+                        {isSafe ? (
+                          <span className="text-muted-foreground">
+                            Safe to miss <strong className="text-foreground">{metric.canBunk}</strong> lecture{metric.canBunk !== 1 ? "s" : ""}.
+                          </span>
+                        ) : (
+                          <span className="text-destructive font-medium">
+                            Must attend next <strong className="text-foreground">{metric.consecutiveNeeded}</strong> lecture{metric.consecutiveNeeded !== 1 ? "s" : ""} without bunking.
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Quick Log Action Bar */}
+                    <div className="pt-3 border-t border-border/60 flex flex-col gap-2.5">
+                      <div className="flex items-center justify-between gap-2">
+                        {/* Session Hours Selector (e.g. 1h lecture vs 3h/4h lab) */}
+                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                          <span className="text-[11px] font-medium">Session:</span>
+                          <div className="inline-flex rounded-md border border-border bg-secondary/50 p-0.5">
+                            {[1, 2, 3, 4].map((hrs) => {
+                              const currentWeight = getSessionWeight(sub.id, sub.periodWeight);
+                              const isSelected = currentWeight === hrs;
+                              return (
+                                <button
+                                  key={hrs}
+                                  type="button"
+                                  onClick={() => setSessionWeight(sub.id, hrs)}
+                                  className={cn(
+                                    "px-2 py-0.5 text-[11px] font-semibold rounded transition-colors",
+                                    isSelected
+                                      ? "bg-primary text-primary-foreground shadow-xs"
+                                      : "text-muted-foreground hover:text-foreground"
+                                  )}
+                                  title={`${hrs} ${hrs === 1 ? "hour / lecture" : "hours / lab"}`}
+                                >
+                                  {hrs}h
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* Card Edit & Delete */}
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => setEditingSubject(sub)}
+                            className="p-1.5 rounded-md hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
+                            title="Edit course counts and lab settings"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDelete(sub.id, sub.name)}
+                            className="p-1.5 rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
+                            title="Delete course"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Log Buttons */}
+                      <div className="flex items-center gap-2">
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          disabled={isWorking}
+                          onClick={() =>
+                            handleQuickLog(
+                              sub.id,
+                              "PRESENT",
+                              getSessionWeight(sub.id, sub.periodWeight)
+                            )
+                          }
+                          className="flex-1 font-semibold"
+                        >
+                          + Present ({getSessionWeight(sub.id, sub.periodWeight)}h)
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={isWorking}
+                          onClick={() =>
+                            handleQuickLog(
+                              sub.id,
+                              "ABSENT",
+                              getSessionWeight(sub.id, sub.periodWeight)
+                            )
+                          }
+                          className="flex-1 text-destructive hover:text-destructive hover:bg-destructive/10"
+                        >
+                          + Absent ({getSessionWeight(sub.id, sub.periodWeight)}h)
+                        </Button>
+                      </div>
+                    </div>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Add Subject Modal */}
         <Modal
-          isOpen={!!editingSubject}
-          onClose={() => setEditingSubject(null)}
-          title="Edit Subject Attendance Counts"
+          isOpen={isAddModalOpen}
+          onClose={() => setIsAddModalOpen(false)}
+          title="Add New Subject"
+          description="Enter course information and current attendance counts."
         >
-          <form onSubmit={handleUpdateSubject} className="space-y-4 pt-2">
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
-                Subject Name *
-              </label>
-              <input
-                type="text"
+          <form onSubmit={handleAddSubject} className="space-y-4">
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-foreground">Course Title *</label>
+              <Input
+                placeholder="e.g. Operating Systems / Chemistry Lab"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
                 required
-                value={editingSubject.name}
-                onChange={(e) =>
-                  setEditingSubject({ ...editingSubject, name: e.target.value })
-                }
-                className="w-full px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
               />
             </div>
 
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
-                Course Code
-              </label>
-              <input
-                type="text"
-                value={editingSubject.code || ""}
-                onChange={(e) =>
-                  setEditingSubject({ ...editingSubject, code: e.target.value })
-                }
-                className="w-full px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 uppercase"
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-foreground">Course Code (Optional)</label>
+              <Input
+                placeholder="e.g. CS301 / CH102L"
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
               />
             </div>
 
-            {/* Edit Lecture Duration */}
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
-                Lecture Session Duration (In Advance)
+            {/* Session Type & Lab Duration */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-foreground">
+                Class Type & Session Duration *
               </label>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 {[
-                  { weight: 1, label: "1 Period", desc: "Regular Class" },
-                  { weight: 2, label: "2 Periods", desc: "Lab Session" },
-                  { weight: 3, label: "3 Periods", desc: "3-Hour Lab" },
-                  { weight: 4, label: "4 Periods", desc: "Workshop" },
-                ].map((opt) => (
+                  { weight: 1, label: "1h Lecture", desc: "1 period" },
+                  { weight: 2, label: "2h Tutorial", desc: "2 periods" },
+                  { weight: 3, label: "3h Lab", desc: "3 periods" },
+                  { weight: 4, label: "4h Lab", desc: "4 periods" },
+                ].map((item) => (
                   <button
-                    key={opt.weight}
+                    key={item.weight}
                     type="button"
-                    onClick={() =>
-                      setEditingSubject({ ...editingSubject, periodWeight: opt.weight })
-                    }
-                    className={`p-2.5 rounded-xl border text-left transition-all ${
-                      (editingSubject.periodWeight || 1) === opt.weight
-                        ? "bg-brand-500/20 border-brand-500 text-brand-300 shadow-sm"
-                        : "bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-400 hover:border-slate-500"
-                    }`}
+                    onClick={() => setPeriodWeight(item.weight)}
+                    className={cn(
+                      "p-2.5 rounded-lg border text-left transition-all",
+                      periodWeight === item.weight
+                        ? "border-primary bg-primary/10 text-foreground font-semibold ring-1 ring-primary"
+                        : "border-border bg-card hover:bg-secondary/60 text-muted-foreground"
+                    )}
                   >
-                    <p className="text-xs font-bold">{opt.label}</p>
-                    <p className="text-[10px] opacity-75">{opt.desc}</p>
+                    <div className="text-xs font-bold text-foreground">{item.label}</div>
+                    <div className="text-[10px] text-muted-foreground">{item.desc}</div>
                   </button>
                 ))}
               </div>
+              <p className="text-[11px] text-muted-foreground">
+                College lab sessions count as 3 or 4 periods towards attendance tallies.
+              </p>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
-                  Total Classes
-                </label>
-                <input
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-foreground">Total Classes Held</label>
+                <Input
                   type="number"
                   min="0"
-                  required
-                  value={editingSubject.totalClasses}
-                  onChange={(e) =>
-                    setEditingSubject({
-                      ...editingSubject,
-                      totalClasses: Number(e.target.value),
-                    })
-                  }
-                  className="w-full px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                  placeholder="0"
+                  value={totalClasses}
+                  onChange={(e) => setTotalClasses(e.target.value)}
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
-                  Attended Classes
-                </label>
-                <input
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-foreground">Classes Attended</label>
+                <Input
                   type="number"
                   min="0"
-                  required
-                  value={editingSubject.attendedClasses}
-                  onChange={(e) =>
-                    setEditingSubject({
-                      ...editingSubject,
-                      attendedClasses: Number(e.target.value),
-                    })
-                  }
-                  className="w-full px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                  placeholder="0"
+                  value={attendedClasses}
+                  onChange={(e) => setAttendedClasses(e.target.value)}
                 />
               </div>
             </div>
 
-            <div className="pt-4 border-t border-slate-200 dark:border-slate-800 flex justify-end gap-3">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setEditingSubject(null)}
-              >
-                Cancel
-              </Button>
-              <SubmitButton isSubmitting={isSubmitting} loadingText="Updating...">
-                Save Changes
-              </SubmitButton>
-            </div>
+            <Button
+              type="submit"
+              size="lg"
+              className="w-full"
+              isLoading={isSubmitting}
+            >
+              Add Course
+            </Button>
           </form>
         </Modal>
-      )}
-    </div>
+
+        {/* Edit Subject Modal */}
+        <Modal
+          isOpen={Boolean(editingSubject)}
+          onClose={() => setEditingSubject(null)}
+          title="Edit Subject Counts"
+          description="Manually correct tallies or lab duration for this course."
+        >
+          {editingSubject && (
+            <form onSubmit={handleUpdateSubject} className="space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-foreground">Course Title</label>
+                <Input
+                  value={editingSubject.name}
+                  onChange={(e) =>
+                    setEditingSubject({ ...editingSubject, name: e.target.value })
+                  }
+                  required
+                />
+              </div>
+
+              {/* Edit Session Duration */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-foreground">
+                  Class Type & Session Duration
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {[
+                    { weight: 1, label: "1h Lecture", desc: "1 period" },
+                    { weight: 2, label: "2h Tutorial", desc: "2 periods" },
+                    { weight: 3, label: "3h Lab", desc: "3 periods" },
+                    { weight: 4, label: "4h Lab", desc: "4 periods" },
+                  ].map((item) => {
+                    const isSelected = (editingSubject.periodWeight || 1) === item.weight;
+                    return (
+                      <button
+                        key={item.weight}
+                        type="button"
+                        onClick={() =>
+                          setEditingSubject({
+                            ...editingSubject,
+                            periodWeight: item.weight,
+                          })
+                        }
+                        className={cn(
+                          "p-2.5 rounded-lg border text-left transition-all",
+                          isSelected
+                            ? "border-primary bg-primary/10 text-foreground font-semibold ring-1 ring-primary"
+                            : "border-border bg-card hover:bg-secondary/60 text-muted-foreground"
+                        )}
+                      >
+                        <div className="text-xs font-bold text-foreground">{item.label}</div>
+                        <div className="text-[10px] text-muted-foreground">{item.desc}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-foreground">Total Classes</label>
+                  <Input
+                    type="number"
+                    min="0"
+                    value={editingSubject.totalClasses}
+                    onChange={(e) =>
+                      setEditingSubject({
+                        ...editingSubject,
+                        totalClasses: e.target.value,
+                      })
+                    }
+                    required
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-foreground">Attended Classes</label>
+                  <Input
+                    type="number"
+                    min="0"
+                    value={editingSubject.attendedClasses}
+                    onChange={(e) =>
+                      setEditingSubject({
+                        ...editingSubject,
+                        attendedClasses: e.target.value,
+                      })
+                    }
+                    required
+                  />
+                </div>
+              </div>
+
+              <Button
+                type="submit"
+                size="lg"
+                className="w-full"
+                isLoading={isSubmitting}
+              >
+                Save Changes
+              </Button>
+            </form>
+          )}
+        </Modal>
+      </div>
     </ClientServiceGuard>
   );
 }

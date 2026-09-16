@@ -3,9 +3,10 @@
 import React from "react";
 import { signOut } from "next-auth/react";
 import { useUser } from "@/components/providers/UserContext";
-import { GlassCard } from "@/components/ui/GlassCard";
-import { Button } from "@/components/ui/Button";
-import { ShieldAlert, LogOut, Mail, AlertOctagon } from "lucide-react";
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { AlertOctagon, LogOut, ShieldAlert } from "lucide-react";
 
 export default function BannedPage() {
   const { user } = useUser();
@@ -15,51 +16,49 @@ export default function BannedPage() {
   };
 
   return (
-    <div className="min-h-[80vh] flex items-center justify-center p-4">
-      <GlassCard className="max-w-md w-full p-8 sm:p-10 border-rose-500/40 text-center space-y-6 shadow-2xl bg-rose-950/10 backdrop-blur-xl">
-        <div className="w-16 h-16 rounded-3xl bg-rose-500/20 text-rose-500 flex items-center justify-center mx-auto border border-rose-500/40 shadow-lg shadow-rose-500/20">
-          <ShieldAlert className="w-9 h-9" />
+    <div className="min-h-[70vh] flex items-center justify-center p-4">
+      <Card className="max-w-md w-full p-8 text-center space-y-6 border-destructive/40">
+        <div className="w-14 h-14 rounded-xl bg-destructive/10 text-destructive flex items-center justify-center mx-auto border border-destructive/20">
+          <AlertOctagon className="w-7 h-7" />
         </div>
 
         <div className="space-y-2">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-500/20 border border-rose-500/30 text-rose-400 text-xs font-bold uppercase tracking-wider">
-            <AlertOctagon className="w-3.5 h-3.5" />
-            <span>Account Suspended</span>
-          </div>
-          <h1 className="text-2xl font-black text-slate-900 dark:text-white">
-            Access Blocked by Campus Moderation
+          <Badge variant="destructive" size="sm">
+            Account Suspended
+          </Badge>
+          <h1 className="font-heading text-xl sm:text-2xl font-bold text-foreground">
+            Access Restricted by Campus Moderation
           </h1>
-          <p className="text-xs text-slate-400 leading-relaxed">
-            Your Otium Uni Hub account has been suspended due to violations of community trust, escrow policies, or verified scam reports.
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            Your university account has been suspended due to verified policy infractions, escrow violations, or community misconduct.
           </p>
         </div>
 
-        {/* Ban Reason Box */}
-        <div className="p-4 rounded-2xl bg-slate-100 dark:bg-slate-900/80 border border-rose-500/30 text-left space-y-1.5">
-          <span className="text-[10px] uppercase font-bold text-rose-400 tracking-wider">
-            Reason on Record:
+        <div className="p-4 rounded-lg bg-secondary/50 border border-border text-left space-y-1 text-xs">
+          <span className="font-bold text-foreground uppercase tracking-wider text-[10px]">
+            Violation on Record:
           </span>
-          <p className="text-xs font-semibold text-slate-800 dark:text-slate-200">
-            {user?.banReason || "Violation of Otium Campus Guidelines / Unfulfilled Task Commitments."}
+          <p className="text-muted-foreground">
+            {user?.banReason || "Unfulfilled task deliverables or breach of university trust guidelines."}
           </p>
         </div>
 
         <div className="space-y-3 pt-2">
           <Button
             onClick={handleSignOut}
-            variant="brand"
+            variant="destructive"
             size="lg"
-            className="w-full bg-rose-600 hover:bg-rose-500 shadow-lg shadow-rose-600/25"
+            className="w-full"
             leftIcon={<LogOut className="w-4 h-4" />}
           >
             Sign Out of Account
           </Button>
 
-          <p className="text-[11px] text-slate-500 dark:text-slate-400">
-            If you believe this suspension is a mistake, reach out to your campus student moderator at <span className="font-mono text-slate-300">support@otium.edu</span>.
+          <p className="text-[11px] text-muted-foreground leading-relaxed">
+            If you believe this determination was made in error, contact your university moderator desk at support@otium.edu.
           </p>
         </div>
-      </GlassCard>
+      </Card>
     </div>
   );
 }

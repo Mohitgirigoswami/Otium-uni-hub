@@ -2,10 +2,9 @@
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
-import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/Button";
-import { Badge } from "@/components/ui/Badge";
-
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { useUser } from "@/components/providers/UserContext";
 import { getDashboardStats } from "@/actions/user.actions";
 import { getGigs } from "@/actions/gigs.actions";
@@ -14,23 +13,23 @@ import { getIncognitoPosts } from "@/actions/incognito.actions";
 import { getMarketplaceItems } from "@/actions/marketplace.actions";
 import { formatPaiseToRupees, formatDate } from "@/lib/utils";
 import {
-  Briefcase,
+  Printer,
   CalendarCheck,
   GraduationCap,
-  Search,
-  Car,
-  EyeOff,
+  Briefcase,
   ShoppingBag,
-  Printer,
+  EyeOff,
+  Car,
+  Search,
   ArrowRight,
-  AlertTriangle,
   Clock,
-  Plus,
   Building2,
+  AlertTriangle,
+  Plus,
 } from "lucide-react";
 
 export default function DashboardPage() {
-  const { user, isOnCooldown, cooldownHoursRemaining } = useUser();
+  const { user } = useUser();
   const [stats, setStats] = useState<any | null>(null);
   const [latestGigs, setLatestGigs] = useState<any[]>([]);
   const [upcomingRides, setUpcomingRides] = useState<any[]>([]);
@@ -50,7 +49,7 @@ export default function DashboardPage() {
         getMarketplaceItems(),
       ]);
 
-      if (statsRes.success) setStats(statsRes.data);
+      if (statsRes.success) setStats(statsRes.data?.stats || statsRes.data);
       if (gigsRes.success && gigsRes.data) setLatestGigs(gigsRes.data.slice(0, 3));
       if (ridesRes.success && ridesRes.data) setUpcomingRides(ridesRes.data.slice(0, 3));
       if (postsRes.success && postsRes.data) setTrendingWhispers(postsRes.data.slice(0, 3));
@@ -62,278 +61,300 @@ export default function DashboardPage() {
     loadHubData();
   }, [user?.id]);
 
-  const campusName = user?.college?.name || "Global University Network";
+  const campusName = user?.college?.name || "All Campuses";
   const displayName = user?.name ? user.name.split(" ")[0] : "Student";
   const departmentInfo = user?.department
-    ? `${user.department} • Year ${user.year || "1"}`
+    ? `${user.department} | Year ${user.year || "1"}`
     : "University Student Hub";
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-10">
-      {/* 1. HERO GREETING BANNER */}
-      <div className="relative overflow-hidden rounded-2xl bg-card border border-border p-6 sm:p-10 shadow-sm">
+    <div className="space-y-8 pb-12">
+      {/* 1. Header Greeting Card */}
+      <Card className="p-6 sm:p-8">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div className="space-y-3">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-secondary text-muted-foreground text-xs font-semibold select-none border border-border">
-              <Building2 className="w-3.5 h-3.5 text-foreground" />
+          <div className="space-y-2">
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-secondary text-foreground text-xs font-semibold border border-border">
+              <Building2 className="w-3.5 h-3.5 text-primary" />
               <span>{campusName}</span>
             </div>
 
-            <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight font-heading text-foreground">
+            <h1 className="font-heading text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground">
               Welcome back, {displayName}
             </h1>
 
-            <p className="text-xs sm:text-sm text-muted-foreground max-w-2xl leading-relaxed">
-              {departmentInfo}. Your academic guardrails, peer bounties, and campus collaboration hub are running live.
+            <p className="text-xs sm:text-sm text-muted-foreground">
+              {departmentInfo}. Your campus utilities, attendance metrics, and active orders are listed below.
             </p>
           </div>
 
-          {/* Quick Action Hub Buttons */}
-          <div className="flex flex-wrap items-center gap-3">
-            <Link href="/gigs">
-              <Button size="md" leftIcon={<Briefcase className="w-4 h-4" />}>
-                Browse Gigs
+          <div className="flex flex-wrap items-center gap-2.5">
+            <Link href="/print-station">
+              <Button size="md" leftIcon={<Printer className="w-4 h-4" />}>
+                New Print Job
               </Button>
             </Link>
             <Link href="/attendance">
               <Button variant="outline" size="md" leftIcon={<CalendarCheck className="w-4 h-4" />}>
-                Check 75% Rule
+                Check Attendance
               </Button>
             </Link>
           </div>
         </div>
+      </Card>
+
+      {/* 2. Operational Metrics Overview */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <Card className="p-4 sm:p-5 space-y-2">
+          <div className="flex items-center justify-between text-muted-foreground">
+            <span className="text-xs font-medium">Pending Prints</span>
+            <Printer className="w-4 h-4 text-primary" />
+          </div>
+          <div className="text-2xl font-bold font-heading text-foreground">
+            {stats?.activePrintOrders ?? stats?.activePrintJobs ?? 0}
+          </div>
+          <p className="text-[11px] text-muted-foreground">Active delivery queue</p>
+        </Card>
+
+        <Card className="p-4 sm:p-5 space-y-2">
+          <div className="flex items-center justify-between text-muted-foreground">
+            <span className="text-xs font-medium">Attendance Safety</span>
+            <CalendarCheck className="w-4 h-4 text-emerald-500" />
+          </div>
+          <div className="text-2xl font-bold font-heading text-foreground">
+            {stats?.attendancePercentage !== undefined ? `${stats.attendancePercentage}%` : "Track"}
+          </div>
+          <p className="text-[11px] text-muted-foreground">Average across logged courses</p>
+        </Card>
+
+        <Card className="p-4 sm:p-5 space-y-2">
+          <div className="flex items-center justify-between text-muted-foreground">
+            <span className="text-xs font-medium">Open Tasks</span>
+            <Briefcase className="w-4 h-4 text-primary" />
+          </div>
+          <div className="text-2xl font-bold font-heading text-foreground">
+            {latestGigs.length}
+          </div>
+          <p className="text-[11px] text-muted-foreground">Available campus bounties</p>
+        </Card>
+
+        <Card className="p-4 sm:p-5 space-y-2">
+          <div className="flex items-center justify-between text-muted-foreground">
+            <span className="text-xs font-medium">Campus Listings</span>
+            <ShoppingBag className="w-4 h-4 text-primary" />
+          </div>
+          <div className="text-2xl font-bold font-heading text-foreground">
+            {stats?.activeListings ?? recentMarketplace.length}
+          </div>
+          <p className="text-[11px] text-muted-foreground">Active student items</p>
+        </Card>
       </div>
 
-      {/* Freelancer Cooldown Banner (Anti-Hoarding Guardrail) */}
-      {isOnCooldown && (
-        <div className="p-4 rounded-xl bg-destructive/10 border border-destructive/30 text-destructive flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <AlertTriangle className="w-5 h-5 shrink-0" />
-            <div>
-              <p className="text-xs font-bold">Freelancer Task Cooldown Active</p>
-              <p className="text-[11px] text-destructive/80">
-                You abandoned a claimed gig. To ensure peer trust, you cannot claim new tasks for another{" "}
-                <span className="font-extrabold">{cooldownHoursRemaining} hour(s)</span>.
-              </p>
+      {/* 3. Two-Column Live Activity Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Left Column: Gigs & Marketplace */}
+        <div className="space-y-6">
+          {/* Active Gigs */}
+          <Card className="p-5 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-border">
+              <div className="flex items-center gap-2">
+                <Briefcase className="w-4 h-4 text-primary" />
+                <h3 className="font-heading font-bold text-sm text-foreground">
+                  Available Campus Gigs
+                </h3>
+              </div>
+              <Link href="/gigs" className="text-xs font-semibold text-primary hover:underline">
+                View All
+              </Link>
             </div>
-          </div>
+
+            {loading ? (
+              <div className="space-y-2">
+                {[1, 2].map((i) => (
+                  <div key={i} className="h-14 rounded-lg bg-secondary/60 animate-pulse" />
+                ))}
+              </div>
+            ) : latestGigs.length === 0 ? (
+              <p className="text-xs text-muted-foreground py-4 text-center">
+                No active tasks posted at the moment.
+              </p>
+            ) : (
+              <div className="space-y-2.5">
+                {latestGigs.map((gig) => (
+                  <Link
+                    key={gig.id}
+                    href={`/gigs/${gig.id}`}
+                    className="block p-3 rounded-lg border border-border bg-card/60 hover:bg-secondary/50 transition-colors fluid-interactive"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="space-y-1 min-w-0">
+                        <div className="font-semibold text-xs text-foreground truncate">
+                          {gig.title}
+                        </div>
+                        <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                          <Badge variant="secondary" size="sm">
+                            {gig.category}
+                          </Badge>
+                          <span>{gig.deadline ? formatDate(gig.deadline) : "Flexible"}</span>
+                        </div>
+                      </div>
+                      <span className="text-xs font-bold text-foreground flex-shrink-0">
+                        {formatPaiseToRupees(gig.budget ?? gig.budgetPaise)}
+                      </span>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </Card>
+
+          {/* Student Marketplace Listings */}
+          <Card className="p-5 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-border">
+              <div className="flex items-center gap-2">
+                <ShoppingBag className="w-4 h-4 text-primary" />
+                <h3 className="font-heading font-bold text-sm text-foreground">
+                  Campus Marketplace
+                </h3>
+              </div>
+              <Link href="/marketplace" className="text-xs font-semibold text-primary hover:underline">
+                Browse Items
+              </Link>
+            </div>
+
+            {loading ? (
+              <div className="grid grid-cols-2 gap-2.5">
+                {[1, 2].map((i) => (
+                  <div key={i} className="h-20 rounded-lg bg-secondary/60 animate-pulse" />
+                ))}
+              </div>
+            ) : recentMarketplace.length === 0 ? (
+              <p className="text-xs text-muted-foreground py-4 text-center">
+                No classified listings currently available.
+              </p>
+            ) : (
+              <div className="grid grid-cols-2 gap-2.5">
+                {recentMarketplace.map((item) => (
+                  <Link
+                    key={item.id}
+                    href="/marketplace"
+                    className="p-3 rounded-lg border border-border bg-card/60 hover:bg-secondary/50 transition-colors space-y-1.5 fluid-interactive"
+                  >
+                    <div className="font-semibold text-xs text-foreground truncate">
+                      {item.title}
+                    </div>
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="font-bold text-foreground">
+                        {formatPaiseToRupees(item.price ?? item.pricePaise)}
+                      </span>
+                      <Badge variant="outline" size="sm">
+                        {item.condition.replace("_", " ")}
+                      </Badge>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </Card>
         </div>
-      )}
 
-      {/* Live Campus Metrics Strip */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <Card className="p-4 flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-secondary text-foreground flex items-center justify-center border border-border shrink-0">
-            <Briefcase className="w-4 h-4" />
-          </div>
-          <div className="min-w-0">
-            <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider truncate">
-              Open Bounties
-            </p>
-            <p className="text-xl font-bold text-foreground">
-              {stats?.activeGigsCount ?? latestGigs.length}
-            </p>
-          </div>
-        </Card>
-
-        <Card className="p-4 flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-secondary text-foreground flex items-center justify-center border border-border shrink-0">
-            <Printer className="w-4 h-4" />
-          </div>
-          <div className="min-w-0">
-            <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider truncate">
-              Print Orders
-            </p>
-            <p className="text-xl font-bold text-foreground">
-              {stats?.activePrintOrdersCount ?? 0}
-            </p>
-          </div>
-        </Card>
-
-        <Card className="p-4 flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-secondary text-foreground flex items-center justify-center border border-border shrink-0">
-            <ShoppingBag className="w-4 h-4" />
-          </div>
-          <div className="min-w-0">
-            <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider truncate">
-              Market Deals
-            </p>
-            <p className="text-xl font-bold text-foreground">
-              {recentMarketplace.length}
-            </p>
-          </div>
-        </Card>
-
-        <Card className="p-4 flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-secondary text-foreground flex items-center justify-center border border-border shrink-0">
-            <EyeOff className="w-4 h-4" />
-          </div>
-          <div className="min-w-0">
-            <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider truncate">
-              Whisper Posts
-            </p>
-            <p className="text-xl font-bold text-foreground">
-              {trendingWhispers.length}
-            </p>
-          </div>
-        </Card>
-      </div>
-
-      {/* Feature Navigation Modules Grid */}
-      <div className="space-y-4">
-        <div>
-          <h2 className="text-lg font-bold tracking-tight text-foreground font-heading">
-            University Ecosystem Modules
-          </h2>
-          <p className="text-xs text-muted-foreground">
-            Access your student tools, campus peer market, and academic calculators.
-          </p>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {/* Module 1: Print Station */}
-          <Link href="/print-station">
-            <Card className="h-full p-5 hover:border-foreground/40 transition-colors group">
-              <div className="w-9 h-9 rounded-lg bg-secondary text-foreground flex items-center justify-center mb-3 group-hover:scale-105 transition-transform border border-border">
-                <Printer className="w-4 h-4" />
-              </div>
-              <div className="flex items-center justify-between mb-1">
-                <h3 className="text-sm font-bold text-foreground group-hover:underline">
-                  Campus Print Station
+        {/* Right Column: Whisper Wall & Rideshare */}
+        <div className="space-y-6">
+          {/* Anonymous Whisper Feed Preview */}
+          <Card className="p-5 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-border">
+              <div className="flex items-center gap-2">
+                <EyeOff className="w-4 h-4 text-primary" />
+                <h3 className="font-heading font-bold text-sm text-foreground">
+                  Campus Whispers
                 </h3>
-                <ArrowRight className="w-3.5 h-3.5 text-muted-foreground group-hover:translate-x-0.5 transition-transform" />
               </div>
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                Direct PDF uploads with automated page counting and next-day delivery anywhere in campus.
-              </p>
-            </Card>
-          </Link>
+              <Link href="/incognito" className="text-xs font-semibold text-primary hover:underline">
+                Open Wall
+              </Link>
+            </div>
 
-          {/* Module 2: Gig Hub */}
-          <Link href="/gigs">
-            <Card className="h-full p-5 hover:border-foreground/40 transition-colors group">
-              <div className="w-9 h-9 rounded-lg bg-secondary text-foreground flex items-center justify-center mb-3 group-hover:scale-105 transition-transform border border-border">
-                <Briefcase className="w-4 h-4" />
+            {loading ? (
+              <div className="space-y-2">
+                {[1, 2].map((i) => (
+                  <div key={i} className="h-16 rounded-lg bg-secondary/60 animate-pulse" />
+                ))}
               </div>
-              <div className="flex items-center justify-between mb-1">
-                <h3 className="text-sm font-bold text-foreground group-hover:underline">
-                  Peer Gig Hub
-                </h3>
-                <ArrowRight className="w-3.5 h-3.5 text-muted-foreground group-hover:translate-x-0.5 transition-transform" />
-              </div>
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                Managed Escrow task freelancing with 60% anti-ghosting guarantees and anonymous claims.
+            ) : trendingWhispers.length === 0 ? (
+              <p className="text-xs text-muted-foreground py-4 text-center">
+                No whispers posted yet on this campus feed.
               </p>
-            </Card>
-          </Link>
+            ) : (
+              <div className="space-y-2.5">
+                {trendingWhispers.map((whisper) => (
+                  <Link
+                    key={whisper.id}
+                    href={`/incognito/${whisper.id}`}
+                    className="block p-3 rounded-lg border border-border bg-card/60 hover:bg-secondary/50 transition-colors space-y-1.5 fluid-interactive"
+                  >
+                    <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                      <span className="font-mono text-foreground font-medium">
+                        @{whisper.authorHandle}
+                      </span>
+                      <span>{formatDate(whisper.createdAt)}</span>
+                    </div>
+                    <p className="text-xs text-foreground line-clamp-2 leading-relaxed">
+                      {whisper.content}
+                    </p>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </Card>
 
-          {/* Module 3: Attendance Guardrail */}
-          <Link href="/attendance">
-            <Card className="h-full p-5 hover:border-foreground/40 transition-colors group">
-              <div className="w-9 h-9 rounded-lg bg-secondary text-foreground flex items-center justify-center mb-3 group-hover:scale-105 transition-transform border border-border">
-                <CalendarCheck className="w-4 h-4" />
-              </div>
-              <div className="flex items-center justify-between mb-1">
-                <h3 className="text-sm font-bold text-foreground group-hover:underline">
-                  75% Attendance Rule
+          {/* Upcoming Cab Splits */}
+          <Card className="p-5 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-border">
+              <div className="flex items-center gap-2">
+                <Car className="w-4 h-4 text-primary" />
+                <h3 className="font-heading font-bold text-sm text-foreground">
+                  Active Cab & Auto Splits
                 </h3>
-                <ArrowRight className="w-3.5 h-3.5 text-muted-foreground group-hover:translate-x-0.5 transition-transform" />
               </div>
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                Real-time bunk calculators and minimum attendance alerts to prevent exam detentions.
-              </p>
-            </Card>
-          </Link>
+              <Link href="/rideshare" className="text-xs font-semibold text-primary hover:underline">
+                All Rides
+              </Link>
+            </div>
 
-          {/* Module 4: CGPA Tracker */}
-          <Link href="/cgpa">
-            <Card className="h-full p-5 hover:border-foreground/40 transition-colors group">
-              <div className="w-9 h-9 rounded-lg bg-secondary text-foreground flex items-center justify-center mb-3 group-hover:scale-105 transition-transform border border-border">
-                <GraduationCap className="w-4 h-4" />
+            {loading ? (
+              <div className="space-y-2">
+                {[1, 2].map((i) => (
+                  <div key={i} className="h-14 rounded-lg bg-secondary/60 animate-pulse" />
+                ))}
               </div>
-              <div className="flex items-center justify-between mb-1">
-                <h3 className="text-sm font-bold text-foreground group-hover:underline">
-                  CGPA Predictor
-                </h3>
-                <ArrowRight className="w-3.5 h-3.5 text-muted-foreground group-hover:translate-x-0.5 transition-transform" />
-              </div>
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                Credit-weighted SGPA forecasting and target grade calculators for placement prep.
+            ) : upcomingRides.length === 0 ? (
+              <p className="text-xs text-muted-foreground py-4 text-center">
+                No split trips scheduled for today.
               </p>
-            </Card>
-          </Link>
-
-          {/* Module 5: Lost & Found */}
-          <Link href="/lost-and-found">
-            <Card className="h-full p-5 hover:border-foreground/40 transition-colors group">
-              <div className="w-9 h-9 rounded-lg bg-secondary text-foreground flex items-center justify-center mb-3 group-hover:scale-105 transition-transform border border-border">
-                <Search className="w-4 h-4" />
+            ) : (
+              <div className="space-y-2.5">
+                {upcomingRides.map((ride) => (
+                  <Link
+                    key={ride.id}
+                    href="/rideshare"
+                    className="block p-3 rounded-lg border border-border bg-card/60 hover:bg-secondary/50 transition-colors fluid-interactive"
+                  >
+                    <div className="flex items-center justify-between text-xs">
+                      <div className="font-semibold text-foreground truncate">
+                        {ride.origin} to {ride.destination}
+                      </div>
+                      <span className="font-bold text-foreground">
+                        {formatPaiseToRupees(ride.splitCostEstimate ?? ride.splitCostEstimatePaise)}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-[11px] text-muted-foreground mt-1">
+                      <span>{formatDate(ride.departureTime)}</span>
+                      <span>{ride.availableSeats} seat(s) open</span>
+                    </div>
+                  </Link>
+                ))}
               </div>
-              <div className="flex items-center justify-between mb-1">
-                <h3 className="text-sm font-bold text-foreground group-hover:underline">
-                  Lost & Found
-                </h3>
-                <ArrowRight className="w-3.5 h-3.5 text-muted-foreground group-hover:translate-x-0.5 transition-transform" />
-              </div>
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                Instant photo uploads and direct chat claims for misplaced campus items.
-              </p>
-            </Card>
-          </Link>
-
-          {/* Module 6: Cab Split */}
-          <Link href="/rideshare">
-            <Card className="h-full p-5 hover:border-foreground/40 transition-colors group">
-              <div className="w-9 h-9 rounded-lg bg-secondary text-foreground flex items-center justify-center mb-3 group-hover:scale-105 transition-transform border border-border">
-                <Car className="w-4 h-4" />
-              </div>
-              <div className="flex items-center justify-between mb-1">
-                <h3 className="text-sm font-bold text-foreground group-hover:underline">
-                  Airport Cab Split
-                </h3>
-                <ArrowRight className="w-3.5 h-3.5 text-muted-foreground group-hover:translate-x-0.5 transition-transform" />
-              </div>
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                Share airport and railway cab fares. Auto-sorted by closest departure times.
-              </p>
-            </Card>
-          </Link>
-
-          {/* Module 7: Whisper Wall */}
-          <Link href="/incognito">
-            <Card className="h-full p-5 hover:border-foreground/40 transition-colors group">
-              <div className="w-9 h-9 rounded-lg bg-secondary text-foreground flex items-center justify-center mb-3 group-hover:scale-105 transition-transform border border-border">
-                <EyeOff className="w-4 h-4" />
-              </div>
-              <div className="flex items-center justify-between mb-1">
-                <h3 className="text-sm font-bold text-foreground group-hover:underline">
-                  Whisper Wall
-                </h3>
-                <ArrowRight className="w-3.5 h-3.5 text-muted-foreground group-hover:translate-x-0.5 transition-transform" />
-              </div>
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                Zero-knowledge anonymous student confession feed, memes, and campus secrets.
-              </p>
-            </Card>
-          </Link>
-
-          {/* Module 8: Marketplace */}
-          <Link href="/marketplace">
-            <Card className="h-full p-5 hover:border-foreground/40 transition-colors group">
-              <div className="w-9 h-9 rounded-lg bg-secondary text-foreground flex items-center justify-center mb-3 group-hover:scale-105 transition-transform border border-border">
-                <ShoppingBag className="w-4 h-4" />
-              </div>
-              <div className="flex items-center justify-between mb-1">
-                <h3 className="text-sm font-bold text-foreground group-hover:underline">
-                  Marketplace
-                </h3>
-                <ArrowRight className="w-3.5 h-3.5 text-muted-foreground group-hover:translate-x-0.5 transition-transform" />
-              </div>
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                Buy and sell second-hand course textbooks, lab kits, cycles, and hostel gear.
-              </p>
-            </Card>
-          </Link>
+            )}
+          </Card>
         </div>
       </div>
     </div>

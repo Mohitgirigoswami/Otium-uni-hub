@@ -2,8 +2,9 @@
 
 import React, { useState, useRef } from "react";
 import { getCloudinarySignature } from "@/actions/upload.actions";
-import { UploadCloud, Image as ImageIcon, X, Loader2, CheckCircle2 } from "lucide-react";
+import { UploadCloud, Image as ImageIcon, X, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { Button } from "./button";
 
 interface ImageUploadDropzoneProps {
   onImageUploaded: (url: string) => void;
@@ -19,7 +20,7 @@ export function ImageUploadDropzone({
   onUploadingChange,
   existingImageUrl,
   folder = "otium_marketplace",
-  label = "Upload Item Photograph",
+  label = "Upload Photograph",
   required = false,
 }: ImageUploadDropzoneProps) {
   const [isUploading, setIsUploading] = useState(false);
@@ -34,7 +35,7 @@ export function ImageUploadDropzone({
 
   const uploadFile = async (file: File) => {
     if (!file.type.startsWith("image/")) {
-      toast.error("Please select a valid image file (JPG, PNG, WebP, etc.)");
+      toast.error("Please select an image file (JPG, PNG, WebP)");
       return;
     }
 
@@ -43,21 +44,18 @@ export function ImageUploadDropzone({
       return;
     }
 
-    // Local instant preview
     const localUrl = URL.createObjectURL(file);
     setPreviewUrl(localUrl);
     setUploading(true);
 
     try {
-      // 1. Fetch cryptographic signature from Next.js Server Action
       const sigRes = await getCloudinarySignature(folder);
       if (!sigRes.success || !sigRes.data) {
-        throw new Error(sigRes.error || "Failed to generate Cloudinary signature.");
+        throw new Error(sigRes.error || "Failed to generate image upload signature.");
       }
 
       const { timestamp, signature, apiKey, cloudName } = sigRes.data;
 
-      // 2. Direct-to-Cloud Upload: Client executes direct multipart POST to Cloudinary API
       const formData = new FormData();
       formData.append("file", file);
       formData.append("api_key", apiKey);
@@ -66,7 +64,6 @@ export function ImageUploadDropzone({
       formData.append("folder", folder);
 
       const cloudinaryUploadUrl = `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`;
-
       const uploadResponse = await fetch(cloudinaryUploadUrl, {
         method: "POST",
         body: formData,
@@ -82,9 +79,9 @@ export function ImageUploadDropzone({
 
       setPreviewUrl(secureUrl);
       onImageUploaded(secureUrl);
-      toast.success("Image uploaded directly to cloud!");
+      toast.success("Image uploaded successfully.");
     } catch (err: any) {
-      console.error("Direct Cloudinary upload error:", err);
+      console.error("Direct image upload error:", err);
       toast.error(err.message || "Failed to upload image.");
       setPreviewUrl(null);
       onImageUploaded("");
@@ -93,113 +90,99 @@ export function ImageUploadDropzone({
     }
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      uploadFile(file);
-    }
-  };
-
-  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    setIsDragOver(false);
-    const file = e.dataTransfer.files?.[0];
-    if (file) {
-      uploadFile(file);
-    }
-  };
-
-  const handleRemove = (e: React.MouseEvent) => {
+  const handleClear = (e: React.MouseEvent) => {
     e.stopPropagation();
     setPreviewUrl(null);
     onImageUploaded("");
-    if (fileInputRef.current) fileInputRef.current.value = "";
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
   };
 
   return (
-    <div className="space-y-1.5">
+    <div className="space-y-2">
       {label && (
-        <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">
-          {label} {required && "*"}
+        <label className="block text-xs font-semibold text-foreground uppercase tracking-wider">
+          {label} {required && <span className="text-destructive">*</span>}
         </label>
       )}
 
-      <div
-        onClick={() => !isUploading && fileInputRef.current?.click()}
-        onDragOver={(e) => {
-          e.preventDefault();
-          setIsDragOver(true);
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) uploadFile(file);
         }}
-        onDragLeave={() => setIsDragOver(false)}
-        onDrop={handleDrop}
-        className={`relative border-2 border-dashed rounded-2xl p-4 transition-all text-center cursor-pointer overflow-hidden ${
-          isDragOver
-            ? "border-brand-500 bg-brand-500/10"
-            : previewUrl
-            ? "border-slate-300 dark:border-slate-700 bg-slate-100/50 dark:bg-slate-800/40"
-            : "border-slate-300 dark:border-slate-700 hover:border-brand-500 bg-slate-50/50 dark:bg-slate-800/20"
-        }`}
-      >
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          onChange={handleFileChange}
-          className="hidden"
-          disabled={isUploading}
-        />
+      />
 
-        {previewUrl ? (
-          <div className="relative group">
-            <div className="h-44 w-full rounded-xl overflow-hidden bg-slate-900 flex items-center justify-center">
-              <img
-                src={previewUrl}
-                alt="Uploaded preview"
-                className="w-full h-full object-cover"
-              />
+      {previewUrl ? (
+        <div className="relative rounded-xl overflow-hidden border border-border bg-card group aspect-video max-h-56">
+          <img
+            src={previewUrl}
+            alt="Upload preview"
+            className="w-full h-full object-cover"
+          />
+
+          {isUploading ? (
+            <div className="absolute inset-0 bg-black/60 flex items-center justify-center text-white gap-2 text-xs font-medium">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              <span>Uploading to cloud...</span>
             </div>
-
-            {/* Direct Upload Status Badge */}
-            <div className="absolute top-2 left-2 px-2.5 py-1 rounded-lg bg-emerald-600/90 text-white text-[11px] font-bold flex items-center gap-1 shadow-md">
-              <CheckCircle2 className="w-3.5 h-3.5" />
-              <span>Direct-to-Cloud Uploaded</span>
-            </div>
-
-            {/* Remove Button */}
-            {!isUploading && (
+          ) : (
+            <div className="absolute top-2 right-2 flex items-center gap-1.5 opacity-90 group-hover:opacity-100 transition-opacity">
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                Change
+              </Button>
               <button
                 type="button"
-                onClick={handleRemove}
-                className="absolute top-2 right-2 p-1.5 rounded-lg bg-slate-950/80 hover:bg-rose-600 text-white transition-colors shadow-md"
-                title="Remove image"
+                onClick={handleClear}
+                className="p-1.5 rounded-lg bg-black/70 hover:bg-destructive text-white transition-colors"
+                aria-label="Remove image"
               >
                 <X className="w-4 h-4" />
               </button>
-            )}
-
-            {isUploading && (
-              <div className="absolute inset-0 bg-slate-950/70 backdrop-blur-sm rounded-xl flex flex-col items-center justify-center text-white space-y-2">
-                <Loader2 className="w-8 h-8 animate-spin text-brand-400" />
-                <p className="text-xs font-bold">Uploading directly to Cloudinary...</p>
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="py-6 space-y-2">
-            <div className="w-12 h-12 mx-auto rounded-2xl bg-brand-500/10 flex items-center justify-center text-brand-500">
-              <UploadCloud className="w-6 h-6" />
             </div>
-            <div>
-              <p className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                Click or drag & drop image here
-              </p>
-              <p className="text-[11px] text-slate-400 mt-0.5">
-                Direct Cloudinary upload (JPG, PNG, WebP up to 10MB)
-              </p>
-            </div>
+          )}
+        </div>
+      ) : (
+        <div
+          onClick={() => fileInputRef.current?.click()}
+          onDragOver={(e) => {
+            e.preventDefault();
+            setIsDragOver(true);
+          }}
+          onDragLeave={() => setIsDragOver(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setIsDragOver(false);
+            const file = e.dataTransfer.files?.[0];
+            if (file) uploadFile(file);
+          }}
+          className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-all fluid-interactive ${
+            isDragOver
+              ? "border-primary bg-primary/10"
+              : "border-border bg-card/60 hover:border-primary/50 hover:bg-secondary/40"
+          }`}
+        >
+          <div className="w-10 h-10 rounded-lg bg-secondary text-primary mx-auto flex items-center justify-center mb-2 border border-border">
+            <ImageIcon className="w-5 h-5" />
           </div>
-        )}
-      </div>
+          <p className="text-xs sm:text-sm font-semibold text-foreground">
+            Click to upload photograph or drag & drop
+          </p>
+          <p className="text-[11px] text-muted-foreground mt-1">
+            PNG, JPG, WebP up to 10MB
+          </p>
+        </div>
+      )}
     </div>
   );
 }

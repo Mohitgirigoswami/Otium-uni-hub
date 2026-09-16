@@ -2,44 +2,28 @@
 
 import React from "react";
 import { useFormStatus } from "react-dom";
-import { Button } from "./Button";
+import { Button, ButtonProps } from "./button";
 
-interface SubmitButtonProps {
-  children: React.ReactNode;
+interface SubmitButtonProps extends ButtonProps {
   loadingText?: string;
-  className?: string;
-  variant?: "primary" | "secondary" | "outline" | "ghost" | "danger" | "glass" | "brand";
-  size?: "sm" | "md" | "lg";
   isSubmitting?: boolean;
-  disabled?: boolean;
-  leftIcon?: React.ReactNode;
-  rightIcon?: React.ReactNode;
 }
 
 export function SubmitButton({
   children,
-  loadingText = "Submitting...",
-  className = "",
-  variant = "brand",
-  size = "md",
-  isSubmitting: manualLoading = false,
-  disabled = false,
-  leftIcon,
-  rightIcon,
+  loadingText = "Processing...",
+  isSubmitting = false,
+  ...props
 }: SubmitButtonProps) {
   const { pending } = useFormStatus();
-  const isLoading = pending || manualLoading;
+  const isLoading = pending || isSubmitting;
 
   return (
     <Button
       type="submit"
-      variant={variant}
-      size={size}
+      disabled={isLoading || props.disabled}
       isLoading={isLoading}
-      disabled={disabled || isLoading}
-      className={className}
-      leftIcon={leftIcon}
-      rightIcon={rightIcon}
+      {...props}
     >
       {isLoading ? loadingText : children}
     </Button>

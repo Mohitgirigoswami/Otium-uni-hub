@@ -8,9 +8,10 @@ import {
   sendMessage,
 } from "@/actions/chat.actions";
 import { supabase } from "@/lib/supabase-client";
-import { GlassCard } from "@/components/ui/GlassCard";
-import { Badge } from "@/components/ui/Badge";
-import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import {
   MessageSquare,
@@ -18,16 +19,13 @@ import {
   EyeOff,
   User,
   Search,
-  Bot,
-  ShieldCheck,
-  Circle,
-  Lock,
   CheckCheck,
   Loader2,
   ArrowLeft,
-  RotateCcw,
+  Lock,
 } from "lucide-react";
 import { useSearchParams } from "next/navigation";
+import { formatDate } from "@/lib/utils";
 
 export interface ChatMessage {
   id: string;
@@ -55,8 +53,7 @@ function MessagesContent() {
   const [inputMessage, setInputMessage] = useState("");
   const [loadingConversations, setLoadingConversations] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
-  const [filterType, setFilterType] = useState<"ALL" | "DIRECT" | "ANONYMOUS">("ALL");
-  const [searchQuery, setSearchQuery] = useState("");
+  const [isSending, setIsSending] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -64,17 +61,13 @@ function MessagesContent() {
     messagesEndRef.current?.scrollIntoView({ behavior });
   };
 
-  // 1. Fetch Conversations
   const fetchConversations = async () => {
     if (!user) return;
     const res = await getUserConversations(user.id);
     if (res.success && res.data) {
       setConversations(res.data);
-      // On desktop, auto-select first conversation if none selected
-      if (typeof window !== "undefined" && window.innerWidth >= 768) {
-        if (!activeConversationId && res.data.length > 0) {
-          setActiveConversationId(res.data[0].id);
-        }
+      if (!activeConversationId && res.data.length > 0 && typeof window !== "undefined" && window.innerWidth >= 768) {
+        setActiveConversationId(res.data[0].id);
       }
     }
     setLoadingConversations(false);
@@ -82,19 +75,14 @@ function MessagesContent() {
 
   useEffect(() => {
     fetchConversations();
-  }, [user]);
+  }, [user?.id]);
 
-  // 2. Fetch Messages for active conversation
   const fetchActiveMessages = async (convId: string) => {
     if (!user) return;
     setLoadingMessages(true);
     const res = await getConversationMessages(convId, user.id);
     if (res.success && res.data) {
-      const serverMessages: ChatMessage[] = res.data.map((m: any) => ({
-        ...m,
-        status: "sent",
-      }));
-      setMessages(serverMessages);
+      setMessages(res.data);
     }
     setLoadingMessages(false);
     setTimeout(() => scrollToBottom("auto"), 80);
@@ -104,14 +92,14 @@ function MessagesContent() {
     if (activeConversationId) {
       fetchActiveMessages(activeConversationId);
     }
-  }, [activeConversationId, user]);
+  }, [activeConversationId, user?.id]);
 
-  // 3. Supabase Realtime Subscription with Deduplication
+  // Realtime listener
   useEffect(() => {
     if (!activeConversationId) return;
 
     const channel = supabase
-      .channel(`realtime:messages:${activeConversationId}`)
+      ?.channel(`conversation-${activeConversationId}`)
       .on(
         "postgres_changes",
         {
@@ -120,623 +108,284 @@ function MessagesContent() {
           table: "Message",
           filter: `conversationId=eq.${activeConversationId}`,
         },
-        async (payload: any) => {
-          if (payload.new) {
-            const incoming: ChatMessage = {
-              ...payload.new,
-              status: "sent",
-            };
-
-            setMessages((prev) => {
-              // Deduplication by Real DB ID
-              const exists = prev.some((m) => m.id === incoming.id);
-              if (exists) return prev;
-
-              // Deduplication by pending optimistic message
-              const pendingIndex = prev.findIndex(
-                (m) =>
-                  m.status === "sending" &&
-                  m.content === incoming.content &&
-                  (m.senderId === incoming.senderId || m.isMine)
-              );
-
-              if (pendingIndex !== -1) {
-                const updated = [...prev];
-                updated[pendingIndex] = incoming;
-                return updated;
-              }
-
-              return [...prev, incoming];
-            });
-            setTimeout(() => scrollToBottom("smooth"), 50);
+        (payload: any) => {
+          const newMsg = payload.new;
+          if (newMsg && newMsg.senderId !== user?.id) {
+            setMessages((prev) => [...prev, newMsg]);
+            scrollToBottom();
           }
         }
       )
       .subscribe();
 
-    // 3s fallback polling for network resilience
-    const interval = setInterval(() => {
-      if (activeConversationId && user) {
-        getConversationMessages(activeConversationId, user.id).then((res) => {
-          if (res.success && res.data) {
-            const freshData = res.data;
-            setMessages((prev) => {
-              const pending = prev.filter(
-                (m) => m.status === "sending" || m.status === "failed"
-              );
-              const serverMsgs: ChatMessage[] = freshData.map((m: any) => ({
-                ...m,
-                status: "sent",
-              }));
-
-              const merged = [...serverMsgs];
-              pending.forEach((p) => {
-                const alreadySynced = serverMsgs.some(
-                  (s) => s.id === p.id || s.content === p.content
-                );
-                if (!alreadySynced) {
-                  merged.push(p);
-                }
-              });
-
-              return merged;
-            });
-          }
-        });
-      }
-    }, 3000);
-
     return () => {
-      supabase.removeChannel(channel);
-      clearInterval(interval);
+      if (channel) {
+        supabase?.removeChannel(channel);
+      }
     };
-  }, [activeConversationId, user]);
+  }, [activeConversationId, user?.id]);
 
-  // 4. Optimistic UI & Send Action
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || !activeConversationId || !inputMessage.trim()) return;
+    if (!user || !activeConversationId || !inputMessage.trim() || isSending) return;
 
-    const textToSend = inputMessage.trim();
-    const tempId = `temp-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-
-    // Instant Zero-Latency Input Clear
+    const text = inputMessage.trim();
     setInputMessage("");
 
-    // Optimistic Message Dispatch
+    // Optimistic message
+    const tempId = `temp-${Date.now()}`;
     const optimisticMsg: ChatMessage = {
       id: tempId,
-      content: textToSend,
+      content: text,
       senderId: user.id,
       createdAt: new Date().toISOString(),
       status: "sending",
-      isMine: true,
-      conversationId: activeConversationId,
     };
 
     setMessages((prev) => [...prev, optimisticMsg]);
-    setTimeout(() => scrollToBottom("smooth"), 30);
+    scrollToBottom();
+    setIsSending(true);
 
-    try {
-      const res = await sendMessage({
-        conversationId: activeConversationId,
-        senderId: user.id,
-        content: textToSend,
-      });
+    const res = await sendMessage({
+      conversationId: activeConversationId,
+      senderId: user.id,
+      content: text,
+    });
+    setIsSending(false);
 
-      if (res.error) {
-        setMessages((prev) =>
-          prev.map((m) => (m.id === tempId ? { ...m, status: "failed" } : m))
-        );
-        toast.error(res.error || "Failed to deliver message.");
-      } else if (res.data) {
-        // Swap temporary client ID with persistent DB record ID
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === tempId
-              ? {
-                  ...res.data,
-                  status: "sent",
-                  isMine: true,
-                }
-              : m
-          )
-        );
-        fetchConversations();
-      }
-    } catch (err: any) {
+    if (res.error) {
+      toast.error(res.error);
+      setMessages((prev) => prev.filter((m) => m.id !== tempId));
+    } else if (res.data) {
       setMessages((prev) =>
-        prev.map((m) => (m.id === tempId ? { ...m, status: "failed" } : m))
+        prev.map((m) => (m.id === tempId ? res.data : m))
       );
-      toast.error("Network error: Message failed to send.");
-    }
-  };
-
-  // Retry sending a failed message
-  const handleRetryMessage = async (failedMsg: ChatMessage) => {
-    if (!user || !activeConversationId) return;
-
-    setMessages((prev) =>
-      prev.map((m) => (m.id === failedMsg.id ? { ...m, status: "sending" } : m))
-    );
-
-    try {
-      const res = await sendMessage({
-        conversationId: activeConversationId,
-        senderId: user.id,
-        content: failedMsg.content,
-      });
-
-      if (res.error) {
-        setMessages((prev) =>
-          prev.map((m) => (m.id === failedMsg.id ? { ...m, status: "failed" } : m))
-        );
-        toast.error(res.error || "Retry failed.");
-      } else if (res.data) {
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === failedMsg.id
-              ? {
-                  ...res.data,
-                  status: "sent",
-                  isMine: true,
-                }
-              : m
-          )
-        );
-      }
-    } catch (err) {
-      setMessages((prev) =>
-        prev.map((m) => (m.id === failedMsg.id ? { ...m, status: "failed" } : m))
-      );
-      toast.error("Retry network error.");
     }
   };
 
   const activeConv = conversations.find((c) => c.id === activeConversationId);
 
-  // Helper to get other participant details
-  const getOtherParticipant = (conv: any) => {
-    if (!conv) return null;
-    if (conv.otherParticipant) return conv.otherParticipant;
-    if (!user) return null;
-    return conv.participantOneId === user.id
-      ? conv.participantTwo
-      : conv.participantOne;
-  };
-
-  const otherParticipant = getOtherParticipant(activeConv);
-
-  // Filtered conversations
-  const filteredConversations = conversations.filter((c) => {
-    const isAnon = c.isAnonymousChat;
-    if (filterType === "DIRECT" && isAnon) return false;
-    if (filterType === "ANONYMOUS" && !isAnon) return false;
-
-    const other = getOtherParticipant(c);
-    const searchTarget = isAnon
-      ? other?.incognitoProfile?.handle || ""
-      : other?.name || "";
-    return searchTarget.toLowerCase().includes(searchQuery.toLowerCase());
-  });
-
-  // Reusable Chat Room Content Component
-  const renderChatRoom = (showMobileBack: boolean = false) => {
-    if (!activeConv) {
-      return (
-        <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-slate-400 space-y-3">
-          <div className="w-14 h-14 rounded-2xl bg-brand-500/10 text-brand-500 flex items-center justify-center">
-            <MessageSquare className="w-7 h-7" />
-          </div>
-          <h3 className="text-base font-bold text-slate-900 dark:text-white">
-            Select a Conversation
-          </h3>
-          <p className="text-xs max-w-sm">
-            Choose a peer thread from the sidebar or initiate a direct chat from Marketplace, Gig bounty, or the Whisper Wall.
-          </p>
-        </div>
-      );
+  // Helper to determine recipient name
+  const getRecipientInfo = (conv: any) => {
+    if (!conv) return { name: "Chat", isAnon: false };
+    if (conv.isAnonymous) {
+      return {
+        name: conv.incognitoProfile?.handle || "Anonymous Whisperer",
+        isAnon: true,
+      };
     }
-
-    return (
-      <div className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50 dark:bg-slate-950">
-        {/* Sticky Header with Back Button */}
-        <div className="p-2.5 sm:p-3.5 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-white/95 dark:bg-slate-900/95 backdrop-blur-md sticky top-0 z-20 shrink-0">
-          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-            {showMobileBack && (
-              <button
-                onClick={() => setActiveConversationId(null)}
-                className="p-2 -ml-1 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center shrink-0"
-                title="Back to all conversations"
-                aria-label="Back to conversations"
-              >
-                <ArrowLeft className="w-5 h-5" />
-              </button>
-            )}
-
-            <img
-              src={
-                activeConv.isAnonymousChat
-                  ? otherParticipant?.incognitoProfile?.avatarUrl ||
-                    `https://api.dicebear.com/9.x/bottts/svg?seed=${encodeURIComponent(
-                      otherParticipant?.incognitoProfile?.handle || "Anon"
-                    )}`
-                  : otherParticipant?.image ||
-                    "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&auto=format&fit=crop&q=80"
-              }
-              alt="Recipient"
-              className={`w-8 h-8 sm:w-9 sm:h-9 rounded-full object-cover bg-slate-800 shrink-0 ${
-                activeConv.isAnonymousChat ? "p-0.5 ring-2 ring-purple-500" : ""
-              }`}
-            />
-            <div className="min-w-0">
-              <div className="flex items-center gap-1.5 sm:gap-2">
-                <p className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white truncate max-w-[130px] sm:max-w-[240px]">
-                  {activeConv.isAnonymousChat
-                    ? `@${otherParticipant?.incognitoProfile?.handle || "AnonStudent"}`
-                    : otherParticipant?.name || "Student"}
-                </p>
-                {activeConv.isAnonymousChat ? (
-                  <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-purple-950 border border-purple-500/60 text-[9px] font-black text-purple-200 shrink-0">
-                    <EyeOff className="w-2.5 h-2.5 text-purple-400" />
-                    <span>ANON</span>
-                  </span>
-                ) : null}
-              </div>
-              <p className="text-[10px] text-emerald-500 font-semibold flex items-center gap-1">
-                <Circle className="w-1.5 h-1.5 fill-current animate-pulse" />
-                <span>Encrypted Stream</span>
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2 shrink-0">
-            {activeConv.isAnonymousChat ? (
-              <span className="text-[10px] font-bold text-purple-400 bg-purple-500/10 px-2 py-1 rounded-lg border border-purple-500/20 flex items-center gap-1">
-                <Lock className="w-3 h-3" />
-                <span className="hidden sm:inline">100% Anonymous</span>
-              </span>
-            ) : (
-              <Badge variant="brand" size="sm">
-                Peer Chat
-              </Badge>
-            )}
-          </div>
-        </div>
-
-        {/* Message Feed Container */}
-        <div className="flex-1 p-3 sm:p-4 overflow-y-auto space-y-3 chat-scroll-container overscroll-contain">
-          {/* Security Announcement Banner */}
-          <div
-            className={`max-w-md mx-auto p-2 rounded-xl border text-center ${
-              activeConv.isAnonymousChat
-                ? "bg-purple-950/40 border-purple-500/30 text-purple-300"
-                : "bg-slate-200/50 dark:bg-slate-800/40 border-slate-300 dark:border-slate-700/60 text-slate-400"
-            }`}
-          >
-            <p className="text-[10px] flex items-center justify-center gap-1.5 font-medium">
-              <ShieldCheck className="w-3.5 h-3.5 text-brand-400 shrink-0" />
-              <span>
-                {activeConv.isAnonymousChat
-                  ? "Anonymous Mode: Real names and university emails are completely hidden."
-                  : "Direct student chat with instant optimistic delivery."}
-              </span>
-            </p>
-          </div>
-
-          {loadingMessages ? (
-            <div className="space-y-3 py-4">
-              {[1, 2, 3].map((i) => (
-                <div
-                  key={i}
-                  className={`h-10 w-44 rounded-2xl bg-slate-200/60 dark:bg-slate-800 animate-pulse ${
-                    i % 2 === 0 ? "ml-auto" : ""
-                  }`}
-                />
-              ))}
-            </div>
-          ) : messages.length === 0 ? (
-            <div className="text-center py-16 text-xs text-slate-400 space-y-2">
-              <Bot className="w-8 h-8 mx-auto text-slate-500 opacity-40" />
-              <p>No messages in this chat yet.</p>
-              <p className="text-[10px] text-slate-500">
-                Send a message below to kick off the conversation!
-              </p>
-            </div>
-          ) : (
-            messages.map((msg) => {
-              const isMyMessage =
-                msg.isMine !== undefined
-                  ? msg.isMine
-                  : msg.senderId === user?.id;
-              const isAnon = activeConv.isAnonymousChat;
-
-              const senderDisplayName = isMyMessage
-                ? "You"
-                : isAnon
-                ? `@${msg.sender?.incognitoProfile?.handle || "AnonStudent"}`
-                : msg.sender?.name || "Student";
-
-              return (
-                <div
-                  key={msg.id}
-                  className={`flex flex-col ${
-                    isMyMessage ? "items-end" : "items-start"
-                  } w-full`}
-                >
-                  <span className="text-[10px] text-slate-400 mb-0.5 px-1">
-                    {senderDisplayName}
-                  </span>
-
-                  <div
-                    className={`max-w-[80%] sm:max-w-md px-3.5 py-2.5 rounded-2xl text-xs sm:text-sm leading-relaxed shadow-sm transition-all break-words ${
-                      isMyMessage
-                        ? msg.status === "failed"
-                          ? "bg-red-500/10 border border-red-500/50 text-red-200 rounded-tr-none"
-                          : isAnon
-                          ? "bg-purple-700 text-white rounded-tr-none"
-                          : "bg-brand-600 text-white rounded-tr-none"
-                        : isAnon
-                        ? "bg-slate-900 text-slate-100 border border-purple-500/30 rounded-tl-none"
-                        : "bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 border border-slate-200 dark:border-slate-700/60 rounded-tl-none"
-                    }`}
-                  >
-                    <p className="whitespace-pre-wrap break-words">{msg.content}</p>
-
-                    {/* Delivery Status & Actionable Failed Indicator */}
-                    <div
-                      className={`text-[9px] mt-1 flex items-center justify-end gap-1.5 ${
-                        isMyMessage
-                          ? msg.status === "failed"
-                            ? "text-red-300"
-                            : "text-purple-200 dark:text-purple-300"
-                          : "text-slate-400"
-                      }`}
-                    >
-                      <span>
-                        {new Date(msg.createdAt).toLocaleTimeString([], {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </span>
-
-                      {isMyMessage && (
-                        <span className="inline-flex items-center">
-                          {msg.status === "sending" ? (
-                            <span className="inline-flex items-center gap-1 text-white/80">
-                              <Loader2 className="w-2.5 h-2.5 animate-spin" />
-                              <span className="text-[8px]">Sending</span>
-                            </span>
-                          ) : msg.status === "failed" ? (
-                            <button
-                              type="button"
-                              onClick={() => handleRetryMessage(msg)}
-                              className="inline-flex items-center gap-1 text-red-300 hover:text-red-100 font-bold bg-red-500/20 px-1.5 py-0.5 rounded cursor-pointer transition-colors"
-                              title="Click to retry sending"
-                            >
-                              <RotateCcw className="w-2.5 h-2.5 animate-spin" />
-                              <span>Failed. Tap to retry</span>
-                            </button>
-                          ) : (
-                            <CheckCheck className="w-3 h-3 text-emerald-300" />
-                          )}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              );
-            })
-          )}
-          <div ref={messagesEndRef} />
-        </div>
-
-        {/* Fixed Bottom Input Bar (Touch Target >= 48px) */}
-        <form
-          onSubmit={handleSendMessage}
-          className="p-2 sm:p-3 border-t border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-neutral-950/95 backdrop-blur-md sticky bottom-0 z-20 flex items-center gap-2 shrink-0 min-h-[60px]"
-        >
-          <input
-            type="text"
-            placeholder={
-              activeConv.isAnonymousChat
-                ? "Send anonymous whisper..."
-                : "Type message to student..."
-            }
-            value={inputMessage}
-            onChange={(e) => setInputMessage(e.target.value)}
-            className="flex-1 px-3.5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 min-h-[48px] h-12"
-          />
-          <Button
-            type="submit"
-            size="md"
-            disabled={!inputMessage.trim()}
-            className={`min-h-[48px] h-12 min-w-[48px] px-4 font-bold flex items-center justify-center shrink-0 ${
-              activeConv.isAnonymousChat
-                ? "bg-purple-600 hover:bg-purple-500"
-                : "bg-brand-600 hover:bg-brand-500"
-            }`}
-            aria-label="Send message"
-          >
-            <Send className="w-5 h-5" />
-          </Button>
-        </form>
-      </div>
-    );
+    const otherMember = conv.members?.find((m: any) => m.userId !== user?.id)?.user;
+    return {
+      name: otherMember?.name || "Student Peer",
+      isAnon: false,
+    };
   };
 
   return (
-    <>
-      {/* 1. Mobile Fullscreen Fixed Chat Room (Placed outside GlassCard to avoid backdrop-filter containing block issues) */}
-      {activeConversationId && activeConv && (
-        <div className="fixed inset-0 z-50 bg-white dark:bg-slate-950 flex flex-col h-[100dvh] w-full md:hidden overflow-hidden">
-          {renderChatRoom(true)}
+    <div className="space-y-6 pb-12">
+      {/* Header */}
+      <div className="space-y-1.5 border-b border-border pb-4">
+        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-secondary text-foreground text-xs font-semibold border border-border">
+          <MessageSquare className="w-3.5 h-3.5 text-primary" />
+          <span>Realtime Campus Messaging</span>
         </div>
-      )}
+        <h1 className="font-heading text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground">
+          Direct Messages & Whispers
+        </h1>
+      </div>
 
-      {/* 2. Standard Inbox & Desktop View */}
-      <div className="h-[calc(100dvh-75px)] sm:h-[calc(100dvh-110px)] max-h-[100dvh] flex flex-col space-y-2 sm:space-y-3 pb-1 w-full max-w-full overflow-x-hidden">
-        {/* Top Header (Desktop or Inbox View) */}
-        <div className={`${activeConversationId ? "hidden md:flex" : "flex"} items-center justify-between px-1 shrink-0`}>
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-brand-500/10 flex items-center justify-center text-brand-500">
-              <MessageSquare className="w-5 h-5" />
-            </div>
-            <div>
-              <h1 className="text-lg sm:text-2xl font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
-                <span>Campus Direct Messages</span>
-                <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded-full">
-                  <Circle className="w-2 h-2 fill-current animate-pulse" />
-                  <span>Live Encrypted</span>
-                </span>
-              </h1>
-              <p className="text-[11px] text-slate-400">
-                Direct Peer Chats & Anonymous Whisper Messages
-              </p>
-            </div>
+      {/* Dual Pane Chat Container */}
+      <Card className="min-h-[580px] h-[calc(100vh-280px)] overflow-hidden grid grid-cols-1 md:grid-cols-12 border-border">
+        {/* Left Pane: Conversations List */}
+        <div
+          className={`md:col-span-4 border-r border-border flex flex-col h-full bg-card/60 ${
+            activeConversationId ? "hidden md:flex" : "flex"
+          }`}
+        >
+          <div className="p-3.5 border-b border-border flex items-center justify-between">
+            <span className="font-heading font-bold text-sm text-foreground">
+              Conversations ({conversations.length})
+            </span>
           </div>
-        </div>
 
-        {/* Split Pane Chat Layout */}
-        <GlassCard className="flex-1 p-0 overflow-hidden flex flex-col md:flex-row border-slate-200/80 dark:border-slate-800/80 rounded-2xl relative h-full">
-          {/* Left Sidebar: Conversation Threads */}
-          <div
-            className={`${
-              activeConversationId ? "hidden md:flex" : "flex flex-1"
-            } md:w-80 lg:w-96 border-b md:border-b-0 md:border-r border-slate-200 dark:border-slate-800 flex-col bg-slate-50/50 dark:bg-slate-900/30 overflow-hidden chat-scroll-container h-full`}
-          >
-            {/* Filters & Search */}
-            <div className="p-3 space-y-2 border-b border-slate-200 dark:border-slate-800 shrink-0">
-              <div className="relative">
-                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  type="text"
-                  placeholder="Search chats or @handles..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-8 pr-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-xs focus:outline-none focus:ring-2 focus:ring-brand-500"
-                />
-              </div>
-
-              <div className="flex items-center gap-1">
-                {(["ALL", "DIRECT", "ANONYMOUS"] as const).map((f) => (
-                  <button
-                    key={f}
-                    onClick={() => setFilterType(f)}
-                    className={`flex-1 py-1.5 text-[10px] font-bold rounded-lg transition-all min-h-[32px] ${
-                      filterType === f
-                        ? f === "ANONYMOUS"
-                          ? "bg-purple-700 text-white shadow-sm"
-                          : "bg-brand-600 text-white shadow-sm"
-                        : "text-slate-400 hover:text-slate-200 hover:bg-slate-200/50 dark:hover:bg-slate-800"
-                    }`}
-                  >
-                    {f === "ALL" ? "All Chats" : f === "DIRECT" ? "Direct" : "Whisper Wall"}
-                  </button>
+          <div className="flex-1 overflow-y-auto p-2 space-y-1">
+            {loadingConversations ? (
+              <div className="p-4 space-y-2">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="h-14 rounded-lg bg-secondary/60 animate-pulse" />
                 ))}
               </div>
-            </div>
+            ) : conversations.length === 0 ? (
+              <div className="p-8 text-center text-xs text-muted-foreground space-y-1">
+                <MessageSquare className="w-8 h-8 mx-auto opacity-40 mb-2" />
+                <p className="font-semibold text-foreground">No active conversations</p>
+                <p>Connect with sellers on the marketplace, gig clients, or whisper authors.</p>
+              </div>
+            ) : (
+              conversations.map((conv) => {
+                const info = getRecipientInfo(conv);
+                const isSelected = conv.id === activeConversationId;
+                const lastMsg = conv.messages?.[0];
 
-            {/* Conversations List */}
-            <div className="flex-1 overflow-y-auto divide-y divide-slate-200/60 dark:divide-slate-800/60 chat-scroll-container">
-              {loadingConversations ? (
-                <div className="p-6 space-y-3">
-                  {[1, 2, 3].map((i) => (
-                    <div key={i} className="h-14 rounded-xl bg-slate-200/50 dark:bg-slate-800 animate-pulse" />
-                  ))}
-                </div>
-              ) : filteredConversations.length === 0 ? (
-                <div className="p-8 text-center text-xs text-slate-400 space-y-2">
-                  <MessageSquare className="w-8 h-8 mx-auto text-slate-500 opacity-40" />
-                  <p>No conversations found.</p>
-                  <p className="text-[10px] text-slate-500">
-                    Message a peer from Marketplace, Gigs, or the Whisper Wall!
-                  </p>
-                </div>
-              ) : (
-                filteredConversations.map((conv) => {
-                  const other = getOtherParticipant(conv);
-                  const isSelected = activeConversationId === conv.id;
-                  const isAnon = conv.isAnonymousChat;
-                  const lastMsg = conv.messages?.[0];
+                return (
+                  <button
+                    key={conv.id}
+                    onClick={() => setActiveConversationId(conv.id)}
+                    className={`w-full p-3 rounded-lg text-left transition-colors flex items-start gap-3 ${
+                      isSelected
+                        ? "bg-secondary text-foreground font-semibold"
+                        : "hover:bg-secondary/60 text-muted-foreground"
+                    }`}
+                  >
+                    <div className="w-8 h-8 rounded-lg bg-card border border-border flex items-center justify-center flex-shrink-0 text-primary">
+                      {info.isAnon ? (
+                        <EyeOff className="w-4 h-4" />
+                      ) : (
+                        <User className="w-4 h-4" />
+                      )}
+                    </div>
 
-                  const displayName = isAnon
-                    ? `@${other?.incognitoProfile?.handle || "AnonStudent"}`
-                    : other?.name || "Student";
-
-                  const avatarUrl = isAnon
-                    ? other?.incognitoProfile?.avatarUrl ||
-                      `https://api.dicebear.com/9.x/bottts/svg?seed=${encodeURIComponent(displayName)}`
-                    : other?.image ||
-                      "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&auto=format&fit=crop&q=80";
-
-                  return (
-                    <div
-                      key={conv.id}
-                      onClick={() => setActiveConversationId(conv.id)}
-                      className={`p-3.5 flex items-center gap-3 cursor-pointer transition-all min-h-[64px] ${
-                        isSelected
-                          ? isAnon
-                            ? "bg-purple-950/30 dark:bg-purple-950/50 border-l-4 border-purple-500"
-                            : "bg-brand-500/10 dark:bg-brand-500/20 border-l-4 border-brand-500"
-                          : "hover:bg-slate-100/60 dark:hover:bg-slate-800/40"
-                      }`}
-                    >
-                      <div className="relative shrink-0">
-                        <img
-                          src={avatarUrl}
-                          alt={displayName}
-                          className={`w-10 h-10 rounded-full object-cover bg-slate-800 ${
-                            isAnon ? "p-0.5 ring-2 ring-purple-500" : ""
-                          }`}
-                        />
-                        {isAnon && (
-                          <div className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-purple-700 text-white flex items-center justify-center text-[9px] shadow">
-                            <EyeOff className="w-2.5 h-2.5" />
-                          </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="font-bold text-xs text-foreground truncate">
+                          {info.name}
+                        </span>
+                        {info.isAnon && (
+                          <Badge variant="outline" size="sm">
+                            Anon
+                          </Badge>
                         )}
                       </div>
+                      <p className="text-[11px] text-muted-foreground truncate mt-0.5">
+                        {lastMsg ? lastMsg.content : "Tap to open conversation"}
+                      </p>
+                    </div>
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>
 
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between">
-                          <p className="text-xs font-bold text-slate-900 dark:text-white truncate">
-                            {displayName}
-                          </p>
-                          {lastMsg && (
-                            <span className="text-[10px] text-slate-400">
-                              {new Date(lastMsg.createdAt).toLocaleTimeString([], {
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              })}
-                            </span>
-                          )}
-                        </div>
+        {/* Right Pane: Active Message Stream */}
+        <div
+          className={`md:col-span-8 flex flex-col h-full bg-card ${
+            !activeConversationId ? "hidden md:flex" : "flex"
+          }`}
+        >
+          {activeConv ? (
+            <>
+              {/* Chat Stream Header */}
+              <div className="p-3.5 border-b border-border flex items-center justify-between gap-3 bg-card">
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => setActiveConversationId(null)}
+                    className="md:hidden p-1.5 rounded-lg border border-border hover:bg-secondary text-muted-foreground hover:text-foreground"
+                    aria-label="Back to conversations list"
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                  </button>
 
-                        <div className="flex items-center justify-between gap-1 mt-0.5">
-                          <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
-                            {lastMsg ? lastMsg.content : "Started conversation"}
-                          </p>
-                          {isAnon ? (
-                            <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-md bg-purple-950 border border-purple-600/50 text-[9px] font-black text-purple-300 tracking-wider shrink-0">
-                              WHISPER DM
-                            </span>
-                          ) : null}
+                  <div className="w-8 h-8 rounded-lg bg-secondary border border-border flex items-center justify-center text-primary">
+                    {getRecipientInfo(activeConv).isAnon ? (
+                      <EyeOff className="w-4 h-4" />
+                    ) : (
+                      <User className="w-4 h-4" />
+                    )}
+                  </div>
+
+                  <div>
+                    <h3 className="font-heading font-bold text-sm text-foreground">
+                      {getRecipientInfo(activeConv).name}
+                    </h3>
+                    <span className="text-[11px] text-muted-foreground">
+                      {getRecipientInfo(activeConv).isAnon
+                        ? "Pseudonymous whisper channel"
+                        : "Verified campus student"}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                  <Lock className="w-3.5 h-3.5 text-primary" />
+                  <span className="hidden sm:inline">Direct Encrypted Session</span>
+                </div>
+              </div>
+
+              {/* Messages Stream */}
+              <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-secondary/15">
+                {loadingMessages ? (
+                  <div className="flex items-center justify-center h-full text-xs text-muted-foreground gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin text-primary" />
+                    <span>Loading message log...</span>
+                  </div>
+                ) : messages.length === 0 ? (
+                  <div className="h-full flex items-center justify-center text-center p-6 text-xs text-muted-foreground">
+                    Start the conversation. Send a message below.
+                  </div>
+                ) : (
+                  messages.map((msg) => {
+                    const isMine = msg.senderId === user?.id;
+                    return (
+                      <div
+                        key={msg.id}
+                        className={`flex ${isMine ? "justify-end" : "justify-start"}`}
+                      >
+                        <div
+                          className={`max-w-[75%] rounded-xl px-3.5 py-2 text-xs leading-relaxed ${
+                            isMine
+                              ? "bg-primary text-primary-foreground font-medium shadow-xs"
+                              : "bg-card border border-border text-foreground shadow-xs"
+                          }`}
+                        >
+                          <p className="whitespace-pre-wrap break-words">{msg.content}</p>
+                          <div
+                            className={`text-[9px] mt-1 text-right opacity-75`}
+                          >
+                            {formatDate(msg.createdAt)}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          </div>
+                    );
+                  })
+                )}
+                <div ref={messagesEndRef} />
+              </div>
 
-          {/* Right Pane (Desktop Only) */}
-          <div className="hidden md:flex md:flex-1 flex-col bg-slate-100/30 dark:bg-slate-950/40 overflow-hidden h-full">
-            {renderChatRoom(false)}
-          </div>
-        </GlassCard>
-      </div>
-    </>
+              {/* Chat Input Bar */}
+              <form
+                onSubmit={handleSendMessage}
+                className="p-3 border-t border-border bg-card flex items-center gap-2"
+              >
+                <Input
+                  placeholder="Type your message..."
+                  value={inputMessage}
+                  onChange={(e) => setInputMessage(e.target.value)}
+                  className="flex-1"
+                />
+                <Button
+                  type="submit"
+                  size="md"
+                  disabled={!inputMessage.trim() || isSending}
+                >
+                  <Send className="w-4 h-4" />
+                </Button>
+              </form>
+            </>
+          ) : (
+            <div className="h-full flex flex-col items-center justify-center text-center p-6 space-y-2 text-muted-foreground">
+              <MessageSquare className="w-10 h-10 opacity-30" />
+              <h3 className="font-heading font-bold text-sm text-foreground">
+                Select a conversation
+              </h3>
+              <p className="text-xs max-w-xs">
+                Pick a chat from the left panel to read and send messages.
+              </p>
+            </div>
+          )}
+        </div>
+      </Card>
+    </div>
   );
 }
 
@@ -744,9 +393,8 @@ export default function MessagesPage() {
   return (
     <Suspense
       fallback={
-        <div className="h-[calc(100dvh-110px)] flex flex-col items-center justify-center space-y-3">
-          <div className="w-10 h-10 border-4 border-brand-500/30 border-t-brand-500 rounded-full animate-spin" />
-          <p className="text-xs font-bold text-slate-400">Loading Campus Direct Messages...</p>
+        <div className="min-h-[400px] flex items-center justify-center">
+          <div className="w-7 h-7 border-2 border-border border-t-primary rounded-full animate-spin" />
         </div>
       }
     >

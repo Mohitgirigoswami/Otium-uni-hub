@@ -3,10 +3,10 @@
 import React, { useState, useEffect } from "react";
 import { useUser } from "@/components/providers/UserContext";
 import { getAdminAuditLogs } from "@/actions/audit.actions";
-import { GlassCard } from "@/components/ui/GlassCard";
-import { Button } from "@/components/ui/Button";
-import { Badge } from "@/components/ui/Badge";
-import { formatDate } from "@/lib/utils";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import {
   ShieldAlert,
@@ -74,11 +74,11 @@ export default function AdminLogsPage() {
       {/* Top Banner */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white flex items-center gap-2.5">
-            <Activity className="w-7 h-7 text-brand-500" />
+          <h1 className="text-2xl sm:text-3xl font-heading font-extrabold text-foreground flex items-center gap-2.5">
+            <Activity className="w-7 h-7 text-primary" />
             <span>Admin Audit Logger & Security Trail</span>
           </h1>
-          <p className="text-xs sm:text-sm text-slate-400 mt-1">
+          <p className="text-xs sm:text-sm text-muted-foreground mt-1">
             Immutable system logs tracking master UPI edits, ban hammer actions, payment approvals, and role updates.
           </p>
         </div>
@@ -94,15 +94,15 @@ export default function AdminLogsPage() {
       </div>
 
       {/* Search and Action Filter */}
-      <GlassCard className="p-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+      <Card className="p-4 flex flex-col sm:flex-row items-center justify-between gap-4">
         <div className="relative w-full sm:w-80">
-          <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input
+          <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <Input
             type="text"
             placeholder="Search by admin, action, or details..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-xs focus:outline-none focus:ring-2 focus:ring-brand-500"
+            className="pl-9 text-xs"
           />
         </div>
 
@@ -112,10 +112,10 @@ export default function AdminLogsPage() {
               <button
                 key={act}
                 onClick={() => setActionFilter(act)}
-                className={`px-3 py-1 rounded-xl text-xs font-bold transition-all ${
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${
                   actionFilter === act
-                    ? "bg-brand-500 text-white shadow-md shadow-brand-500/20"
-                    : "bg-slate-100 dark:bg-slate-800 text-slate-400 hover:text-white"
+                    ? "bg-primary text-primary-foreground border-primary shadow-sm"
+                    : "bg-muted/50 border-border text-muted-foreground hover:text-foreground"
                 }`}
               >
                 {act.replace(/_/g, " ")}
@@ -123,23 +123,23 @@ export default function AdminLogsPage() {
             )
           )}
         </div>
-      </GlassCard>
+      </Card>
 
       {/* Audit Log Table */}
-      <GlassCard className="overflow-hidden border-slate-200 dark:border-slate-800 p-0">
+      <Card className="overflow-hidden p-0">
         {loading ? (
           <div className="p-8 space-y-4">
             {[1, 2, 3, 4].map((i) => (
-              <div key={i} className="h-12 rounded-xl bg-slate-200/50 dark:bg-slate-800 animate-pulse" />
+              <div key={i} className="h-12 rounded-xl bg-muted/60 animate-pulse" />
             ))}
           </div>
         ) : filteredLogs.length === 0 ? (
           <div className="text-center py-16">
-            <Database className="w-12 h-12 mx-auto text-slate-400 mb-3 opacity-60" />
-            <h3 className="text-base font-bold text-slate-700 dark:text-slate-300">
+            <Database className="w-12 h-12 mx-auto text-muted-foreground mb-3 opacity-60" />
+            <h3 className="text-base font-heading font-bold text-foreground">
               No audit logs on record
             </h3>
-            <p className="text-xs text-slate-500 mt-1">
+            <p className="text-xs text-muted-foreground mt-1">
               Actions by Super Admins will appear here with full timestamps.
             </p>
           </div>
@@ -147,18 +147,18 @@ export default function AdminLogsPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs border-collapse">
               <thead>
-                <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-100/60 dark:bg-slate-900/60 text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+                <tr className="border-b border-border bg-muted/40 text-[10px] uppercase font-bold text-muted-foreground tracking-wider">
                   <th className="py-3 px-4">Admin Operator</th>
                   <th className="py-3 px-4">Action</th>
                   <th className="py-3 px-4">Details</th>
                   <th className="py-3 px-4 text-right">Timestamp</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
+              <tbody className="divide-y divide-border">
                 {filteredLogs.map((log) => (
                   <tr
                     key={log.id}
-                    className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors"
+                    className="hover:bg-muted/30 transition-colors"
                   >
                     {/* Admin Profile */}
                     <td className="py-3.5 px-4">
@@ -169,13 +169,13 @@ export default function AdminLogsPage() {
                             `https://api.dicebear.com/9.x/bottts/svg?seed=${log.admin?.name || "Admin"}`
                           }
                           alt={log.admin?.name}
-                          className="w-7 h-7 rounded-full object-cover ring-1 ring-brand-500"
+                          className="w-7 h-7 rounded-full object-cover ring-1 ring-primary/40"
                         />
                         <div>
-                          <p className="font-bold text-slate-900 dark:text-white">
+                          <p className="font-bold text-foreground">
                             {log.admin?.name || "Super Admin"}
                           </p>
-                          <p className="text-[10px] text-slate-400 font-mono">
+                          <p className="text-[10px] text-muted-foreground font-mono">
                             {log.admin?.email}
                           </p>
                         </div>
@@ -190,12 +190,12 @@ export default function AdminLogsPage() {
                     </td>
 
                     {/* Details */}
-                    <td className="py-3.5 px-4 font-mono text-slate-700 dark:text-slate-300 max-w-md break-words">
+                    <td className="py-3.5 px-4 font-mono text-muted-foreground max-w-md break-words">
                       {log.details || "—"}
                     </td>
 
                     {/* Timestamp */}
-                    <td className="py-3.5 px-4 text-right font-mono text-[11px] text-slate-400 whitespace-nowrap">
+                    <td className="py-3.5 px-4 text-right font-mono text-[11px] text-muted-foreground whitespace-nowrap">
                       {new Date(log.createdAt).toLocaleString()}
                     </td>
                   </tr>
@@ -204,7 +204,7 @@ export default function AdminLogsPage() {
             </table>
           </div>
         )}
-      </GlassCard>
+      </Card>
     </div>
   );
 }

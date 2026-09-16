@@ -1,10 +1,10 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { GlassCard } from "@/components/ui/GlassCard";
-import { Button } from "@/components/ui/Button";
-import { Badge } from "@/components/ui/Badge";
-import { SubmitButton } from "@/components/ui/SubmitButton";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { useUser } from "@/components/providers/UserContext";
 import {
   getSemesterRecords,
@@ -19,8 +19,6 @@ import {
   Save,
   Calculator,
   Target,
-  Sparkles,
-  TrendingUp,
   Award,
 } from "lucide-react";
 import { CourseGradeItem } from "@/lib/types";
@@ -38,11 +36,11 @@ const GRADE_OPTIONS = [
 ];
 
 const INITIAL_COURSES: CourseGradeItem[] = [
-  { id: "1", name: "Distributed Systems & Cloud", credits: 4, gradePoint: 9, gradeLabel: "A+" },
-  { id: "2", name: "Database Engineering & SQL", credits: 4, gradePoint: 10, gradeLabel: "O" },
+  { id: "1", name: "Distributed Systems", credits: 4, gradePoint: 9, gradeLabel: "A+" },
+  { id: "2", name: "Database Engineering", credits: 4, gradePoint: 10, gradeLabel: "O" },
   { id: "3", name: "Computer Networks", credits: 4, gradePoint: 8, gradeLabel: "A" },
-  { id: "4", name: "Software Engineering & Agile", credits: 3, gradePoint: 9, gradeLabel: "A+" },
-  { id: "5", name: "Cloud & DevOps Lab", credits: 2, gradePoint: 10, gradeLabel: "O" },
+  { id: "4", name: "Software Engineering", credits: 3, gradePoint: 9, gradeLabel: "A+" },
+  { id: "5", name: "DevOps Lab", credits: 2, gradePoint: 10, gradeLabel: "O" },
 ];
 
 export default function CgpaPage() {
@@ -66,7 +64,6 @@ export default function CgpaPage() {
     if (res.success && res.data) {
       setSavedSemesters(res.data);
       if (res.data.length > 0) {
-        // next semester default
         const maxSem = Math.max(...res.data.map((s: any) => s.semester));
         setActiveSemesterNum(maxSem + 1);
       }
@@ -78,7 +75,7 @@ export default function CgpaPage() {
     fetchRecords();
   }, [user?.id]);
 
-  // Compute Current Active Semester GPA
+  // Active Semester Math
   const totalActiveCredits = courses.reduce((sum, c) => sum + (Number(c.credits) || 0), 0);
   const totalActiveWeightedPoints = courses.reduce(
     (sum, c) => sum + (Number(c.credits) || 0) * (Number(c.gradePoint) || 0),
@@ -89,7 +86,7 @@ export default function CgpaPage() {
       ? Number((totalActiveWeightedPoints / totalActiveCredits).toFixed(2))
       : 0;
 
-  // Compute Cumulative CGPA across all saved semesters
+  // Cumulative CGPA Math
   let cumulativeWeightedPoints = 0;
   let cumulativeTotalCredits = 0;
 
@@ -103,20 +100,29 @@ export default function CgpaPage() {
       ? Number((cumulativeWeightedPoints / cumulativeTotalCredits).toFixed(2))
       : 0;
 
-  // Add course row
-  const addCourseRow = () => {
+  // Predictor Math
+  const targetCgpaNum = parseFloat(targetCgpa) || 0;
+  const upcomingCreditsNum = parseFloat(targetUpcomingCredits) || 0;
+  const totalFutureCredits = cumulativeTotalCredits + upcomingCreditsNum;
+  const requiredTotalWeightedPoints = targetCgpaNum * totalFutureCredits;
+  const requiredUpcomingWeightedPoints = requiredTotalWeightedPoints - cumulativeWeightedPoints;
+  const requiredFutureSGPA =
+    upcomingCreditsNum > 0
+      ? Number((requiredUpcomingWeightedPoints / upcomingCreditsNum).toFixed(2))
+      : 0;
+
+  const handleAddCourseRow = () => {
     const newCourse: CourseGradeItem = {
       id: Date.now().toString(),
-      name: `Elective / Course ${courses.length + 1}`,
+      name: `Course ${courses.length + 1}`,
       credits: 3,
-      gradePoint: 9,
-      gradeLabel: "A+",
+      gradePoint: 8,
+      gradeLabel: "A",
     };
     setCourses([...courses, newCourse]);
   };
 
-  // Remove course row
-  const removeCourseRow = (id: string) => {
+  const handleRemoveCourseRow = (id: string) => {
     if (courses.length <= 1) {
       toast.error("At least one course is required.");
       return;
@@ -124,17 +130,16 @@ export default function CgpaPage() {
     setCourses(courses.filter((c) => c.id !== id));
   };
 
-  // Update course row
-  const updateCourse = (id: string, field: keyof CourseGradeItem, value: any) => {
+  const handleCourseChange = (id: string, field: keyof CourseGradeItem, value: any) => {
     setCourses(
       courses.map((c) => {
         if (c.id === id) {
-          if (field === "gradePoint") {
-            const foundGrade = GRADE_OPTIONS.find((g) => g.point === Number(value));
+          if (field === "gradeLabel") {
+            const opt = GRADE_OPTIONS.find((g) => g.label.startsWith(value));
             return {
               ...c,
-              gradePoint: Number(value),
-              gradeLabel: foundGrade ? foundGrade.label.split(" ")[0] : "A",
+              gradeLabel: value,
+              gradePoint: opt ? opt.point : c.gradePoint,
             };
           }
           return { ...c, [field]: value };
@@ -144,11 +149,14 @@ export default function CgpaPage() {
     );
   };
 
-  // Save active semester
   const handleSaveSemester = async () => {
-    if (!user) return;
-    if (totalActiveCredits === 0) {
-      toast.error("Add at least one valid course with credits.");
+    if (!user) {
+      toast.error("Please sign in to save transcript records.");
+      return;
+    }
+
+    if (courses.length === 0) {
+      toast.error("No course entries to save.");
       return;
     }
 
@@ -156,380 +164,333 @@ export default function CgpaPage() {
     const res = await saveSemesterRecord({
       userId: user.id,
       semester: activeSemesterNum,
-      courses,
       gpa: currentSemesterGPA,
       totalCredits: totalActiveCredits,
+      courses: courses,
     });
     setIsSaving(false);
 
     if (res.error) {
       toast.error(res.error);
     } else {
-      toast.success(`Semester ${activeSemesterNum} saved to records!`);
+      toast.success(`Semester ${activeSemesterNum} archived.`);
       fetchRecords();
     }
   };
 
-  // Delete saved semester
-  const handleDeleteSaved = async (id: string) => {
+  const handleDeleteRecord = async (id: string, semNum: number) => {
     if (!user) return;
-    if (!window.confirm("Delete this semester record?")) return;
+    if (!confirm(`Delete Semester ${semNum} record?`)) return;
 
     const res = await deleteSemesterRecord(id, user.id);
     if (res.error) {
       toast.error(res.error);
     } else {
-      toast.success("Semester record removed.");
+      toast.success(`Semester ${semNum} removed.`);
       fetchRecords();
     }
   };
 
-  // Target Predictor Calculation
-  // Target = (cumulativeWeightedPoints + neededGPA * upcomingCredits) / (cumulativeTotalCredits + upcomingCredits)
-  // neededGPA * upcomingCredits = Target * (cumulativeTotalCredits + upcomingCredits) - cumulativeWeightedPoints
-  const target = parseFloat(targetCgpa) || 0;
-  const upcomingCreds = parseFloat(targetUpcomingCredits) || 1;
-  const totalCombinedCredits = cumulativeTotalCredits + upcomingCreds;
-  const requiredWeightedTotal = target * totalCombinedCredits;
-  const requiredUpcomingGPA =
-    upcomingCreds > 0
-      ? Number(((requiredWeightedTotal - cumulativeWeightedPoints) / upcomingCreds).toFixed(2))
-      : 0;
-
   return (
     <ClientServiceGuard campusId={user?.collegeId} serviceKey="CGPA_CALCULATOR">
-      <div className="space-y-8">
-      {/* Hero Header */}
-      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-electric-950/90 via-slate-900/90 to-accent-950/90 p-8 sm:p-10 border border-electric-500/30 text-white shadow-2xl backdrop-blur-2xl">
-        <div className="absolute top-0 right-0 -mr-16 -mt-16 w-80 h-80 bg-electric-500/20 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute bottom-0 left-1/4 -mb-16 w-60 h-60 bg-accent-500/20 rounded-full blur-3xl pointer-events-none" />
-
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div className="space-y-2">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-electric-500/20 border border-electric-400/30 text-electric-300 text-xs font-semibold">
-              <GraduationCap className="w-3.5 h-3.5" />
-              <span>Credit-Weighted Academic Performance Engine</span>
-            </div>
-            <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight">
-              CGPA & Semester Grade Tracker
-            </h1>
-            <p className="text-sm text-slate-300 max-w-2xl leading-relaxed">
-              Calculate semester SGPA with exact credit weight multipliers, record historical transcripts, and simulate future target grades.
-            </p>
+      <div className="space-y-8 pb-12">
+        {/* Header */}
+        <div className="space-y-2 border-b border-border pb-6">
+          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-secondary text-foreground text-xs font-semibold border border-border">
+            <GraduationCap className="w-3.5 h-3.5 text-primary" />
+            <span>Academic Performance Engine</span>
           </div>
-
-          {/* Cumulative CGPA Badge */}
-          <div className="p-4 rounded-2xl bg-white/10 border border-white/20 backdrop-blur-md text-center min-w-[180px]">
-            <p className="text-xs font-bold uppercase tracking-wider text-slate-300">
-              Cumulative CGPA
-            </p>
-            <p className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-teal-300 via-brand-300 to-accent-300">
-              {cumulativeCGPA > 0 ? cumulativeCGPA : "—"} / 10.0
-            </p>
-            <p className="text-[11px] text-slate-400 mt-0.5">
-              Across {cumulativeTotalCredits} Total Credits
-            </p>
-          </div>
+          <h1 className="font-heading text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground">
+            CGPA & SGPA Forecaster
+          </h1>
+          <p className="text-xs sm:text-sm text-muted-foreground max-w-2xl leading-relaxed">
+            Calculate active term SGPA with exact credit weights, archive completed semesters, and simulate target GPA requirements for campus placements.
+          </p>
         </div>
-      </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Left 2 Cols: Active Semester Grade Calculator */}
-        <div className="lg:col-span-2 space-y-6">
-          <GlassCard className="p-6 sm:p-8 space-y-6">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200 dark:border-slate-800">
-              <div>
-                <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                  <Calculator className="w-5 h-5 text-brand-500" />
-                  <span>Semester {activeSemesterNum} Course Calculator</span>
-                </h2>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Input course names, credit weights (1-6), and letter grades.
-                </p>
-              </div>
+        {/* Top Summary Metrics */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <Card className="p-5 space-y-1.5">
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+              Cumulative CGPA
+            </span>
+            <div className="flex items-baseline gap-2">
+              <span className="font-heading text-3xl font-extrabold text-foreground">
+                {cumulativeTotalCredits > 0 ? cumulativeCGPA.toFixed(2) : "N/A"}
+              </span>
+              <span className="text-xs text-muted-foreground">/ 10.0</span>
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              Across {cumulativeTotalCredits} completed credits
+            </p>
+          </Card>
 
-              <div className="flex items-center gap-3">
-                <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300">
-                  <span>Semester:</span>
+          <Card className="p-5 space-y-1.5">
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+              Current Semester SGPA
+            </span>
+            <div className="flex items-baseline gap-2">
+              <span className="font-heading text-3xl font-extrabold text-primary">
+                {currentSemesterGPA.toFixed(2)}
+              </span>
+              <span className="text-xs text-muted-foreground">/ 10.0</span>
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              {totalActiveCredits} credits registered in active table
+            </p>
+          </Card>
+
+          <Card className="p-5 space-y-1.5">
+            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+              Archived Semesters
+            </span>
+            <div className="font-heading text-3xl font-extrabold text-foreground">
+              {savedSemesters.length}
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              Saved in verified university transcript
+            </p>
+          </Card>
+        </div>
+
+        {/* Two Columns: Active Semester Worksheet + Target Forecaster */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+          {/* Active Semester Table (7 cols) */}
+          <div className="lg:col-span-7 space-y-6">
+            <Card className="p-6 space-y-5">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-border">
+                <div className="space-y-1">
+                  <h3 className="font-heading font-bold text-base text-foreground">
+                    Active Semester Worksheet
+                  </h3>
+                  <p className="text-xs text-muted-foreground">
+                    Assign credit weights (1-6) and expected letter grades.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-medium text-muted-foreground">Semester:</span>
                   <select
                     value={activeSemesterNum}
                     onChange={(e) => setActiveSemesterNum(Number(e.target.value))}
-                    className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 font-bold"
+                    className="h-8 px-2 rounded-md border border-input bg-card text-foreground text-xs focus:outline-none focus:ring-2 focus:ring-ring"
                   >
-                    {[1, 2, 3, 4, 5, 6, 7, 8].map((s) => (
-                      <option key={s} value={s}>
-                        Sem {s}
+                    {[1, 2, 3, 4, 5, 6, 7, 8].map((n) => (
+                      <option key={n} value={n}>
+                        Sem {n}
                       </option>
                     ))}
                   </select>
                 </div>
-
-                <Button
-                  variant="brand"
-                  size="sm"
-                  leftIcon={<Save className="w-4 h-4" />}
-                  isLoading={isSaving}
-                  onClick={handleSaveSemester}
-                >
-                  Save Record
-                </Button>
               </div>
-            </div>
 
-            {/* Course Rows List */}
-            <div className="space-y-3">
-              {courses.map((course, idx) => (
-                <div
-                  key={course.id}
-                  className="grid grid-cols-12 gap-3 items-center p-3 rounded-xl bg-slate-100/70 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/60"
-                >
-                  {/* Course Title */}
-                  <div className="col-span-12 sm:col-span-6">
-                    <label className="block text-[10px] font-bold uppercase text-slate-400 sm:hidden mb-1">
-                      Course Name
-                    </label>
-                    <input
-                      type="text"
-                      value={course.name}
-                      onChange={(e) => updateCourse(course.id, "name", e.target.value)}
-                      placeholder="Course Title"
-                      className="w-full px-3 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-brand-500"
-                    />
-                  </div>
+              {/* Course Rows */}
+              <div className="space-y-2.5">
+                {courses.map((course) => (
+                  <div
+                    key={course.id}
+                    className="grid grid-cols-12 gap-2 items-center p-2.5 rounded-lg border border-border bg-card/60"
+                  >
+                    <div className="col-span-6 sm:col-span-6">
+                      <Input
+                        value={course.name}
+                        onChange={(e) =>
+                          handleCourseChange(course.id, "name", e.target.value)
+                        }
+                        placeholder="Course title"
+                      />
+                    </div>
 
-                  {/* Credits */}
-                  <div className="col-span-5 sm:col-span-2">
-                    <label className="block text-[10px] font-bold uppercase text-slate-400 sm:hidden mb-1">
-                      Credits
-                    </label>
-                    <div className="relative">
-                      <input
-                        type="number"
-                        min="1"
-                        max="8"
+                    <div className="col-span-2 sm:col-span-2">
+                      <select
                         value={course.credits}
                         onChange={(e) =>
-                          updateCourse(course.id, "credits", Number(e.target.value))
+                          handleCourseChange(course.id, "credits", Number(e.target.value))
                         }
-                        className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-bold text-center focus:outline-none focus:ring-2 focus:ring-brand-500"
-                      />
-                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 pointer-events-none">
-                        cr
-                      </span>
+                        className="w-full h-9 px-2 rounded-lg border border-input bg-card text-foreground text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+                      >
+                        {[1, 2, 3, 4, 5, 6].map((cr) => (
+                          <option key={cr} value={cr}>
+                            {cr} Cr
+                          </option>
+                        ))}
+                      </select>
                     </div>
-                  </div>
 
-                  {/* Grade Dropdown */}
-                  <div className="col-span-5 sm:col-span-3">
-                    <label className="block text-[10px] font-bold uppercase text-slate-400 sm:hidden mb-1">
-                      Grade
-                    </label>
-                    <select
-                      value={course.gradePoint}
-                      onChange={(e) =>
-                        updateCourse(course.id, "gradePoint", Number(e.target.value))
-                      }
-                      className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-bold text-brand-600 dark:text-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
-                    >
-                      {GRADE_OPTIONS.map((g) => (
-                        <option key={g.point} value={g.point}>
-                          {g.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                    <div className="col-span-3 sm:col-span-3">
+                      <select
+                        value={course.gradeLabel}
+                        onChange={(e) =>
+                          handleCourseChange(course.id, "gradeLabel", e.target.value)
+                        }
+                        className="w-full h-9 px-2 rounded-lg border border-input bg-card text-foreground text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+                      >
+                        {GRADE_OPTIONS.map((g) => (
+                          <option key={g.point} value={g.label.split(" ")[0]}>
+                            {g.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
 
-                  {/* Delete Row */}
-                  <div className="col-span-2 sm:col-span-1 flex justify-end">
-                    <button
-                      onClick={() => removeCourseRow(course.id)}
-                      className="p-1.5 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors"
-                      title="Remove Course"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* Add Course Button & Live SGPA Card */}
-            <div className="pt-4 flex flex-col sm:flex-row items-center justify-between gap-4">
-              <Button
-                variant="outline"
-                size="sm"
-                leftIcon={<Plus className="w-4 h-4" />}
-                onClick={addCourseRow}
-              >
-                Add Another Course
-              </Button>
-
-              <div className="flex items-center gap-3 p-3 rounded-2xl bg-gradient-to-r from-brand-500/15 to-electric-500/15 border border-brand-500/30">
-                <div className="text-right">
-                  <p className="text-[10px] font-bold uppercase text-slate-500 dark:text-slate-400">
-                    Semester {activeSemesterNum} SGPA
-                  </p>
-                  <p className="text-xs text-slate-500">
-                    {totalActiveCredits} Total Credits
-                  </p>
-                </div>
-                <div className="text-2xl font-black text-brand-600 dark:text-brand-400">
-                  {currentSemesterGPA}
-                </div>
-              </div>
-            </div>
-          </GlassCard>
-
-          {/* Historical Saved Semesters */}
-          <GlassCard className="p-6">
-            <h3 className="text-base font-bold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
-              <Award className="w-4 h-4 text-amber-500" />
-              <span>Transcripts & Saved Semesters</span>
-            </h3>
-
-            {savedSemesters.length === 0 ? (
-              <p className="text-xs text-slate-500 italic">
-                No saved semester records yet. Click "Save Record" above to record your SGPA.
-              </p>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                {savedSemesters.map((sem) => (
-                  <div
-                    key={sem.id}
-                    className="p-4 rounded-xl bg-slate-100/70 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/60 relative group"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-slate-700 dark:text-slate-200">
-                        Semester {sem.semester}
-                      </span>
+                    <div className="col-span-1 text-right">
                       <button
-                        onClick={() => handleDeleteSaved(sem.id)}
-                        className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-rose-500 transition-opacity"
-                        title="Delete record"
+                        type="button"
+                        onClick={() => handleRemoveCourseRow(course.id)}
+                        className="p-1 rounded text-muted-foreground hover:text-destructive transition-colors"
+                        title="Remove course"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </div>
-                    <p className="text-2xl font-extrabold text-brand-600 dark:text-brand-400 mt-1">
-                      {sem.gpa.toFixed(2)}
-                    </p>
-                    <p className="text-[11px] text-slate-400 mt-0.5">
-                      {sem.totalCredits} Credits • {sem.courses?.length || 0} Courses
-                    </p>
                   </div>
                 ))}
               </div>
-            )}
-          </GlassCard>
-        </div>
 
-        {/* Right Col: Target CGPA Predictor & Planning Simulator */}
-        <div className="space-y-6">
-          <GlassCard className="p-6 space-y-5 border-accent-500/20">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-xl bg-accent-500/20 flex items-center justify-center text-accent-500">
-                <Target className="w-4 h-4" />
+              {/* Action Bar */}
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 border-t border-border">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleAddCourseRow}
+                  leftIcon={<Plus className="w-4 h-4" />}
+                >
+                  Add Course
+                </Button>
+
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={handleSaveSemester}
+                  isLoading={isSaving}
+                  leftIcon={<Save className="w-4 h-4" />}
+                >
+                  Archive Semester {activeSemesterNum} Record
+                </Button>
               </div>
-              <div>
-                <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                  Target CGPA Planner
+            </Card>
+          </div>
+
+          {/* Right Column: Target Predictor & Transcript Archive (5 cols) */}
+          <div className="lg:col-span-5 space-y-6">
+            {/* Target Predictor */}
+            <Card className="p-5 space-y-4">
+              <div className="flex items-center gap-2 pb-2 border-b border-border">
+                <Target className="w-4 h-4 text-primary" />
+                <h3 className="font-heading font-bold text-sm text-foreground">
+                  Target CGPA Predictor
                 </h3>
-                <p className="text-[11px] text-slate-400">
-                  Simulate required SGPA for future semesters
-                </p>
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">
-                  Target Desired CGPA (e.g. 9.0)
-                </label>
-                <input
-                  type="number"
-                  step="0.05"
-                  min="4"
-                  max="10"
-                  value={targetCgpa}
-                  onChange={(e) => setTargetCgpa(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-accent-500"
-                />
               </div>
 
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">
-                  Upcoming Semester Credits
-                </label>
-                <input
-                  type="number"
-                  min="1"
-                  max="40"
-                  value={targetUpcomingCredits}
-                  onChange={(e) => setTargetUpcomingCredits(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-accent-500"
-                />
-              </div>
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <span className="text-xs font-medium text-foreground">
+                      Desired CGPA:
+                    </span>
+                    <Input
+                      type="number"
+                      step="0.05"
+                      min="1"
+                      max="10"
+                      value={targetCgpa}
+                      onChange={(e) => setTargetCgpa(e.target.value)}
+                    />
+                  </div>
 
-              {/* Prediction Result Box */}
-              <div className="p-4 rounded-2xl bg-accent-500/10 border border-accent-500/30 space-y-2">
-                <p className="text-[11px] font-bold uppercase tracking-wider text-accent-600 dark:text-accent-300">
-                  Required SGPA in Next Sem
-                </p>
-                <div className="flex items-baseline gap-2">
-                  <span
-                    className={`text-3xl font-black ${
-                      requiredUpcomingGPA > 10
-                        ? "text-rose-500"
-                        : requiredUpcomingGPA <= 0
-                        ? "text-emerald-500"
-                        : "text-accent-600 dark:text-accent-400"
-                    }`}
-                  >
-                    {requiredUpcomingGPA > 10
-                      ? "Unreachable (>10.0)"
-                      : requiredUpcomingGPA <= 0
-                      ? "Target Achieved!"
-                      : requiredUpcomingGPA.toFixed(2)}
-                  </span>
-                  {requiredUpcomingGPA > 0 && requiredUpcomingGPA <= 10 && (
-                    <span className="text-xs text-slate-500">/ 10.0 SGPA</span>
+                  <div className="space-y-1.5">
+                    <span className="text-xs font-medium text-foreground">
+                      Upcoming Credits:
+                    </span>
+                    <Input
+                      type="number"
+                      min="1"
+                      value={targetUpcomingCredits}
+                      onChange={(e) => setTargetUpcomingCredits(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <div className="p-3.5 rounded-lg bg-secondary/50 border border-border space-y-1 text-xs">
+                  <span className="font-bold text-foreground">Simulation Result:</span>
+                  {cumulativeTotalCredits === 0 ? (
+                    <p className="text-muted-foreground">
+                      Archive at least one semester to calculate needed SGPA.
+                    </p>
+                  ) : requiredFutureSGPA > 10 ? (
+                    <p className="text-destructive font-semibold">
+                      Mathematically unreachable ({requiredFutureSGPA} required). Lower the goal or increase upcoming credits.
+                    </p>
+                  ) : requiredFutureSGPA <= 0 ? (
+                    <p className="text-emerald-500 font-semibold">
+                      Target achieved! Maintaining passing grades will secure this CGPA.
+                    </p>
+                  ) : (
+                    <p className="text-muted-foreground">
+                      You must average an SGPA of <strong className="text-primary font-bold">{requiredFutureSGPA}</strong> across the next {targetUpcomingCredits} credits.
+                    </p>
                   )}
                 </div>
-                <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                  {requiredUpcomingGPA > 10
-                    ? "Target is mathematically out of reach in 1 semester. Try setting a longer 2-semester target."
-                    : requiredUpcomingGPA <= 0
-                    ? "Your cumulative CGPA already exceeds this target!"
-                    : `Scoring ${requiredUpcomingGPA.toFixed(2)} across ${upcomingCreds} credits will raise your CGPA to exactly ${target}.`}
-                </p>
               </div>
-            </div>
-          </GlassCard>
+            </Card>
 
-          {/* Grade Scale Reference Card */}
-          <GlassCard className="p-5 space-y-3">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">
-              Grading Scale Reference
-            </h4>
-            <div className="grid grid-cols-2 gap-2 text-xs">
-              {GRADE_OPTIONS.map((g) => (
-                <div
-                  key={g.point}
-                  className="flex items-center justify-between p-2 rounded-lg bg-slate-100/50 dark:bg-slate-800/40"
-                >
-                  <span className="font-semibold text-slate-700 dark:text-slate-300">
-                    {g.label.split(" ")[0]}
-                  </span>
-                  <span className="font-bold text-brand-600 dark:text-brand-400">
-                    {g.point}.0 pts
-                  </span>
+            {/* Transcript Archive */}
+            <Card className="p-5 space-y-4">
+              <div className="flex items-center gap-2 pb-2 border-b border-border">
+                <Award className="w-4 h-4 text-primary" />
+                <h3 className="font-heading font-bold text-sm text-foreground">
+                  Archived Semesters
+                </h3>
+              </div>
+
+              {loading ? (
+                <div className="space-y-2">
+                  {[1, 2].map((i) => (
+                    <div key={i} className="h-12 rounded-lg bg-secondary/60 animate-pulse" />
+                  ))}
                 </div>
-              ))}
-            </div>
-          </GlassCard>
+              ) : savedSemesters.length === 0 ? (
+                <p className="text-xs text-muted-foreground py-3 text-center">
+                  No previous semesters archived yet.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {savedSemesters.map((sem) => (
+                    <div
+                      key={sem.id}
+                      className="flex items-center justify-between p-2.5 rounded-lg border border-border bg-card/60 text-xs"
+                    >
+                      <div className="space-y-0.5">
+                        <span className="font-bold text-foreground">
+                          Semester {sem.semester}
+                        </span>
+                        <p className="text-[11px] text-muted-foreground">
+                          {sem.totalCredits} credits
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        <Badge variant="default" size="sm">
+                          SGPA: {sem.gpa.toFixed(2)}
+                        </Badge>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteRecord(sem.id, sem.semester)}
+                          className="text-muted-foreground hover:text-destructive p-1"
+                          title="Delete record"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Card>
+          </div>
         </div>
       </div>
-    </div>
     </ClientServiceGuard>
   );
 }

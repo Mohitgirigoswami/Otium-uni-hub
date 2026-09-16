@@ -3,9 +3,9 @@
 import React, { useState, useEffect } from "react";
 import { useUser } from "@/components/providers/UserContext";
 import { searchUsersAdmin, updateUserRoleAdmin } from "@/actions/admin.actions";
-import { GlassCard } from "@/components/ui/GlassCard";
-import { Button } from "@/components/ui/Button";
-import { Badge } from "@/components/ui/Badge";
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import {
   Users,
@@ -49,7 +49,7 @@ export default function AdminUsersPage() {
   };
 
   useEffect(() => {
-    fetchUsers(searchQuery);
+    fetchUsers();
   }, [user]);
 
   const handleSearch = (e: React.FormEvent) => {
@@ -60,31 +60,38 @@ export default function AdminUsersPage() {
   const handleRoleChange = async (targetUserId: string, newRole: Role) => {
     if (!user) return;
     setUpdatingId(targetUserId);
+
     const res = await updateUserRoleAdmin({
+      adminUserId: user.id,
       targetUserId,
       role: newRole,
-      adminUserId: user.id,
     });
+
     setUpdatingId(null);
 
-    if (res.error) {
-      toast.error(res.error);
+    if (res.success) {
+      toast.success(`User role updated to ${newRole}.`);
+      setUsersList((prev) =>
+        prev.map((u) => (u.id === targetUserId ? { ...u, role: newRole } : u))
+      );
     } else {
-      toast.success(`User role updated to ${newRole}!`);
-      fetchUsers(searchQuery);
+      toast.error(res.error || "Failed to change user role.");
     }
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-w-6xl mx-auto p-4 sm:p-6">
       {/* Top Banner */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white flex items-center gap-2.5">
-            <ShieldCheck className="w-7 h-7 text-emerald-500" />
-            <span>User Directory & Granular Role Assignment</span>
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-border pb-6">
+        <div className="space-y-1.5">
+          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-secondary text-foreground text-xs font-semibold border border-border">
+            <ShieldCheck className="w-3.5 h-3.5 text-primary" />
+            <span>Role Management</span>
+          </div>
+          <h1 className="font-heading text-2xl sm:text-3xl font-extrabold text-foreground tracking-tight">
+            User Directory & Granular Roles
           </h1>
-          <p className="text-xs sm:text-sm text-slate-400 mt-1">
+          <p className="text-xs sm:text-sm text-muted-foreground">
             Search students and staff by email or name. Elevate roles to PRINT_MANAGER, CAMPUS_MODERATOR, or SUPER_ADMIN.
           </p>
         </div>
@@ -100,29 +107,29 @@ export default function AdminUsersPage() {
       </div>
 
       {/* Search Input Bar */}
-      <GlassCard className="p-4">
+      <Card className="p-4">
         <form onSubmit={handleSearch} className="flex gap-3">
           <div className="relative flex-1">
-            <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+            <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <input
               type="text"
               placeholder="Search user by email or name..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              className="w-full pl-9 pr-4 py-2 rounded-lg bg-card border border-input text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
             />
           </div>
-          <Button type="submit" size="sm" className="bg-emerald-600 hover:bg-emerald-500 font-bold px-5">
+          <Button type="submit" size="sm" className="font-bold px-5">
             Search
           </Button>
         </form>
-      </GlassCard>
+      </Card>
 
       {/* Users Table */}
-      <GlassCard className="p-0 overflow-hidden">
+      <Card className="p-0 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
-            <thead className="bg-slate-100/80 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700/60 uppercase font-bold text-slate-400">
+            <thead className="bg-secondary/70 border-b border-border uppercase font-semibold text-muted-foreground">
               <tr>
                 <th className="py-3 px-4">User Details</th>
                 <th className="py-3 px-4">College / Campus</th>
@@ -131,25 +138,25 @@ export default function AdminUsersPage() {
                 <th className="py-3 px-4 text-right">Assign Granular Role</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
+            <tbody className="divide-y divide-border">
               {loading ? (
                 <tr>
-                  <td colSpan={5} className="py-12 text-center text-slate-400">
+                  <td colSpan={5} className="py-12 text-center text-muted-foreground">
                     <div className="flex items-center justify-center gap-2">
-                      <RefreshCw className="w-4 h-4 animate-spin text-emerald-500" />
+                      <RefreshCw className="w-4 h-4 animate-spin text-primary" />
                       <span>Searching user records...</span>
                     </div>
                   </td>
                 </tr>
               ) : usersList.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="py-12 text-center text-slate-400">
+                  <td colSpan={5} className="py-12 text-center text-muted-foreground">
                     No users found matching your search.
                   </td>
                 </tr>
               ) : (
                 usersList.map((u) => (
-                  <tr key={u.id} className="hover:bg-slate-100/40 dark:hover:bg-slate-800/30 transition-colors">
+                  <tr key={u.id} className="hover:bg-secondary/40 transition-colors">
                     {/* User */}
                     <td className="py-3.5 px-4">
                       <div className="flex items-center gap-2.5">
@@ -159,13 +166,13 @@ export default function AdminUsersPage() {
                             "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=80&auto=format&fit=crop&q=80"
                           }
                           alt={u.name || "User"}
-                          className="w-8 h-8 rounded-full object-cover bg-slate-800"
+                          className="w-8 h-8 rounded-full object-cover bg-secondary border border-border"
                         />
                         <div>
-                          <p className="font-bold text-slate-900 dark:text-white">
+                          <p className="font-bold text-foreground">
                             {u.name || "Student"}
                           </p>
-                          <p className="text-[10px] text-slate-400 flex items-center gap-1 mt-0.5">
+                          <p className="text-[10px] text-muted-foreground flex items-center gap-1 mt-0.5 font-mono">
                             <Mail className="w-2.5 h-2.5" />
                             <span>{u.email}</span>
                           </p>
@@ -174,10 +181,10 @@ export default function AdminUsersPage() {
                     </td>
 
                     {/* College */}
-                    <td className="py-3.5 px-4 text-slate-700 dark:text-slate-300">
+                    <td className="py-3.5 px-4 text-foreground">
                       {u.college ? (
                         <div className="flex items-center gap-1.5 font-semibold">
-                          <Building2 className="w-3.5 h-3.5 text-brand-500 shrink-0" />
+                          <Building2 className="w-3.5 h-3.5 text-primary shrink-0" />
                           <span>{u.college.name}</span>
                         </div>
                       ) : (
@@ -188,12 +195,12 @@ export default function AdminUsersPage() {
                     </td>
 
                     {/* Department / Year */}
-                    <td className="py-3.5 px-4 text-slate-500">
-                      <p className="font-medium text-slate-700 dark:text-slate-300">
+                    <td className="py-3.5 px-4 text-muted-foreground">
+                      <p className="font-medium text-foreground">
                         {u.department || "General Undergrad"}
                       </p>
                       {u.year && (
-                        <p className="text-[10px] text-slate-400">Year {u.year}</p>
+                        <p className="text-[10px] text-muted-foreground">Year {u.year}</p>
                       )}
                     </td>
 
@@ -207,7 +214,7 @@ export default function AdminUsersPage() {
                             ? "warning"
                             : u.role === "CAMPUS_MODERATOR"
                             ? "brand"
-                            : "info"
+                            : "secondary"
                         }
                         size="sm"
                       >
@@ -221,7 +228,7 @@ export default function AdminUsersPage() {
                         value={u.role}
                         disabled={updatingId === u.id}
                         onChange={(e) => handleRoleChange(u.id, e.target.value as Role)}
-                        className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer"
+                        className="px-3 py-1.5 rounded-lg bg-card border border-input text-foreground text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-ring cursor-pointer"
                       >
                         {ROLES.map((r) => (
                           <option key={r.id} value={r.id}>
@@ -236,7 +243,7 @@ export default function AdminUsersPage() {
             </tbody>
           </table>
         </div>
-      </GlassCard>
+      </Card>
     </div>
   );
 }

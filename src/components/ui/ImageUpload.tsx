@@ -10,7 +10,7 @@ import {
   RefreshCw,
   Sparkles,
 } from "lucide-react";
-import { Button } from "./Button";
+import { Button } from "./button";
 
 interface ImageUploadProps {
   onUploadComplete: (imageUrl: string, publicId?: string) => void;

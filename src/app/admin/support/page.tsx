@@ -8,10 +8,10 @@ import {
   banUserAdmin,
   unbanUserAdmin,
 } from "@/actions/support.actions";
-import { GlassCard } from "@/components/ui/GlassCard";
-import { Button } from "@/components/ui/Button";
-import { Badge } from "@/components/ui/Badge";
-import { Modal } from "@/components/ui/Modal";
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Modal } from "@/components/ui/modal";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { formatDate } from "@/lib/utils";
 import { toast } from "sonner";
@@ -133,14 +133,17 @@ export default function AdminSupportPage() {
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
       {/* Top Banner */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white flex items-center gap-2.5">
-            <Gavel className="w-7 h-7 text-rose-500" />
-            <span>Support Helpdesk & Global Ban Console</span>
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-border pb-6">
+        <div className="space-y-1.5">
+          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-secondary text-foreground text-xs font-semibold border border-border">
+            <Gavel className="w-3.5 h-3.5 text-rose-500" />
+            <span>Support & Moderation</span>
+          </div>
+          <h1 className="font-heading text-2xl sm:text-3xl font-extrabold text-foreground tracking-tight">
+            Support Helpdesk & Ban Console
           </h1>
-          <p className="text-xs sm:text-sm text-slate-400 mt-1">
-            Resolve student tickets, review abuse reports, and invoke the Global Ban Hammer to protect the community.
+          <p className="text-xs sm:text-sm text-muted-foreground">
+            Resolve student tickets, review abuse reports, and manage account suspensions.
           </p>
         </div>
 
@@ -155,20 +158,20 @@ export default function AdminSupportPage() {
       </div>
 
       {/* Filter Bar */}
-      <GlassCard className="p-4 flex flex-wrap items-center justify-between gap-4">
+      <Card className="p-4 flex flex-wrap items-center justify-between gap-4">
         <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-1.5 text-xs text-slate-400 font-bold uppercase tracking-wider">
-            <Filter className="w-3.5 h-3.5 text-slate-400" />
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-bold uppercase tracking-wider">
+            <Filter className="w-3.5 h-3.5 text-muted-foreground" />
             <span>Filter Status:</span>
           </div>
           {["ALL", "OPEN", "RESOLVED"].map((status) => (
             <button
               key={status}
               onClick={() => setStatusFilter(status)}
-              className={`px-3 py-1 rounded-xl text-xs font-bold transition-all ${
+              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
                 statusFilter === status
-                  ? "bg-rose-500 text-white shadow-md shadow-rose-500/20"
-                  : "bg-slate-100 dark:bg-slate-800/60 text-slate-400 hover:text-white"
+                  ? "bg-rose-500 text-white shadow-xs"
+                  : "bg-secondary text-muted-foreground hover:text-foreground"
               }`}
             >
               {status}
@@ -183,33 +186,33 @@ export default function AdminSupportPage() {
               onClick={() => setTypeFilter(type)}
               className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all ${
                 typeFilter === type
-                  ? "bg-brand-500 text-white"
-                  : "bg-slate-100 dark:bg-slate-800 text-slate-400 hover:text-white"
+                  ? "bg-primary text-primary-foreground font-bold"
+                  : "bg-secondary text-muted-foreground hover:text-foreground"
               }`}
             >
               {type.replace(/_/g, " ")}
             </button>
           ))}
         </div>
-      </GlassCard>
+      </Card>
 
       {/* Tickets List */}
       {loading ? (
         <div className="space-y-4">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="h-32 rounded-2xl bg-slate-200/50 dark:bg-slate-800 animate-pulse" />
+            <div key={i} className="h-32 rounded-xl bg-secondary/60 animate-pulse border border-border" />
           ))}
         </div>
       ) : filteredTickets.length === 0 ? (
-        <GlassCard className="text-center py-16">
-          <CheckCircle2 className="w-12 h-12 mx-auto text-emerald-400 mb-3 opacity-60" />
-          <h3 className="text-base font-bold text-slate-700 dark:text-slate-300">
+        <Card className="text-center py-16">
+          <CheckCircle2 className="w-12 h-12 mx-auto text-emerald-500 mb-3 opacity-60" />
+          <h3 className="text-base font-bold text-foreground">
             No tickets match your filter criteria
           </h3>
-          <p className="text-xs text-slate-500 mt-1">
+          <p className="text-xs text-muted-foreground mt-1">
             All tickets are resolved or no reports submitted in this category.
           </p>
-        </GlassCard>
+        </Card>
       ) : (
         <div className="space-y-4">
           {filteredTickets.map((t) => {
@@ -217,14 +220,14 @@ export default function AdminSupportPage() {
             const isUserBanned = reporter?.isBanned;
 
             return (
-              <GlassCard
+              <Card
                 key={t.id}
                 className={`p-6 space-y-4 border ${
                   t.type === "REPORT_USER"
-                    ? "border-rose-500/30 bg-rose-500/5"
+                    ? "border-destructive/40 bg-destructive/5"
                     : t.status === "OPEN"
-                    ? "border-amber-500/30"
-                    : "border-slate-200 dark:border-slate-800"
+                    ? "border-amber-500/30 bg-card"
+                    : "border-border bg-card"
                 }`}
               >
                 {/* Header: User Info & Ticket Type Badge */}
@@ -236,23 +239,23 @@ export default function AdminSupportPage() {
                         `https://api.dicebear.com/9.x/bottts/svg?seed=${reporter?.name || "Student"}`
                       }
                       alt={reporter?.name}
-                      className="w-10 h-10 rounded-full object-cover ring-2 ring-slate-700"
+                      className="w-10 h-10 rounded-full object-cover ring-2 ring-border bg-secondary"
                     />
                     <div>
                       <div className="flex items-center gap-2">
-                        <span className="text-sm font-bold text-slate-900 dark:text-white">
+                        <span className="text-sm font-bold text-foreground">
                           {reporter?.name || "Anonymous Student"}
                         </span>
-                        <span className="text-[11px] text-slate-400 font-mono">
+                        <span className="text-[11px] text-muted-foreground font-mono">
                           ({reporter?.email})
                         </span>
                         {isUserBanned && (
-                          <Badge variant="danger" size="sm">
+                          <Badge variant="destructive" size="sm">
                             BANNED USER
                           </Badge>
                         )}
                       </div>
-                      <p className="text-[11px] text-slate-400">
+                      <p className="text-[11px] text-muted-foreground">
                         {reporter?.college?.name || "Campus User"} • {reporter?.role}
                       </p>
                     </div>
@@ -262,10 +265,10 @@ export default function AdminSupportPage() {
                     <Badge
                       variant={
                         t.type === "REPORT_USER"
-                          ? "danger"
+                          ? "destructive"
                           : t.type === "BUG"
                           ? "warning"
-                          : "brand"
+                          : "default"
                       }
                       size="sm"
                     >
@@ -279,24 +282,24 @@ export default function AdminSupportPage() {
                 </div>
 
                 {/* Subject & Message Content */}
-                <div className="p-4 rounded-2xl bg-white/40 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 space-y-2">
-                  <h3 className="text-sm font-black text-slate-900 dark:text-white">
+                <div className="p-4 rounded-xl bg-secondary/50 border border-border space-y-2">
+                  <h3 className="text-sm font-bold text-foreground">
                     {t.subject}
                   </h3>
-                  <p className="text-xs text-slate-700 dark:text-slate-300 whitespace-pre-wrap leading-relaxed">
+                  <p className="text-xs text-foreground whitespace-pre-wrap leading-relaxed">
                     {t.message}
                   </p>
-                  <p className="text-[10px] text-slate-400 font-mono pt-1">
+                  <p className="text-[10px] text-muted-foreground font-mono pt-1">
                     Submitted: {formatDate(t.createdAt)} • Ticket ID: #{t.id}
                   </p>
                 </div>
 
                 {/* Actions: Mark Resolved & Global Ban Hammer */}
-                <div className="pt-2 border-t border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
+                <div className="pt-2 border-t border-border flex flex-wrap items-center justify-between gap-3">
                   <div className="flex items-center gap-2">
                     {isUserBanned ? (
                       <div className="flex items-center gap-2">
-                        <span className="text-xs text-rose-400 font-semibold">
+                        <span className="text-xs text-destructive font-semibold">
                           Reason: {reporter?.banReason}
                         </span>
                         <Button
@@ -304,7 +307,7 @@ export default function AdminSupportPage() {
                           size="sm"
                           disabled={actionLoadingId === `unban-${reporter?.id}`}
                           onClick={() => handleUnban(reporter?.id, reporter?.name)}
-                          className="text-xs text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/10"
+                          className="text-xs"
                           leftIcon={<UserCheck className="w-3.5 h-3.5" />}
                         >
                           Lift Ban
@@ -312,10 +315,10 @@ export default function AdminSupportPage() {
                       </div>
                     ) : (
                       <Button
-                        variant="danger"
+                        variant="destructive"
                         size="sm"
                         onClick={() => openBanModal(reporter)}
-                        className="text-xs bg-rose-600/80 hover:bg-rose-600"
+                        className="text-xs"
                         leftIcon={<UserX className="w-3.5 h-3.5" />}
                       >
                         Ban User (Ban Hammer)
@@ -326,11 +329,11 @@ export default function AdminSupportPage() {
                   <div className="flex items-center gap-2">
                     {t.status === "OPEN" && (
                       <Button
-                        variant="brand"
+                        variant="default"
                         size="sm"
                         isLoading={actionLoadingId === t.id}
                         onClick={() => handleResolveTicket(t.id)}
-                        className="text-xs bg-emerald-600 hover:bg-emerald-500"
+                        className="text-xs font-semibold"
                         leftIcon={<CheckCircle2 className="w-3.5 h-3.5" />}
                       >
                         Mark as Resolved
@@ -338,29 +341,27 @@ export default function AdminSupportPage() {
                     )}
                   </div>
                 </div>
-              </GlassCard>
+              </Card>
             );
           })}
         </div>
       )}
 
-      {/* Ban Hammer Confirmation Modal */}
+      {/* Global Ban Modal */}
       <Modal
         isOpen={isBanModalOpen}
         onClose={() => setIsBanModalOpen(false)}
-        title="⚡ Invoke Global Ban Hammer"
-        description="Permanently suspend this user from accessing Otium Uni Hub services."
-        maxWidth="md"
+        title="Execute Global Ban Hammer"
       >
-        <form onSubmit={handleConfirmBan} className="space-y-4 pt-2">
+        <form onSubmit={handleConfirmBan} className="space-y-4">
           {targetUser && (
-            <div className="p-3.5 rounded-2xl bg-rose-500/15 border border-rose-500/30 flex items-center gap-3">
-              <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0" />
-              <div className="text-xs">
-                <p className="font-bold text-rose-300">
+            <div className="p-3.5 rounded-xl bg-destructive/10 border border-destructive/30 flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 text-destructive shrink-0 mt-0.5" />
+              <div className="text-xs space-y-0.5">
+                <p className="font-bold text-destructive">
                   Target Account: {targetUser.name} ({targetUser.email})
                 </p>
-                <p className="text-rose-400/80 text-[11px] mt-0.5">
+                <p className="text-destructive/80 text-[11px] mt-0.5">
                   The user will be immediately redirected to /banned and locked out of all app features.
                 </p>
               </div>
@@ -368,7 +369,7 @@ export default function AdminSupportPage() {
           )}
 
           <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
+            <label className="block text-xs font-bold uppercase tracking-wider text-foreground mb-1.5">
               Official Reason for Suspension *
             </label>
             <textarea
@@ -377,11 +378,11 @@ export default function AdminSupportPage() {
               value={banReason}
               onChange={(e) => setBanReason(e.target.value)}
               placeholder="Specify the guidelines violated (e.g., fraudulent escrow claim, abusive behaviour, scamming)..."
-              className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-rose-500 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-rose-500 resize-none font-medium"
+              className="w-full px-3.5 py-2.5 rounded-lg bg-card border border-input text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring resize-none font-medium"
             />
           </div>
 
-          <div className="pt-3 border-t border-slate-200 dark:border-slate-800 flex justify-end gap-3">
+          <div className="pt-3 border-t border-border flex justify-end gap-3">
             <Button
               type="button"
               variant="outline"
@@ -392,7 +393,7 @@ export default function AdminSupportPage() {
             <SubmitButton
               isSubmitting={isBanning}
               loadingText="Executing Ban..."
-              className="bg-rose-600 hover:bg-rose-500"
+              className="bg-destructive hover:opacity-90"
             >
               Execute Ban
             </SubmitButton>

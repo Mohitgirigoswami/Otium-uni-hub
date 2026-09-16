@@ -5,15 +5,13 @@ import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useUser } from "@/components/providers/UserContext";
 import { getColleges, setUserCollege } from "@/actions/college.actions";
-import { GlassCard } from "@/components/ui/GlassCard";
-import { Button } from "@/components/ui/Button";
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import {
-  GraduationCap,
   Building2,
   MapPin,
   ArrowRight,
-  Sparkles,
   ShieldCheck,
   CheckCircle2,
 } from "lucide-react";
@@ -63,114 +61,89 @@ export default function OnboardingPage() {
     if (res.error) {
       toast.error(res.error);
     } else {
-      toast.success("Welcome to your campus hub!");
-      // Update NextAuth session token
+      toast.success("Campus affiliation confirmed.");
       if (updateSession) {
         await updateSession({ collegeId: selectedCollegeId });
       }
       await refreshUser();
-      router.push("/");
+      router.push("/dashboard");
     }
   };
 
   const selectedCollege = colleges.find((c) => c.id === selectedCollegeId);
 
   return (
-    <div className="min-h-[calc(100vh-200px)] flex items-center justify-center py-10 px-4">
+    <div className="min-h-[calc(100vh-220px)] flex items-center justify-center py-10 px-4">
       <div className="w-full max-w-xl space-y-6">
-        {/* Header Badge */}
         <div className="text-center space-y-2">
-          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-brand-500/10 border border-brand-500/20 text-brand-600 dark:text-brand-400 text-xs font-bold">
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>Campus Onboarding • Step 1 of 1</span>
+          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-secondary text-foreground text-xs font-semibold border border-border">
+            <Building2 className="w-3.5 h-3.5 text-primary" />
+            <span>Campus Configuration</span>
           </div>
-          <h1 className="text-3xl font-black tracking-tight text-slate-900 dark:text-white">
+          <h1 className="font-heading text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
             Select Your University Campus
           </h1>
-          <p className="text-xs sm:text-sm text-slate-500 max-w-md mx-auto">
-            Otium customizes your Marketplace listings, Gig bounties, campus print queues, and campus confessions to your exact university.
+          <p className="text-xs sm:text-sm text-muted-foreground max-w-md mx-auto leading-relaxed">
+            Marketplace listings, print station logistics, and campus whisper feeds are scoped to your selected university.
           </p>
         </div>
 
-        {/* Card Form */}
-        <GlassCard className="p-8 border-brand-500/30 shadow-2xl relative overflow-hidden">
+        <Card className="p-6 sm:p-8">
           <form onSubmit={handleSelectCollege} className="space-y-6">
-            <div className="space-y-3">
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">
-                Registered University / Institute *
+            <div className="space-y-2">
+              <label className="block text-xs font-bold uppercase tracking-wider text-foreground">
+                Affiliated University or Institute
               </label>
 
               {loadingColleges ? (
-                <div className="h-12 rounded-xl bg-slate-200/60 dark:bg-slate-800 animate-pulse" />
+                <div className="h-10 rounded-lg bg-secondary/60 animate-pulse border border-border" />
               ) : colleges.length === 0 ? (
-                <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 text-xs space-y-2">
-                  <p className="font-bold">No registered campuses found yet.</p>
-                  <p className="text-[11px] text-slate-400">
-                    A Campus Super Admin will initialize university colleges shortly.
-                  </p>
+                <div className="p-4 rounded-lg bg-secondary/50 border border-border text-xs text-muted-foreground text-center">
+                  No active campuses found on record. Contact campus support.
                 </div>
               ) : (
-                <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
-                  {colleges.map((col) => {
-                    const isSelected = selectedCollegeId === col.id;
-                    return (
-                      <div
-                        key={col.id}
-                        onClick={() => setSelectedCollegeId(col.id)}
-                        className={`p-3.5 rounded-xl border cursor-pointer transition-all flex items-center justify-between ${
-                          isSelected
-                            ? "bg-brand-500/15 border-brand-500 shadow-md ring-1 ring-brand-500"
-                            : "bg-slate-100/60 dark:bg-slate-800/40 border-slate-200 dark:border-slate-700/60 hover:bg-slate-200/50"
-                        }`}
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${
-                            isSelected
-                              ? "bg-brand-600 text-white"
-                              : "bg-slate-200 dark:bg-slate-700 text-slate-500"
-                          }`}>
-                            <Building2 className="w-4 h-4" />
-                          </div>
-                          <div>
-                            <p className="text-xs font-bold text-slate-900 dark:text-white">
-                              {col.name}
-                            </p>
-                            <p className="text-[10px] text-slate-500 flex items-center gap-1 mt-0.5">
-                              <MapPin className="w-2.5 h-2.5" />
-                              <span>{col.city}</span>
-                            </p>
-                          </div>
-                        </div>
-
-                        {isSelected && (
-                          <CheckCircle2 className="w-4 h-4 text-brand-500 shrink-0" />
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
+                <select
+                  value={selectedCollegeId}
+                  onChange={(e) => setSelectedCollegeId(e.target.value)}
+                  className="w-full h-10 px-3 rounded-lg border border-input bg-card text-foreground text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                >
+                  {colleges.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} ({c.code}) - {c.city}, {c.state}
+                    </option>
+                  ))}
+                </select>
               )}
             </div>
 
             {selectedCollege && (
-              <div className="p-3 rounded-xl bg-brand-500/10 border border-brand-500/20 text-[11px] text-brand-700 dark:text-brand-300 flex items-center gap-2">
-                <ShieldCheck className="w-4 h-4 text-brand-500 shrink-0" />
-                <span>
-                  You will be connected to <strong>{selectedCollege.name} ({selectedCollege.city})</strong>.
-                </span>
+              <div className="p-4 rounded-lg bg-secondary/40 border border-border space-y-2">
+                <div className="flex items-center gap-2 text-xs font-bold text-foreground">
+                  <MapPin className="w-4 h-4 text-primary" />
+                  <span>Campus Details</span>
+                </div>
+                <div className="text-xs text-muted-foreground space-y-1">
+                  <p>
+                    <strong>Campus:</strong> {selectedCollege.name}
+                  </p>
+                  <p>
+                    <strong>Location:</strong> {selectedCollege.city}, {selectedCollege.state}
+                  </p>
+                </div>
               </div>
             )}
 
             <Button
               type="submit"
-              disabled={submitting || !selectedCollegeId}
-              className="w-full bg-brand-600 hover:bg-brand-500 font-bold py-3 text-sm"
+              size="lg"
+              className="w-full"
+              isLoading={submitting}
               rightIcon={<ArrowRight className="w-4 h-4" />}
             >
-              {submitting ? "Joining Campus..." : "Confirm & Enter Campus Hub"}
+              Confirm Campus Affiliation
             </Button>
           </form>
-        </GlassCard>
+        </Card>
       </div>
     </div>
   );

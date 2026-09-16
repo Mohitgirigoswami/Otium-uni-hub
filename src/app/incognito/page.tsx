@@ -1,17 +1,17 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { GlassCard } from "@/components/ui/GlassCard";
-import { Button } from "@/components/ui/Button";
-import { Badge } from "@/components/ui/Badge";
-import { Modal } from "@/components/ui/Modal";
-import { SubmitButton } from "@/components/ui/SubmitButton";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Modal } from "@/components/ui/modal";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { useUser } from "@/components/providers/UserContext";
 import {
   getIncognitoPosts,
   createIncognitoPost,
   toggleLikeIncognitoPost,
-  setupIncognitoProfile,
   getIncognitoProfile,
 } from "@/actions/incognito.actions";
 import { getOrCreateConversation } from "@/actions/chat.actions";
@@ -23,15 +23,12 @@ import {
   EyeOff,
   Plus,
   Heart,
-  Sparkles,
-  Shield,
-  RefreshCw,
   MessageSquare,
   Building2,
   Globe,
-  ChevronRight,
-  ExternalLink,
   Loader2,
+  User,
+  ShieldCheck,
 } from "lucide-react";
 import { MultiImageUpload } from "@/components/ui/MultiImageUpload";
 import { PostImageGrid } from "@/components/ui/PostImageGrid";
@@ -39,10 +36,10 @@ import { ClientServiceGuard } from "@/components/ClientServiceGuard";
 
 const FEED_TYPES = [
   { label: "All Whispers", value: "ALL" },
-  { label: "🔥 Confessions", value: "CONFESSION" },
-  { label: "💡 Campus Advice", value: "ADVICE" },
-  { label: "😂 Memes & Banter", value: "MEME" },
-  { label: "📢 Campus News", value: "CAMPUS_NEWS" },
+  { label: "Confessions", value: "CONFESSION" },
+  { label: "Campus Advice", value: "ADVICE" },
+  { label: "Memes & Banter", value: "MEME" },
+  { label: "Campus News", value: "CAMPUS_NEWS" },
   { label: "General", value: "GENERAL" },
 ];
 
@@ -54,23 +51,17 @@ export default function IncognitoWallPage() {
   const [feedScope, setFeedScope] = useState<"CAMPUS" | "GLOBAL">("CAMPUS");
   const [feedTypeFilter, setFeedTypeFilter] = useState("ALL");
   const [isPostModalOpen, setIsPostModalOpen] = useState(false);
-  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [incognitoProfile, setIncognitoProfile] = useState<any | null>(null);
 
-  // Post form states (2-4 Multi-Images)
+  // Form states
   const [content, setContent] = useState("");
   const [images, setImages] = useState<string[]>([]);
   const [feedType, setFeedType] = useState("CONFESSION");
   const [customHandle, setCustomHandle] = useState("");
-  const [isUploadingMedia, setIsUploadingMedia] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  // Anti-spam like tracking state
   const [likeInProgressId, setLikeInProgressId] = useState<string | null>(null);
   const [chatLoadingId, setChatLoadingId] = useState<string | null>(null);
-  const [expandedPosts, setExpandedPosts] = useState<Record<string, boolean>>({});
 
-  // TASK 3: Frontend Route Protection (Auth Guards)
   useEffect(() => {
     if (!userLoading && !user) {
       router.replace("/login");
@@ -99,46 +90,40 @@ export default function IncognitoWallPage() {
 
       if (postsRes?.success && postsRes.data) {
         setPosts(postsRes.data);
-      } else {
-        setPosts([]);
       }
     } catch (err) {
-      console.error("Error fetching incognito feed:", err);
-      setPosts([]);
+      toast.error("Failed to load campus whispers.");
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    if (user?.id) {
-      fetchProfileAndFeed();
-    }
-  }, [user?.id, user?.collegeId, feedScope, feedTypeFilter]);
+    fetchProfileAndFeed();
+  }, [user?.id, feedScope, feedTypeFilter]);
 
-  const handlePublishPost = async (e: React.FormEvent) => {
+  const handleCreatePost = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user?.id) return;
+    if (!user) return;
     if (!content.trim()) {
-      toast.error("Please enter a whisper or confession.");
+      toast.error("Please enter whisper content.");
       return;
     }
 
     setIsSubmitting(true);
     const res = await createIncognitoPost({
       userId: user.id,
-      content,
+      collegeId: user.collegeId || undefined,
+      content: content.trim(),
       mediaUrls: images,
-      mediaUrl: images.length > 0 ? images[0] : undefined,
       feedType,
-      collegeId: user.collegeId,
     });
     setIsSubmitting(false);
 
-    if (!res?.success || res?.error) {
-      toast.error(res?.error || "Failed to publish whisper.");
+    if (res.error) {
+      toast.error(res.error);
     } else {
-      toast.success("Whisper published anonymously onto the wall!");
+      toast.success("Whisper posted to feed.");
       setIsPostModalOpen(false);
       setContent("");
       setImages([]);
@@ -146,564 +131,292 @@ export default function IncognitoWallPage() {
     }
   };
 
-  const handleDirectMessageAnonymous = async (targetUserId: string, postHandle: string) => {
-    if (!user?.id) {
-      toast.error("Please login to message anonymously.");
-      return;
-    }
-    if (user.id === targetUserId) {
-      toast.info("This is your own whisper post!");
-      return;
-    }
+  const handleToggleLike = async (postId: string) => {
+    if (!user) return;
+    if (likeInProgressId) return;
 
-    setChatLoadingId(targetUserId);
+    // Optimistic UI update
+    setPosts((prev) =>
+      prev.map((p) => {
+        if (p.id === postId) {
+          const wasLiked = p.isLikedByMe;
+          return {
+            ...p,
+            isLikedByMe: !wasLiked,
+            _count: {
+              ...p._count,
+              likes: wasLiked ? Math.max(0, p._count.likes - 1) : p._count.likes + 1,
+            },
+          };
+        }
+        return p;
+      })
+    );
+
+    setLikeInProgressId(postId);
+    const res = await toggleLikeIncognitoPost(postId, user.id);
+    setLikeInProgressId(null);
+
+    if (res.error) {
+      toast.error(res.error);
+      fetchProfileAndFeed();
+    }
+  };
+
+  const handleAnonymousChat = async (targetIncognitoProfileId: string) => {
+    if (!user) return;
+    setChatLoadingId(targetIncognitoProfileId);
     const res = await getOrCreateConversation({
       participantOneId: user.id,
-      participantTwoId: targetUserId,
+      participantTwoId: targetIncognitoProfileId,
       isAnonymousChat: true,
     });
     setChatLoadingId(null);
 
-    if (res?.success && res.data) {
-      toast.success(`Opening private anonymous chat with @${postHandle}...`);
+    if (res.success && res.data) {
       router.push(`/messages?id=${res.data.id}`);
     } else {
-      toast.error(res?.error || "Failed to start anonymous chat.");
+      toast.error("Unable to start anonymous conversation.");
     }
   };
-
-  const handleUpdateAlias = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user?.id) return;
-    if (!customHandle.trim()) {
-      toast.error("Please enter a pseudonym handle.");
-      return;
-    }
-
-    setIsSubmitting(true);
-    const res = await setupIncognitoProfile(user.id, customHandle);
-    setIsSubmitting(false);
-
-    if (!res?.success || res?.error) {
-      toast.error(res?.error || "Failed to update pseudonym alias.");
-    } else {
-      toast.success("Incognito alias & Bottts avatar updated!");
-      if (res.data) setIncognitoProfile(res.data);
-      setIsProfileModalOpen(false);
-      fetchProfileAndFeed();
-    }
-  };
-
-  // TASK 2: Like Action with Safe Optional Chaining
-  const handleToggleLike = async (postId: string) => {
-    if (!user?.id) {
-      toast.error("Please login to like whispers.");
-      return;
-    }
-    if (likeInProgressId === postId) return;
-
-    setLikeInProgressId(postId);
-
-    // Optimistic UI Update
-    const currentPost = posts.find((p) => p.id === postId);
-    if (!currentPost) {
-      setLikeInProgressId(null);
-      return;
-    }
-
-    const userHasLiked = currentPost.likes?.some((l: any) => l.userId === user.id);
-    const updatedLikes = userHasLiked
-      ? currentPost.likes.filter((l: any) => l.userId !== user.id)
-      : [...(currentPost.likes || []), { userId: user.id }];
-    const updatedCount = userHasLiked
-      ? Math.max(0, currentPost.likesCount - 1)
-      : currentPost.likesCount + 1;
-
-    setPosts((prev) =>
-      prev.map((p) =>
-        p.id === postId ? { ...p, likes: updatedLikes, likesCount: updatedCount } : p
-      )
-    );
-
-    const res = await toggleLikeIncognitoPost(postId, user.id);
-    setLikeInProgressId(null);
-
-    if (res?.success && res.data) {
-      setPosts((prev) =>
-        prev.map((p) =>
-          p.id === postId ? { ...p, likesCount: res.data!.likesCount } : p
-        )
-      );
-    } else {
-      // Revert if error
-      fetchProfileAndFeed();
-      toast.error(res?.error || "Failed to update like status.");
-    }
-  };
-
-  const toggleExpand = (postId: string) => {
-    setExpandedPosts((prev) => ({
-      ...prev,
-      [postId]: !prev[postId],
-    }));
-  };
-
-  // Auth loading state
-  if (userLoading || !user) {
-    return (
-      <div className="min-h-[60vh] flex flex-col items-center justify-center space-y-3">
-        <Loader2 className="w-10 h-10 text-purple-500 animate-spin" />
-        <p className="text-xs font-bold text-slate-400">Verifying campus session...</p>
-      </div>
-    );
-  }
-
-  const activeAvatarUrl =
-    incognitoProfile?.avatarUrl ||
-    `https://api.dicebear.com/9.x/bottts/svg?seed=AnonRobot`;
 
   return (
     <ClientServiceGuard campusId={user?.collegeId} serviceKey="INCOGNITO_WALL">
-      <div className="space-y-8 max-w-6xl mx-auto pb-16">
-        {/* Hero Header */}
-        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-purple-950/90 via-slate-900/90 to-electric-950/90 p-8 sm:p-10 border border-purple-500/30 text-white shadow-2xl backdrop-blur-2xl">
-          <div className="absolute top-0 right-0 -mr-16 -mt-16 w-80 h-80 bg-purple-500/20 rounded-full blur-3xl pointer-events-none" />
-          <div className="absolute bottom-0 left-1/4 -mb-16 w-60 h-60 bg-electric-500/20 rounded-full blur-3xl pointer-events-none" />
-
-          <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
-            <div className="space-y-2">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-500/20 border border-purple-400/30 text-purple-300 text-xs font-semibold">
-                <EyeOff className="w-3.5 h-3.5" />
-                <span>Anonymous Multi-Campus Wall & Whispers</span>
-              </div>
-              <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight">
-                Whisper Wall
-              </h1>
-              <p className="text-sm text-slate-300 max-w-2xl leading-relaxed">
-                Express unfiltered opinions, share anonymous exam tips, memes, and campus banter. Identity is shielded behind private robot avatars.
-              </p>
+      <div className="space-y-8 pb-12 max-w-4xl mx-auto">
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border pb-6">
+          <div className="space-y-1.5">
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-secondary text-foreground text-xs font-semibold border border-border">
+              <EyeOff className="w-3.5 h-3.5 text-primary" />
+              <span>Zero-Knowledge Campus Discourse</span>
             </div>
-
-            <div className="flex flex-wrap items-center gap-3">
-              {/* Alias Pill */}
-              <button
-                onClick={() => setIsProfileModalOpen(true)}
-                className="flex items-center gap-2.5 px-3.5 py-2 rounded-2xl bg-white/10 border border-white/20 hover:bg-white/15 transition-all text-xs font-semibold"
-              >
-                <img
-                  src={activeAvatarUrl}
-                  alt="Avatar"
-                  className="w-6 h-6 rounded-full bg-slate-800 p-0.5"
-                />
-                <span>@{incognitoProfile?.handle || "Set Alias"}</span>
-                <RefreshCw className="w-3 h-3 text-slate-300" />
-              </button>
-
-              <Button
-                variant="brand"
-                size="lg"
-                leftIcon={<Plus className="w-5 h-5" />}
-                onClick={() => setIsPostModalOpen(true)}
-                className="shadow-lg shadow-purple-500/25 bg-gradient-to-r from-purple-600 to-electric-600"
-              >
-                Post a Whisper
-              </Button>
-            </div>
+            <h1 className="font-heading text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground">
+              Anonymous Whisper Wall
+            </h1>
+            <p className="text-xs sm:text-sm text-muted-foreground">
+              Pseudonymous campus confessions, advice, questions, and academic discussion.
+            </p>
           </div>
+
+          <Button
+            onClick={() => setIsPostModalOpen(true)}
+            size="md"
+            leftIcon={<Plus className="w-4 h-4" />}
+          >
+            Post Whisper
+          </Button>
         </div>
 
-        {/* Scope Selector: My Campus vs Global */}
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
-          {/* Campus Scope Tabs */}
-          <div className="inline-flex p-1 rounded-2xl bg-slate-200/60 dark:bg-slate-900/60 border border-slate-300 dark:border-slate-800 shadow-inner">
+        {/* Feed Controls Bar */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          {/* Campus vs Global Segment */}
+          <div className="inline-flex p-1 rounded-lg border border-border bg-card">
             <button
               onClick={() => setFeedScope("CAMPUS")}
-              className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold transition-all ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${
                 feedScope === "CAMPUS"
-                  ? "bg-brand-600 text-white shadow-md shadow-brand-600/30"
-                  : "text-slate-500 hover:text-slate-200 hover:bg-slate-300/30 dark:hover:bg-slate-800/50"
+                  ? "bg-secondary text-foreground"
+                  : "text-muted-foreground hover:text-foreground"
               }`}
             >
-              <Building2 className="w-4 h-4" />
-              <span>My Campus</span>
+              <Building2 className="w-3.5 h-3.5 text-primary" />
+              <span>Campus Feed</span>
             </button>
-
             <button
               onClick={() => setFeedScope("GLOBAL")}
-              className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold transition-all ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${
                 feedScope === "GLOBAL"
-                  ? "bg-purple-600 text-white shadow-md shadow-purple-600/30"
-                  : "text-slate-500 hover:text-slate-200 hover:bg-slate-300/30 dark:hover:bg-slate-800/50"
+                  ? "bg-secondary text-foreground"
+                  : "text-muted-foreground hover:text-foreground"
               }`}
             >
-              <Globe className="w-4 h-4" />
-              <span>Global Feed</span>
+              <Globe className="w-3.5 h-3.5 text-primary" />
+              <span>Global University Feed</span>
             </button>
           </div>
 
-          {/* Category Filters */}
-          <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
-            {FEED_TYPES.map((type) => (
-              <button
-                key={type.value}
-                onClick={() => setFeedTypeFilter(type.value)}
-                className={`px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
-                  feedTypeFilter === type.value
-                    ? "bg-purple-600 text-white shadow-md shadow-purple-600/30"
-                    : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
-                }`}
-              >
-                {type.label}
-              </button>
+          {/* Type Filter */}
+          <select
+            value={feedTypeFilter}
+            onChange={(e) => setFeedTypeFilter(e.target.value)}
+            className="h-9 px-3 rounded-lg border border-input bg-card text-foreground text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+          >
+            {FEED_TYPES.map((t) => (
+              <option key={t.value} value={t.value}>
+                {t.label}
+              </option>
             ))}
-          </div>
+          </select>
         </div>
 
-        {/* Feed Stream (Strictly renders database records with clean Empty State) */}
+        {/* Whispers Feed */}
         {loading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {[1, 2, 3, 4].map((i) => (
-              <div key={i} className="h-44 rounded-2xl bg-slate-200/50 dark:bg-slate-800 animate-pulse" />
+          <div className="space-y-4">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="h-44 rounded-xl bg-secondary/60 animate-pulse border border-border" />
             ))}
           </div>
         ) : posts.length === 0 ? (
-          <GlassCard className="text-center py-16">
-            <EyeOff className="w-12 h-12 mx-auto text-slate-400 mb-3 opacity-60" />
-            <h3 className="text-lg font-bold text-slate-700 dark:text-slate-300">
-              {feedScope === "CAMPUS"
-                ? "No whispers on your campus wall yet"
-                : "The global incognito feed is quiet right now"}
-            </h3>
-            <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
-              Drop the first anonymous confession or secret tip to get the conversation going!
+          <Card className="p-12 text-center space-y-3">
+            <EyeOff className="w-12 h-12 text-muted-foreground mx-auto" />
+            <h3 className="font-bold text-foreground text-base">No whispers in this feed</h3>
+            <p className="text-xs text-muted-foreground max-w-sm mx-auto">
+              Share the first confession, advice, or campus question anonymously.
             </p>
-            <Button
-              variant="brand"
-              size="sm"
-              className="mt-4 bg-purple-600 hover:bg-purple-500"
-              onClick={() => setIsPostModalOpen(true)}
-            >
-              Whisper Something
-            </Button>
-          </GlassCard>
+          </Card>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="space-y-4">
             {posts.map((post) => {
-              const avatar =
-                post.profile?.avatarUrl ||
-                `https://api.dicebear.com/9.x/bottts/svg?seed=${post.profile?.handle || "Anon"}`;
-
-              const imagesList =
-                post.mediaUrls && post.mediaUrls.length > 0
-                  ? post.mediaUrls
-                  : post.mediaUrl
-                  ? [post.mediaUrl]
-                  : [];
-
-              const isLiked = user && post.likes?.some((l: any) => l.userId === user.id);
-              const isLongText = post.content && post.content.length > 220;
-              const isExpanded = expandedPosts[post.id];
-              const commentsCount = post._count?.comments || 0;
+              const isLiked = post.isLikedByMe;
 
               return (
-                <GlassCard
-                  key={post.id}
-                  interactive
-                  className="flex flex-col justify-between border-slate-200/80 dark:border-slate-800/80 hover:border-purple-500/50 transition-all p-5 sm:p-6"
-                >
-                  <div className="space-y-3.5">
-                    {/* Header: Dicebear Avatar, Alias, College & Feed Type */}
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-2.5">
-                        <img
-                          src={avatar}
-                          alt="Bot Avatar"
-                          className="w-9 h-9 rounded-xl bg-slate-200 dark:bg-slate-800 p-0.5 ring-1 ring-purple-500/40 object-cover"
-                        />
-                        <div>
-                          <div className="flex items-center gap-1.5">
-                            <p className="text-xs font-bold text-slate-900 dark:text-white">
-                              @{post.profile?.handle || "Anonymous"}
-                            </p>
-                            {post.college && (
-                              <span className="text-[10px] text-slate-400 font-medium flex items-center gap-0.5">
-                                • <Building2 className="w-2.5 h-2.5" />
-                                <span>{post.college.name}</span>
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-[10px] text-slate-400">
-                            {formatDate(post.createdAt)}
-                          </p>
-                        </div>
+                <Card key={post.id} className="p-5 sm:p-6 space-y-4">
+                  {/* Author Header */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-lg bg-secondary border border-border flex items-center justify-center font-mono font-bold text-xs text-primary">
+                        {post.authorHandle ? post.authorHandle[0].toUpperCase() : "A"}
                       </div>
-
-                      <Badge
-                        variant={
-                          post.feedType === "CONFESSION"
-                            ? "danger"
-                            : post.feedType === "ADVICE"
-                            ? "brand"
-                            : post.feedType === "MEME"
-                            ? "purple"
-                            : "neutral"
-                        }
-                        size="sm"
-                      >
-                        {post.feedType}
-                      </Badge>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-xs font-bold text-foreground">
+                            @{post.authorHandle || "Anonymous"}
+                          </span>
+                          <Badge variant="secondary" size="sm">
+                            {post.feedType}
+                          </Badge>
+                        </div>
+                        <span className="text-[11px] text-muted-foreground">
+                          {formatDate(post.createdAt)}
+                        </span>
+                      </div>
                     </div>
 
-                    {/* Post Content with Truncation & Read More */}
-                    <div>
-                      <p className="text-sm text-slate-800 dark:text-slate-200 leading-relaxed whitespace-pre-wrap">
-                        {isLongText && !isExpanded
-                          ? `${post.content.slice(0, 220)}...`
-                          : post.content}
-                      </p>
-
-                      {isLongText && (
-                        <div className="mt-1 flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => toggleExpand(post.id)}
-                            className="text-xs font-bold text-purple-600 dark:text-purple-400 hover:underline"
-                          >
-                            {isExpanded ? "Show Less" : "Read More"}
-                          </button>
-                          <span className="text-slate-400">•</span>
-                          <Link
-                            href={`/incognito/${post.id}`}
-                            className="text-xs font-semibold text-slate-400 hover:text-slate-200 inline-flex items-center gap-0.5"
-                          >
-                            <span>Open Thread</span>
-                            <ExternalLink className="w-3 h-3" />
-                          </Link>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Multi-Image Responsive Grid (Dynamic Containment) */}
-                    {imagesList.length > 0 && (
-                      <div className="pt-1">
-                        <PostImageGrid images={imagesList} />
-                      </div>
+                    {post.scope === "CAMPUS" && post.college && (
+                      <span className="text-[11px] text-muted-foreground hidden sm:inline">
+                        {post.college.name}
+                      </span>
                     )}
                   </div>
 
-                  {/* Footer: Anti-Spam Like, Comments Thread & Anonymous DM */}
-                  <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-3">
-                      {/* Idempotent Like Anti-Spam Button */}
+                  {/* Body Content */}
+                  <p className="text-xs sm:text-sm text-foreground leading-relaxed whitespace-pre-wrap">
+                    {post.content}
+                  </p>
+
+                  {/* Attached Images */}
+                  {post.images && post.images.length > 0 && (
+                    <PostImageGrid images={post.images} />
+                  )}
+
+                  {/* Footer Actions */}
+                  <div className="pt-3 border-t border-border/60 flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-4">
+                      {/* Like Action */}
                       <button
+                        type="button"
                         onClick={() => handleToggleLike(post.id)}
                         disabled={likeInProgressId === post.id}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                        className={`flex items-center gap-1.5 text-xs font-semibold transition-colors ${
                           isLiked
-                            ? "bg-rose-500/15 text-rose-500 shadow-sm"
-                            : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-rose-500"
+                            ? "text-rose-500"
+                            : "text-muted-foreground hover:text-foreground"
                         }`}
                       >
-                        <Heart
-                          className={`w-3.5 h-3.5 transition-transform active:scale-125 ${
-                            isLiked ? "fill-rose-500 text-rose-500" : ""
-                          }`}
-                        />
-                        <span>{post.likesCount}</span>
+                        <Heart className={`w-4 h-4 ${isLiked ? "fill-current" : ""}`} />
+                        <span>{post._count?.likes ?? 0}</span>
                       </button>
 
-                      {/* Dedicated Thread & Comments Button */}
+                      {/* Comment Action */}
                       <Link
                         href={`/incognito/${post.id}`}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-purple-500 hover:bg-purple-50 dark:hover:bg-purple-950/30 transition-colors"
-                        title="View conversation thread"
+                        className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
                       >
-                        <MessageSquare className="w-3.5 h-3.5" />
-                        <span>{commentsCount}</span>
+                        <MessageSquare className="w-4 h-4" />
+                        <span>{post._count?.comments ?? 0}</span>
                       </Link>
                     </div>
 
-                    <div className="flex items-center gap-2">
-                      {post.profile?.userId && post.profile.userId !== user?.id && (
-                        <button
-                          onClick={() =>
-                            handleDirectMessageAnonymous(
-                              post.profile.userId,
-                              post.profile.handle
-                            )
-                          }
-                          disabled={chatLoadingId === post.profile.userId}
-                          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-purple-500/15 border border-purple-500/30 text-purple-600 dark:text-purple-300 text-xs font-bold hover:bg-purple-500/25 transition-colors"
-                          title="Send private anonymous whisper DM"
-                        >
-                          <EyeOff className="w-3.5 h-3.5" />
-                          <span>
-                            {chatLoadingId === post.profile.userId
-                              ? "Connecting..."
-                              : "Anon DM"}
-                          </span>
-                        </button>
-                      )}
-
-                      <Link
-                        href={`/incognito/${post.id}`}
-                        className="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-white transition-colors"
-                        title="Open full thread"
+                    {/* Anonymous 1-on-1 Chat */}
+                    {post.authorProfileId && user?.id !== post.authorId && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        isLoading={chatLoadingId === post.authorProfileId}
+                        onClick={() => handleAnonymousChat(post.authorProfileId)}
+                        leftIcon={<EyeOff className="w-3.5 h-3.5 text-primary" />}
                       >
-                        <ChevronRight className="w-4 h-4" />
-                      </Link>
-                    </div>
+                        Whisper to Author
+                      </Button>
+                    )}
                   </div>
-                </GlassCard>
+                </Card>
               );
             })}
           </div>
         )}
 
-        {/* Post Anonymously Modal */}
+        {/* Post Whisper Modal */}
         <Modal
           isOpen={isPostModalOpen}
           onClose={() => setIsPostModalOpen(false)}
-          title="Publish Anonymous Whisper"
-          description="Your identity is completely shielded. Only your pseudonym and bot avatar will be visible."
-          maxWidth="lg"
+          title="Post Anonymous Whisper"
+          description="Your name and college roll number are never linked to this post."
         >
-          <form onSubmit={handlePublishPost} className="space-y-4 pt-2">
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
-                Category Channel *
-              </label>
-              <select
-                value={feedType}
-                onChange={(e) => setFeedType(e.target.value)}
-                className="w-full px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-              >
-                <option value="CONFESSION">🔥 Campus Confession</option>
-                <option value="ADVICE">💡 Secret Advice / Exam Tip</option>
-                <option value="MEME">😂 Banter & Campus Meme</option>
-                <option value="CAMPUS_NEWS">📢 Campus News & Intel</option>
-                <option value="GENERAL">General Whisper</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
-                Your Anonymous Message *
-              </label>
-              <textarea
-                required
-                rows={3}
-                placeholder="What's on your mind? Share confessions, advice, or campus secrets..."
-                value={content}
-                onChange={(e) => setContent(e.target.value)}
-                className="w-full px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-              />
-            </div>
-
-            {/* Multi-Image Upload */}
-            <MultiImageUpload
-              images={images}
-              onChange={setImages}
-              onUploadingChange={setIsUploadingMedia}
-              maxImages={4}
-              label="Attach Photos or Memes (Up to 4)"
-            />
-
-            <div className="flex items-center gap-3 p-3 rounded-xl bg-slate-100/70 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 text-xs">
-              <img
-                src={activeAvatarUrl}
-                alt="Avatar"
-                className="w-8 h-8 rounded-full bg-slate-800 p-0.5 ring-1 ring-purple-500"
-              />
-              <div>
-                <p className="font-bold text-slate-800 dark:text-slate-200">
-                  Posting as @{incognitoProfile?.handle || "AnonRobot"}
-                </p>
-                <p className="text-[11px] text-slate-400">
-                  Auto-tagged to your campus community
-                </p>
+          <form onSubmit={handleCreatePost} className="space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-foreground">Category *</label>
+                <select
+                  value={feedType}
+                  onChange={(e) => setFeedType(e.target.value)}
+                  className="w-full h-9 px-3 rounded-lg border border-input bg-card text-foreground text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+                >
+                  <option value="CONFESSION">Confession</option>
+                  <option value="ADVICE">Campus Advice</option>
+                  <option value="MEME">Meme / Banter</option>
+                  <option value="CAMPUS_NEWS">Campus News</option>
+                  <option value="GENERAL">General</option>
+                </select>
               </div>
-            </div>
 
-            <div className="pt-4 border-t border-slate-200 dark:border-slate-800 flex justify-end gap-3">
-              <Button
-                type="button"
-                variant="outline"
-                disabled={isUploadingMedia || isSubmitting}
-                onClick={() => setIsPostModalOpen(false)}
-              >
-                Cancel
-              </Button>
-              <SubmitButton
-                disabled={isUploadingMedia || isSubmitting}
-                isSubmitting={isSubmitting || isUploadingMedia}
-                loadingText={isUploadingMedia ? "Attaching images..." : "Publishing Whisper..."}
-                className="bg-purple-600 hover:bg-purple-500 font-bold"
-              >
-                Publish Whisper
-              </SubmitButton>
-            </div>
-          </form>
-        </Modal>
-
-        {/* Customize Incognito Handle Modal */}
-        <Modal
-          isOpen={isProfileModalOpen}
-          onClose={() => setIsProfileModalOpen(false)}
-          title="Customize Incognito Alias"
-          description="Choose a unique pseudonym. A matching DiceBear Bottts avatar is automatically generated."
-        >
-          <form onSubmit={handleUpdateAlias} className="space-y-4 pt-2">
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
-                Pseudonym Alias Handle *
-              </label>
-              <div className="relative">
-                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-purple-500 font-bold">
-                  @
-                </span>
-                <input
-                  type="text"
-                  required
-                  placeholder="CyberHawk_99"
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-foreground">Pseudonym Handle</label>
+                <Input
+                  placeholder="e.g. Anon_9482"
                   value={customHandle}
                   onChange={(e) => setCustomHandle(e.target.value)}
-                  className="w-full pl-8 pr-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-sm font-bold text-purple-600 dark:text-purple-400 focus:outline-none focus:ring-2 focus:ring-purple-500"
                 />
               </div>
             </div>
 
-            {customHandle && (
-              <div className="p-4 rounded-2xl bg-purple-500/10 border border-purple-500/20 text-center space-y-2">
-                <p className="text-xs font-bold text-purple-600 dark:text-purple-300">
-                  Avatar Preview (DiceBear Bottts)
-                </p>
-                <img
-                  src={`https://api.dicebear.com/9.x/bottts/svg?seed=${encodeURIComponent(
-                    customHandle
-                  )}`}
-                  alt="Preview"
-                  className="w-16 h-16 mx-auto rounded-2xl bg-slate-900 p-1 ring-2 ring-purple-500 shadow-lg"
-                />
-              </div>
-            )}
-
-            <div className="pt-4 border-t border-slate-200 dark:border-slate-800 flex justify-end gap-3">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setIsProfileModalOpen(false)}
-              >
-                Cancel
-              </Button>
-              <SubmitButton
-                isSubmitting={isSubmitting}
-                loadingText="Updating Alias..."
-                className="bg-purple-600 hover:bg-purple-500 font-bold"
-              >
-                Save Pseudonym
-              </SubmitButton>
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-foreground">Whisper Content *</label>
+              <Textarea
+                placeholder="Write your anonymous confession, campus advice, or observation..."
+                value={content}
+                onChange={(e) => setContent(e.target.value)}
+                rows={4}
+                required
+              />
             </div>
+
+            {/* Photo / Meme Attachments */}
+            <MultiImageUpload
+              images={images}
+              onChange={(urls) => setImages(urls)}
+              maxImages={4}
+              label="Attach Images (Up to 4)"
+            />
+
+            <Button
+              type="submit"
+              size="lg"
+              className="w-full"
+              isLoading={isSubmitting}
+            >
+              Broadcast Anonymously
+            </Button>
           </form>
         </Modal>
       </div>

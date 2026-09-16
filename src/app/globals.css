@@ -1,62 +1,6 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Outfit:wght@400;500;600;700;800;900&display=swap');
 @import "tailwindcss";
 
-
-@theme {
-  --font-sans: 'Inter', 'Outfit', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --font-heading: 'Outfit', 'Inter', system-ui, sans-serif;
-
-  /* Black & White / Nova Monochrome Brand Mapping */
-  --color-brand-50: #f8fafc;
-  --color-brand-100: #f1f5f9;
-  --color-brand-200: #e2e8f0;
-  --color-brand-300: #cbd5e1;
-  --color-brand-400: #94a3b8;
-  --color-brand-500: #64748b;
-  --color-brand-600: #475569;
-  --color-brand-700: #334155;
-  --color-brand-800: #1e293b;
-  --color-brand-900: #0f172a;
-  --color-brand-950: #020617;
-
-  --color-accent-50: #fafafa;
-  --color-accent-100: #f4f4f5;
-  --color-accent-200: #e4e4e7;
-  --color-accent-300: #d4d4d8;
-  --color-accent-400: #a1a1aa;
-  --color-accent-500: #71717a;
-  --color-accent-600: #52525b;
-  --color-accent-700: #3f3f46;
-  --color-accent-800: #27272a;
-  --color-accent-900: #18181b;
-  --color-accent-950: #09090b;
-
-  --color-electric-50: #fafafa;
-  --color-electric-100: #f5f5f5;
-  --color-electric-200: #e5e5e5;
-  --color-electric-300: #d4d4d4;
-  --color-electric-400: #a3a3a3;
-  --color-electric-500: #737373;
-  --color-electric-600: #525252;
-  --color-electric-700: #404040;
-  --color-electric-800: #262626;
-  --color-electric-900: #171717;
-
-  /* Custom Micro-Animations */
-  --animate-float: float 6s ease-in-out infinite;
-  --animate-glow: glow 2s ease-in-out infinite alternate;
-  --animate-pulse-slow: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-
-  @keyframes float {
-    0%, 100% { transform: translateY(0); }
-    50% { transform: translateY(-8px); }
-  }
-  @keyframes glow {
-    0% { opacity: 0.4; }
-    100% { opacity: 0.8; }
-  }
-}
-
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -84,131 +28,152 @@
   --radius-xl: calc(var(--radius) + 4px);
 }
 
-/* Shadcn UI Nova Theme — Black & White Monochrome Palette */
-:root {
-  --background: #ffffff;
+/* 1. Theme: Obsidian Cyber (Dark, Electric Cyan, High-Tech) */
+:root,
+[data-theme="cyber-neon"] {
+  --background: #09090b;
+  --foreground: #fafafa;
+  --card: #111215;
+  --card-foreground: #fafafa;
+  --popover: #111215;
+  --popover-foreground: #fafafa;
+  --primary: #06b6d4;
+  --primary-foreground: #09090b;
+  --secondary: #1c1d22;
+  --secondary-foreground: #f4f4f5;
+  --muted: #18181b;
+  --muted-foreground: #a1a1aa;
+  --accent: #164e63;
+  --accent-foreground: #e0f2fe;
+  --destructive: #ef4444;
+  --destructive-foreground: #fafafa;
+  --border: #27272a;
+  --input: #27272a;
+  --ring: #06b6d4;
+  --radius: 0.5rem;
+  --glow-color: rgba(6, 182, 212, 0.15);
+}
+
+/* 2. Theme: Emerald Campus (Fresh Organic Sage, Forest Green, Warm Accents) */
+[data-theme="emerald-campus"] {
+  --background: #f5f7f5;
+  --foreground: #132a21;
+  --card: #ffffff;
+  --card-foreground: #132a21;
+  --popover: #ffffff;
+  --popover-foreground: #132a21;
+  --primary: #0f766e;
+  --primary-foreground: #ffffff;
+  --secondary: #e6ede7;
+  --secondary-foreground: #132a21;
+  --muted: #ecf2ed;
+  --muted-foreground: #52796f;
+  --accent: #ea580c;
+  --accent-foreground: #ffffff;
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+  --border: #d2ded5;
+  --input: #d2ded5;
+  --ring: #0f766e;
+  --radius: 0.625rem;
+  --glow-color: rgba(15, 118, 110, 0.12);
+}
+
+/* 3. Theme: Minimal Luxe (Architectural Canvas, Crisp Contrast, Defined Skeletons) */
+[data-theme="minimal-luxe"] {
+  --background: #f4f4f5;
   --foreground: #09090b;
   --card: #ffffff;
   --card-foreground: #09090b;
   --popover: #ffffff;
   --popover-foreground: #09090b;
   --primary: #09090b;
-  --primary-foreground: #fafafa;
-  --secondary: #f4f4f5;
-  --secondary-foreground: #18181b;
-  --muted: #f4f4f5;
-  --muted-foreground: #71717a;
-  --accent: #f4f4f5;
-  --accent-foreground: #18181b;
-  --destructive: #ef4444;
-  --destructive-foreground: #fafafa;
-  --border: #e4e4e7;
-  --input: #e4e4e7;
-  --ring: #18181b;
+  --primary-foreground: #ffffff;
+  --secondary: #e4e4e7;
+  --secondary-foreground: #09090b;
+  --muted: #e4e4e7;
+  --muted-foreground: #52525b;
+  --accent: #18181b;
+  --accent-foreground: #ffffff;
+  --destructive: #e11d48;
+  --destructive-foreground: #ffffff;
+  --border: #d4d4d8;
+  --input: #d4d4d8;
+  --ring: #09090b;
   --radius: 0.5rem;
+  --glow-color: rgba(0, 0, 0, 0.05);
 }
 
-.dark {
-  --background: #050505;
-  --foreground: #fafafa;
-  --card: #0a0a0a;
-  --card-foreground: #fafafa;
-  --popover: #0a0a0a;
-  --popover-foreground: #fafafa;
-  --primary: #fafafa;
-  --primary-foreground: #09090b;
-  --secondary: #171717;
-  --secondary-foreground: #fafafa;
-  --muted: #171717;
+/* 4. Theme: Minimal Dark (Monochrome Architectural Dark, Obsidian Canvas & Stark White) */
+[data-theme="minimal-dark"] {
+  --background: #000000;
+  --foreground: #ffffff;
+  --card: #09090b;
+  --card-foreground: #ffffff;
+  --popover: #09090b;
+  --popover-foreground: #ffffff;
+  --primary: #ffffff;
+  --primary-foreground: #000000;
+  --secondary: #27272a;
+  --secondary-foreground: #ffffff;
+  --muted: #18181b;
   --muted-foreground: #a1a1aa;
-  --accent: #1e1e1e;
-  --accent-foreground: #fafafa;
-  --destructive: #7f1d1d;
-  --destructive-foreground: #fafafa;
-  --border: #262626;
-  --input: #262626;
-  --ring: #d4d4d8;
+  --accent: #27272a;
+  --accent-foreground: #ffffff;
+  --destructive: #f43f5e;
+  --destructive-foreground: #ffffff;
+  --border: #27272a;
+  --input: #27272a;
+  --ring: #ffffff;
+  --radius: 0.5rem;
+  --glow-color: rgba(255, 255, 255, 0.08);
+}
+
+/* High-contrast skeleton loading states for Minimal Luxe and Minimal Dark */
+[data-theme="minimal-luxe"] .animate-pulse:not([class*="bg-emerald-"]):not([class*="bg-primary"]):not([class*="bg-destructive"]):not([class*="bg-amber-"]) {
+  background-color: #d4d4d8;
+  border-color: #a1a1aa;
+}
+
+[data-theme="minimal-dark"] .animate-pulse:not([class*="bg-emerald-"]):not([class*="bg-primary"]):not([class*="bg-destructive"]):not([class*="bg-amber-"]) {
+  background-color: #27272a;
+  border-color: #3f3f46;
 }
 
 body {
   background-color: var(--background);
   color: var(--foreground);
-  font-family: var(--font-sans);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  transition-property: color, background-color, border-color;
-  transition-duration: 200ms;
+  transition: background-color 0.25s ease, color 0.25s ease;
+  min-height: 100vh;
 }
 
 h1, h2, h3, h4, h5, h6 {
-  font-family: var(--font-heading);
-  letter-spacing: -0.02em;
+  font-family: 'Outfit', 'Inter', system-ui, sans-serif;
+  letter-spacing: -0.025em;
 }
 
-/* Monochrome Mesh Gradient Backgrounds */
-.mesh-gradient-light {
-  background-color: #ffffff;
-  background-image: 
-    radial-gradient(at 0% 0%, rgba(0, 0, 0, 0.03) 0px, transparent 50%),
-    radial-gradient(at 100% 0%, rgba(0, 0, 0, 0.02) 0px, transparent 50%),
-    radial-gradient(at 50% 100%, rgba(0, 0, 0, 0.015) 0px, transparent 50%);
-  background-attachment: fixed;
+/* Fluid micro-interactions (libraries.dev & animejs inspired fluid spring physics) */
+.fluid-interactive {
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.2s ease;
 }
 
-.mesh-gradient-dark {
-  background-color: #050505;
-  background-image: 
-    radial-gradient(at 0% 0%, rgba(255, 255, 255, 0.04) 0px, transparent 50%),
-    radial-gradient(at 100% 0%, rgba(255, 255, 255, 0.02) 0px, transparent 50%),
-    radial-gradient(at 50% 100%, rgba(255, 255, 255, 0.015) 0px, transparent 50%);
-  background-attachment: fixed;
+.fluid-interactive:hover {
+  transform: translateY(-2px);
 }
 
-/* Nova Black & White Glassmorphism Classes */
-.glass-panel {
-  background-color: rgba(255, 255, 255, 0.85);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.05);
+.fluid-interactive:active {
+  transform: translateY(0) scale(0.99);
 }
 
-.dark .glass-panel {
-  background-color: rgba(10, 10, 10, 0.8);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.5);
+/* Subtle theme glow container */
+.theme-glow-card {
+  box-shadow: 0 4px 20px -2px var(--glow-color);
 }
 
-.glass-panel-interactive {
-  background-color: rgba(255, 255, 255, 0.85);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.05);
-  transition: all 250ms cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.glass-panel-interactive:hover {
-  border-color: rgba(0, 0, 0, 0.25);
-  transform: translateY(-1px);
-}
-
-.dark .glass-panel-interactive {
-  background-color: rgba(10, 10, 10, 0.8);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.5);
-}
-
-.dark .glass-panel-interactive:hover {
-  border-color: rgba(255, 255, 255, 0.3);
-  transform: translateY(-1px);
-}
-
-/* Custom Scrollbar - Monochrome */
+/* Modern clean scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -219,16 +184,10 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(113, 113, 122, 0.3);
+  background: var(--border);
   border-radius: 9999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(113, 113, 122, 0.6);
-}
-
-/* Chat & Mobile Touch Scroll Containment */
-.chat-scroll-container {
-  overscroll-behavior-y: none;
-  -webkit-overflow-scrolling: touch;
+  background: var(--muted-foreground);
 }

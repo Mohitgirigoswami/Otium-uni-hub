@@ -2,41 +2,31 @@
 
 import React, { useState, useEffect, useTransition } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { GlassCard } from "@/components/ui/GlassCard";
-import { Button } from "@/components/ui/Button";
-import { Badge } from "@/components/ui/Badge";
-import { Modal } from "@/components/ui/Modal";
-import { SubmitButton } from "@/components/ui/SubmitButton";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Modal } from "@/components/ui/modal";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { useUser } from "@/components/providers/UserContext";
-import {
-  getGigs,
-  createGig,
-  claimGig,
-} from "@/actions/gigs.actions";
+import { getGigs, createGig } from "@/actions/gigs.actions";
+import { getPlatformSettingsAction } from "@/actions/platform.actions";
 import { calculateEscrow } from "@/lib/escrow-math";
 import { formatPaiseToRupees, formatDate } from "@/lib/utils";
 import { toast } from "sonner";
 import {
   Briefcase,
   Plus,
-  ShieldAlert,
   Clock,
   CheckCircle2,
   AlertOctagon,
-  User,
-  FileText,
-  DollarSign,
+  Search,
   Filter,
-  Sparkles,
-  ExternalLink,
-  ChevronRight,
-  TrendingUp,
-  ShieldCheck,
   ArrowRight,
+  ShieldCheck,
+  Building2,
 } from "lucide-react";
 import { TaskCategoryType } from "@/lib/types";
-import { PdfUploadDropzone } from "@/components/ui/PdfUploadDropzone";
 import { ClientServiceGuard } from "@/components/ClientServiceGuard";
 
 const CATEGORIES: { label: string; value: string }[] = [
@@ -48,8 +38,6 @@ const CATEGORIES: { label: string; value: string }[] = [
   { label: "Research & Summaries", value: "RESEARCH" },
   { label: "Tutoring & Doubts", value: "TUTORING" },
 ];
-
-import { getPlatformSettingsAction } from "@/actions/platform.actions";
 
 export default function GigsPage() {
   const { user } = useUser();
@@ -68,8 +56,7 @@ export default function GigsPage() {
   const [budgetRupees, setBudgetRupees] = useState("");
   const [category, setCategory] = useState<TaskCategoryType>("ASSIGNMENT");
   const [deadline, setDeadline] = useState("");
-  const [fileUrl, setFileUrl] = useState<string | undefined>(undefined);
-  const [isUploadingMedia, setIsUploadingMedia] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     getPlatformSettingsAction().then((res) => {
@@ -107,438 +94,251 @@ export default function GigsPage() {
   const handleCreateGig = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) {
-      toast.error("Please login to post an assignment gig.");
+      toast.error("Please sign in to post a task.");
       return;
     }
 
-    const budget = parseFloat(budgetRupees);
-    if (isNaN(budget) || budget <= 0) {
-      toast.error("Please enter a valid bounty amount.");
+    const price = Number(budgetRupees);
+    if (!price || price < 50) {
+      toast.error("Minimum task bounty is ₹50.");
       return;
     }
 
-    startTransition(async () => {
-      const res = await createGig({
-        posterId: user.id,
-        title,
-        description,
-        budgetRupees: budget,
-        category,
-        deadline: deadline ? new Date(deadline).toISOString() : undefined,
-        fileUrl,
-        collegeId: user.collegeId,
-      });
-
-      if (res.error) {
-        toast.error(res.error);
-      } else {
-        toast.success("Bounty task posted with Escrow protection!");
-        setIsCreateModalOpen(false);
-        setTitle("");
-        setDescription("");
-        setBudgetRupees("");
-        setDeadline("");
-        setFileUrl(undefined);
-        fetchGigsList();
-      }
+    setIsSubmitting(true);
+    const res = await createGig({
+      posterId: user.id,
+      collegeId: user.collegeId || undefined,
+      title: title.trim(),
+      description: description.trim(),
+      budgetRupees: price,
+      category,
+      deadline: deadline || undefined,
     });
+    setIsSubmitting(false);
+
+    if (res.error) {
+      toast.error(res.error);
+    } else {
+      toast.success("Task posted with escrow protection.");
+      setIsCreateModalOpen(false);
+      setTitle("");
+      setDescription("");
+      setBudgetRupees("");
+      setDeadline("");
+      fetchGigsList();
+    }
   };
 
   return (
     <ClientServiceGuard campusId={user?.collegeId} serviceKey="GIG_HUB">
-      <div className="space-y-8 max-w-7xl mx-auto pb-12">
-        {/* Hero Header */}
-        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-slate-900/95 via-brand-950/90 to-electric-950/95 p-8 sm:p-10 border border-brand-500/30 text-white shadow-2xl backdrop-blur-2xl">
-          <div className="absolute top-0 right-0 -mr-16 -mt-16 w-80 h-80 bg-brand-500/20 rounded-full blur-3xl pointer-events-none" />
-          <div className="absolute bottom-0 left-1/4 -mb-16 w-60 h-60 bg-electric-500/20 rounded-full blur-3xl pointer-events-none" />
-
-          <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
-            <div className="space-y-2">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-brand-500/20 border border-brand-400/30 text-brand-300 text-xs font-semibold">
-                <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Anti-Ghosting Managed Escrow System</span>
-              </div>
-              <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight">
-                Peer Assignment & Task Bounties
-              </h1>
-              <p className="text-sm text-slate-300 max-w-2xl leading-relaxed">
-                Connect with verified student peers for coding assignments, research papers, design tasks, and lab reports with guaranteed 50% milestone escrow.
-              </p>
+      <div className="space-y-8 pb-12">
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border pb-6">
+          <div className="space-y-1.5">
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-secondary text-foreground text-xs font-semibold border border-border">
+              <Briefcase className="w-3.5 h-3.5 text-primary" />
+              <span>Campus Escrow Marketplace</span>
             </div>
+            <h1 className="font-heading text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground">
+              Peer Freelance Gigs
+            </h1>
+            <p className="text-xs sm:text-sm text-muted-foreground">
+              Campus assignments, coding projects, and tutoring with locked proxy escrow safeguards.
+            </p>
+          </div>
 
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 shrink-0">
-              <Button
-                variant="brand"
-                size="lg"
-                onClick={() => setIsCreateModalOpen(true)}
-                className="shadow-xl shadow-brand-500/25"
-                leftIcon={<Plus className="w-5 h-5" />}
-              >
-                Post a Bounty
-              </Button>
-            </div>
+          <Button
+            onClick={() => setIsCreateModalOpen(true)}
+            size="md"
+            leftIcon={<Plus className="w-4 h-4" />}
+          >
+            Post a Task
+          </Button>
+        </div>
+
+        {/* Filter & Search Bar */}
+        <div className="flex flex-col sm:flex-row gap-3">
+          <form onSubmit={handleSearch} className="flex-1 flex gap-2">
+            <Input
+              type="text"
+              placeholder="Search by task title or keywords..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+            <Button type="submit" variant="secondary">
+              <Search className="w-4 h-4" />
+            </Button>
+          </form>
+
+          <div className="flex items-center gap-2">
+            <select
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value)}
+              className="h-9 px-3 rounded-lg border border-input bg-card text-foreground text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+            >
+              {CATEGORIES.map((c) => (
+                <option key={c.value} value={c.value}>
+                  {c.label}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="h-9 px-3 rounded-lg border border-input bg-card text-foreground text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+            >
+              <option value="ALL">All Statuses</option>
+              <option value="OPEN">Open (Claimable)</option>
+              <option value="ASSIGNED">In Progress</option>
+              <option value="COMPLETED">Completed</option>
+            </select>
           </div>
         </div>
 
-        {/* Filters and Search Bar */}
-        <GlassCard className="p-4 space-y-4">
-          <div className="flex flex-col lg:flex-row items-center justify-between gap-4">
-            {/* Category Pills */}
-            <div className="flex items-center gap-1.5 overflow-x-auto w-full lg:w-auto pb-2 lg:pb-0 scrollbar-none">
-              {CATEGORIES.map((cat) => (
-                <button
-                  key={cat.value}
-                  onClick={() => setCategoryFilter(cat.value)}
-                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
-                    categoryFilter === cat.value
-                      ? "bg-brand-500 text-white shadow-md shadow-brand-500/20"
-                      : "bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
-                  }`}
-                >
-                  {cat.label}
-                </button>
-              ))}
-            </div>
-
-            {/* Status Tab & Search */}
-            <div className="flex items-center gap-2.5 w-full lg:w-auto justify-end">
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-brand-500"
-              >
-                <option value="ALL">All Statuses</option>
-                <option value="OPEN">Open Bounties</option>
-                <option value="CLAIMED">Claimed (Pending Advance)</option>
-                <option value="ADVANCE_VERIFIED">Advance Verified (Writing)</option>
-                <option value="WORK_WITH_ADMIN">Work With Admin</option>
-                <option value="COMPLETED">Completed Payouts</option>
-              </select>
-
-              <form onSubmit={handleSearch} className="relative flex-1 sm:w-60">
-                <input
-                  type="text"
-                  placeholder="Search gigs & tasks..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-9 pr-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
-                />
-                <Filter className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              </form>
-            </div>
-          </div>
-        </GlassCard>
-
-        {/* Gigs Grid */}
+        {/* Gigs List Grid */}
         {loading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
             {[1, 2, 3, 4, 5, 6].map((i) => (
-              <div
-                key={i}
-                className="h-64 rounded-2xl bg-slate-200/50 dark:bg-slate-800/50 animate-pulse"
-              />
+              <div key={i} className="h-56 rounded-xl bg-secondary/60 animate-pulse border border-border" />
             ))}
           </div>
         ) : gigs.length === 0 ? (
-          <GlassCard className="text-center py-16">
-            <Briefcase className="w-12 h-12 mx-auto text-slate-400 mb-3 opacity-60" />
-            <h3 className="text-lg font-bold text-slate-700 dark:text-slate-300">
-              No matching task gigs found
-            </h3>
-            <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
-              Try adjusting your category filters or post a new bounty for your assignment!
+          <Card className="p-12 text-center space-y-3">
+            <Briefcase className="w-12 h-12 text-muted-foreground mx-auto" />
+            <h3 className="font-bold text-foreground text-base">No tasks match your search</h3>
+            <p className="text-xs text-muted-foreground max-w-sm mx-auto">
+              Try adjusting your category filter, or post a new bounty for other campus peers to solve.
             </p>
-            <Button
-              variant="brand"
-              size="sm"
-              className="mt-4"
-              onClick={() => setIsCreateModalOpen(true)}
-            >
-              Create Task Gig
-            </Button>
-          </GlassCard>
+          </Card>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
             {gigs.map((gig) => {
-              const price = gig.budget / 100;
-              const escrow = calculateEscrow(price);
-
-              const isPoster = gig.posterId === user?.id;
-
+              const isOpen = gig.status === "OPEN";
               return (
-                <Link key={gig.id} href={`/gigs/${gig.id}`} className="block group">
-                  <GlassCard
-                    interactive
-                    className="flex flex-col justify-between h-full border-slate-200/80 dark:border-slate-800/80 group-hover:border-brand-500/60"
-                  >
-                    <div className="space-y-4">
-                      {/* Card Header: Category & Status */}
-                      <div className="flex items-center justify-between gap-2">
-                        <Badge
-                          variant={
-                            gig.category === "CODING"
-                              ? "brand"
-                              : gig.category === "DESIGN"
-                              ? "purple"
-                              : gig.category === "ASSIGNMENT"
-                              ? "info"
-                              : "neutral"
-                          }
-                          size="sm"
-                        >
-                          {gig.category}
-                        </Badge>
-
-                        <Badge
-                          variant={
-                            gig.status === "OPEN"
-                              ? "info"
-                              : gig.status === "ADVANCE_VERIFIED"
-                              ? "success"
-                              : gig.status === "COMPLETED"
-                              ? "brand"
-                              : gig.status === "BUYER_GHOSTED"
-                              ? "danger"
-                              : "warning"
-                          }
-                          size="sm"
-                        >
-                          {gig.status.replace(/_/g, " ")}
-                        </Badge>
-                      </div>
-
-                      {/* Title & Description */}
-                      <div>
-                        <h3 className="text-base font-bold text-slate-900 dark:text-white line-clamp-2 group-hover:text-brand-500 transition-colors">
-                          {gig.title}
-                        </h3>
-                        <p className="mt-2 text-xs text-slate-600 dark:text-slate-400 line-clamp-3 leading-relaxed">
-                          {gig.description}
-                        </p>
-                      </div>
+                <Card
+                  key={gig.id}
+                  interactive
+                  className="p-5 flex flex-col justify-between space-y-4"
+                >
+                  <div className="space-y-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <Badge variant={isOpen ? "default" : "secondary"} size="sm">
+                        {gig.status}
+                      </Badge>
+                      <span className="font-heading font-extrabold text-base text-foreground">
+                        {formatPaiseToRupees(gig.budget ?? gig.budgetPaise)}
+                      </span>
                     </div>
 
-                    <div className="mt-6 pt-4 border-t border-slate-100 dark:border-slate-800/80 space-y-3">
-                      {/* Earner-First Positive Take-Home Pricing (Loss Aversion Eliminator) */}
-                      <div className="p-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 space-y-2">
-                        <div className="flex items-center justify-between text-xs">
-                          <div>
-                            <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 uppercase tracking-wider block">
-                              {isPoster ? "Your Total Budget" : "Take-Home Earning"}
-                            </span>
-                            <p className="text-xl font-black text-emerald-600 dark:text-emerald-400">
-                              {isPoster ? `₹${price}` : `Earn ₹${escrow.writerPayout.toFixed(0)}`}
-                            </p>
-                          </div>
-
-                          <div className="text-right">
-                            <span className="text-[10px] font-medium text-slate-500 dark:text-slate-400 block">
-                              Escrow Protected
-                            </span>
-                            <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600 dark:text-emerald-400">
-                              <ShieldCheck className="w-3.5 h-3.5" />
-                              <span>50% Upfront</span>
-                            </span>
-                          </div>
-                        </div>
-
-                        {!isPoster && (
-                          <div className="pt-2 border-t border-emerald-500/20 flex items-center gap-1.5 text-[10px] text-emerald-700 dark:text-emerald-300 font-medium">
-                            <ShieldCheck className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                            <span>
-                              🛡️ 60% Anti-Ghosting Guarantee: Guaranteed at least ₹{escrow.ghostedGuarantee.toFixed(0)} if buyer abandons
-                            </span>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Poster and Status Footer */}
-                      <div className="flex items-center justify-between text-xs pt-1">
-                        <div className="flex items-center gap-2">
-                          <img
-                            src={
-                              gig.poster?.image ||
-                              `https://api.dicebear.com/9.x/bottts/svg?seed=${gig.poster?.name || "User"}`
-                            }
-                            alt="Poster"
-                            className="w-6 h-6 rounded-full object-cover ring-1 ring-slate-200 dark:ring-slate-700"
-                          />
-                          <span className="text-xs font-medium text-slate-600 dark:text-slate-400 truncate max-w-[120px]">
-                            {gig.poster?.name || "Student"}
-                          </span>
-                        </div>
-
-                        <span className="text-xs font-bold text-brand-600 dark:text-brand-400 flex items-center gap-1 group-hover:translate-x-1 transition-transform">
-                          <span>View Bounty</span>
-                          <ArrowRight className="w-3.5 h-3.5" />
-                        </span>
-                      </div>
+                    <div className="space-y-1">
+                      <h3 className="font-heading font-bold text-sm text-foreground line-clamp-2">
+                        {gig.title}
+                      </h3>
+                      <p className="text-xs text-muted-foreground line-clamp-3 leading-relaxed">
+                        {gig.description}
+                      </p>
                     </div>
-                  </GlassCard>
-                </Link>
+                  </div>
+
+                  <div className="space-y-3 pt-3 border-t border-border/60">
+                    <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                      <span>{gig.category}</span>
+                      <span>{gig.deadline ? formatDate(gig.deadline) : "Flexible"}</span>
+                    </div>
+
+                    <Link href={`/gigs/${gig.id}`} className="block">
+                      <Button variant="outline" size="sm" className="w-full">
+                        View Task Details
+                      </Button>
+                    </Link>
+                  </div>
+                </Card>
               );
             })}
           </div>
         )}
 
-      {/* Post a Task Gig Modal */}
-      <Modal
-        isOpen={isCreateModalOpen}
-        onClose={() => setIsCreateModalOpen(false)}
-        title="Post a Task or Assignment Bounty"
-        description="Fill out the requirements. Your bounty is held in Managed Proxy Escrow to ensure safe peer fulfillment."
-        maxWidth="lg"
-      >
-        <form onSubmit={handleCreateGig} className="space-y-4 pt-2">
-          <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
-              Task Title *
-            </label>
-            <input
-              type="text"
-              required
-              placeholder="e.g. Implement Raft Consensus in Go for CSE 402"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              className="w-full px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-            />
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
-                Category *
-              </label>
-              <select
-                value={category}
-                onChange={(e) => setCategory(e.target.value as TaskCategoryType)}
-                className="w-full px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-              >
-                <option value="CODING">Coding & Software</option>
-                <option value="ASSIGNMENT">Assignment & Lab</option>
-                <option value="DESIGN">UI/UX & Graphics</option>
-                <option value="PROJECT">Semester Project</option>
-                <option value="RESEARCH">Research & Papers</option>
-                <option value="TUTORING">1-on-1 Tutoring</option>
-                <option value="OTHER">Other Task</option>
-              </select>
+        {/* Post Gig Modal */}
+        <Modal
+          isOpen={isCreateModalOpen}
+          onClose={() => setIsCreateModalOpen(false)}
+          title="Post a Campus Task"
+          description="Funds will be locked in proxy escrow until deliverables are confirmed."
+        >
+          <form onSubmit={handleCreateGig} className="space-y-4">
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-foreground">Task Title *</label>
+              <Input
+                placeholder="e.g. Build React Login Page or Debug Python Script"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                required
+              />
             </div>
 
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500">
-                  Total Task Cost (₹ INR) *
-                </label>
-                {buyerDiscountPct > 0 && (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-500 text-[10px] font-extrabold border border-emerald-500/30">
-                    🚀 Launch Promo: {buyerDiscountPct}% Off
-                  </span>
-                )}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-foreground">Category *</label>
+                <select
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value as TaskCategoryType)}
+                  className="w-full h-9 px-3 rounded-lg border border-input bg-card text-foreground text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+                >
+                  <option value="CODING">Coding & Dev</option>
+                  <option value="ASSIGNMENT">Assignments & Reports</option>
+                  <option value="DESIGN">UI/UX & Design</option>
+                  <option value="PROJECT">Projects & Lab Work</option>
+                  <option value="RESEARCH">Research & Summaries</option>
+                  <option value="TUTORING">Tutoring & Doubts</option>
+                  <option value="OTHER">Other</option>
+                </select>
               </div>
-              <div className="relative">
-                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 font-bold">
-                  ₹
-                </span>
-                <input
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-foreground">Budget (₹ INR) *</label>
+                <Input
                   type="number"
                   min="50"
-                  required
-                  placeholder="1800"
+                  placeholder="Min 50"
                   value={budgetRupees}
                   onChange={(e) => setBudgetRupees(e.target.value)}
-                  className="w-full pl-8 pr-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-brand-500"
+                  required
                 />
               </div>
-
-              {/* Dynamic Price Strikethrough & Milestone Breakdown */}
-              {Number(budgetRupees) > 0 && (() => {
-                const rawNum = Number(budgetRupees);
-                const modalMath = calculateEscrow(rawNum, buyerDiscountPct);
-                return (
-                  <div className="mt-2.5 p-3 rounded-2xl bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-slate-500">Effective Total Cost:</span>
-                      <div className="flex items-center gap-1.5">
-                        {buyerDiscountPct > 0 && (
-                          <del className="text-slate-400 font-semibold">
-                            ₹{rawNum}
-                          </del>
-                        )}
-                        <span className="text-emerald-500 font-black text-sm">
-                          ₹{modalMath.finalBuyerTotal.toFixed(0)}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-200 dark:border-slate-700/80 text-[11px]">
-                      <div className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-amber-500/30">
-                        <span className="text-slate-400 block text-[10px]">Pay Now (50% Advance):</span>
-                        <span className="font-bold text-amber-500">₹{modalMath.advanceRequired.toFixed(0)}</span>
-                      </div>
-                      <div className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-teal-500/30">
-                        <span className="text-slate-400 block text-[10px]">Pay Later (Upon Delivery):</span>
-                        <span className="font-bold text-teal-400">₹{modalMath.finalSettlement.toFixed(0)}</span>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })()}
             </div>
-          </div>
 
-          <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
-              Task Description & Acceptance Criteria *
-            </label>
-            <textarea
-              required
-              rows={4}
-              placeholder="Detail the deliverables, tech stack, constraints, and format expected..."
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              className="w-full px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-            />
-          </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-foreground">Deadline (Optional)</label>
+              <Input
+                type="date"
+                value={deadline}
+                onChange={(e) => setDeadline(e.target.value)}
+              />
+            </div>
 
-          <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
-              Submission Deadline
-            </label>
-            <input
-              type="datetime-local"
-              value={deadline}
-              onChange={(e) => setDeadline(e.target.value)}
-              className="w-full px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-            />
-          </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-foreground">Detailed Description *</label>
+              <Textarea
+                placeholder="Explain the assignment specifications, tech stack, and deliverable format..."
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                rows={4}
+                required
+              />
+            </div>
 
-          {/* Direct Supabase Signed PDF Dropzone */}
-          <PdfUploadDropzone
-            onPdfUploaded={(url) => setFileUrl(url)}
-            onUploadingChange={(up) => setIsUploadingMedia(up)}
-            existingPdfUrl={fileUrl}
-            label="Attach Assignment Brief / Spec PDF (Direct to Supabase)"
-          />
-
-          <div className="pt-4 border-t border-slate-200 dark:border-slate-800 flex justify-end gap-3">
             <Button
-              type="button"
-              variant="outline"
-              disabled={isUploadingMedia || isPending}
-              onClick={() => setIsCreateModalOpen(false)}
+              type="submit"
+              size="lg"
+              className="w-full"
+              isLoading={isSubmitting}
             >
-              Cancel
+              Post Task to Campus Board
             </Button>
-            <SubmitButton
-              disabled={isUploadingMedia || isPending}
-              isSubmitting={isPending || isUploadingMedia}
-              loadingText={isUploadingMedia ? "Uploading document to Supabase..." : "Publishing Bounty..."}
-            >
-              Post Bounty (₹{budgetRupees || "0"})
-            </SubmitButton>
-          </div>
-        </form>
-      </Modal>
-    </div>
+          </form>
+        </Modal>
+      </div>
     </ClientServiceGuard>
   );
 }

@@ -1,10 +1,11 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { GlassCard } from "@/components/ui/GlassCard";
-import { Button } from "@/components/ui/Button";
-import { Badge } from "@/components/ui/Badge";
-import { SubmitButton } from "@/components/ui/SubmitButton";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { useUser } from "@/components/providers/UserContext";
 import {
   createSupportTicket,
@@ -16,14 +17,11 @@ import {
   HelpCircle,
   MessageSquarePlus,
   ShieldAlert,
-  Bug,
-  Sparkles,
-  CheckCircle2,
-  Clock,
   Send,
   LifeBuoy,
   FileQuestion,
-  UserX,
+  CheckCircle2,
+  Clock,
 } from "lucide-react";
 import { TicketType } from "@prisma/client";
 
@@ -58,12 +56,12 @@ export default function SupportPage() {
   const handleSubmitTicket = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) {
-      toast.error("Please login to submit a ticket.");
+      toast.error("Please sign in to submit a ticket.");
       return;
     }
 
     if (!subject.trim() || !message.trim()) {
-      toast.error("Please fill in both subject and description.");
+      toast.error("Please provide both a subject and detailed explanation.");
       return;
     }
 
@@ -79,7 +77,7 @@ export default function SupportPage() {
     if (res.error) {
       toast.error(res.error);
     } else {
-      toast.success("Support ticket submitted! Campus moderators have been notified.");
+      toast.success("Support ticket submitted to campus moderators.");
       setSubject("");
       setMessage("");
       setTicketType("FEEDBACK");
@@ -89,239 +87,155 @@ export default function SupportPage() {
   };
 
   return (
-    <div className="space-y-8 max-w-4xl mx-auto pb-12">
-      {/* Top Hero Banner */}
-      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-slate-900/95 via-sky-950/90 to-brand-950/95 p-8 sm:p-10 border border-sky-500/30 text-white shadow-2xl backdrop-blur-2xl">
-        <div className="absolute top-0 right-0 -mr-16 -mt-16 w-80 h-80 bg-sky-500/20 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute bottom-0 left-1/4 -mb-16 w-60 h-60 bg-brand-500/20 rounded-full blur-3xl pointer-events-none" />
-
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div className="space-y-2">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-sky-500/20 border border-sky-400/30 text-sky-300 text-xs font-semibold">
-              <LifeBuoy className="w-3.5 h-3.5" />
-              <span>Campus Community Care & Help Desk</span>
-            </div>
-            <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight">
-              Support, Bug Reports & Appeals
-            </h1>
-            <p className="text-sm text-slate-300 max-w-xl leading-relaxed">
-              Have an issue with an escrow gig, campus print order, or need to report bad behavior? Our campus moderators are here to help.
-            </p>
-          </div>
+    <div className="space-y-8 pb-12 max-w-4xl mx-auto">
+      {/* Header */}
+      <div className="space-y-2 border-b border-border pb-6">
+        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-secondary text-foreground text-xs font-semibold border border-border">
+          <HelpCircle className="w-3.5 h-3.5 text-primary" />
+          <span>Campus Moderation & Resolution</span>
         </div>
+        <h1 className="font-heading text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground">
+          Campus Helpdesk & Disputes
+        </h1>
+        <p className="text-xs sm:text-sm text-muted-foreground">
+          Submit dispute inquiries for print station deliveries, escrow task disagreements, or report community violations.
+        </p>
       </div>
 
       {/* Tabs */}
-      <div className="flex border-b border-slate-200 dark:border-slate-800 gap-6">
+      <div className="flex items-center gap-2 border-b border-border pb-2">
         <button
+          type="button"
           onClick={() => setActiveTab("NEW")}
-          className={`pb-3 text-sm font-bold transition-colors relative flex items-center gap-2 ${
+          className={`px-4 py-2 rounded-lg text-xs font-semibold transition-colors ${
             activeTab === "NEW"
-              ? "text-sky-600 dark:text-sky-400"
-              : "text-slate-400 hover:text-slate-200"
+              ? "bg-secondary text-foreground"
+              : "text-muted-foreground hover:text-foreground"
           }`}
         >
-          <MessageSquarePlus className="w-4 h-4" />
-          <span>Submit New Ticket</span>
-          {activeTab === "NEW" && (
-            <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-sky-500 rounded-full" />
-          )}
+          Submit Ticket
         </button>
-
         <button
+          type="button"
           onClick={() => setActiveTab("MY_TICKETS")}
-          className={`pb-3 text-sm font-bold transition-colors relative flex items-center gap-2 ${
+          className={`px-4 py-2 rounded-lg text-xs font-semibold transition-colors ${
             activeTab === "MY_TICKETS"
-              ? "text-sky-600 dark:text-sky-400"
-              : "text-slate-400 hover:text-slate-200"
+              ? "bg-secondary text-foreground"
+              : "text-muted-foreground hover:text-foreground"
           }`}
         >
-          <Clock className="w-4 h-4" />
-          <span>My Tickets ({tickets.length})</span>
-          {activeTab === "MY_TICKETS" && (
-            <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-sky-500 rounded-full" />
-          )}
+          My Tickets ({tickets.length})
         </button>
       </div>
 
-      {/* Tab 1: Submit New Ticket */}
-      {activeTab === "NEW" && (
-        <GlassCard className="p-6 sm:p-8 space-y-6">
-          <form onSubmit={handleSubmitTicket} className="space-y-6">
-            {/* Category / Type Selection */}
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">
-                Ticket Category *
-              </label>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                {[
-                  {
-                    id: "FEEDBACK" as TicketType,
-                    name: "Feature / Feedback",
-                    icon: Sparkles,
-                    desc: "Suggestions to improve Otium Uni Hub",
-                  },
-                  {
-                    id: "BUG" as TicketType,
-                    name: "Bug / Technical Glitch",
-                    icon: Bug,
-                    desc: "Broken UI, print errors, or failed sync",
-                  },
-                  {
-                    id: "REPORT_USER" as TicketType,
-                    name: "Report User / Scam",
-                    icon: ShieldAlert,
-                    desc: "Harassment, fraud, or ghosted tasks",
-                  },
-                ].map((type) => {
-                  const isSelected = ticketType === type.id;
-                  const Icon = type.icon;
-                  return (
-                    <div
-                      key={type.id}
-                      onClick={() => setTicketType(type.id)}
-                      className={`p-4 rounded-2xl border cursor-pointer transition-all ${
-                        isSelected
-                          ? "bg-sky-500/15 border-sky-500 shadow-md ring-1 ring-sky-500"
-                          : "bg-slate-100/60 dark:bg-slate-800/40 border-slate-200 dark:border-slate-700/60 hover:bg-slate-200/50"
-                      }`}
-                    >
-                      <div className="flex items-center gap-2">
-                        <Icon className={`w-4 h-4 ${isSelected ? "text-sky-400" : "text-slate-400"}`} />
-                        <span className="text-xs font-bold text-slate-900 dark:text-white">
-                          {type.name}
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-                        {type.desc}
-                      </p>
-                    </div>
-                  );
-                })}
-              </div>
+      {/* Tab: New Ticket */}
+      {activeTab === "NEW" ? (
+        <Card className="p-6 sm:p-8 space-y-6">
+          <form onSubmit={handleSubmitTicket} className="space-y-4">
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-foreground">Inquiry Category *</label>
+              <select
+                value={ticketType}
+                onChange={(e) => setTicketType(e.target.value as TicketType)}
+                className="w-full h-9 px-3 rounded-lg border border-input bg-card text-foreground text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+              >
+                <option value="FEEDBACK">Platform Feedback / Feature Request</option>
+                <option value="BUG">Technical Bug / Payment UTR Issue</option>
+                <option value="DISPUTE">Escrow Task Disagreement</option>
+                <option value="REPORT">Report Community Rule Violation</option>
+                <option value="OTHER">Other Inquiry</option>
+              </select>
             </div>
 
-            {/* Subject */}
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
-                Subject / Short Summary *
-              </label>
-              <input
-                type="text"
-                required
-                placeholder="e.g. Writer did not deliver assignment before deadline / Print Station double debit"
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-foreground">Subject *</label>
+              <Input
+                placeholder="Brief summary of your inquiry..."
                 value={subject}
                 onChange={(e) => setSubject(e.target.value)}
-                className="w-full px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-sm font-semibold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
+                required
               />
             </div>
 
-            {/* Message */}
-            <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
-                Detailed Description *
-              </label>
-              <textarea
-                required
-                rows={5}
-                placeholder="Please describe what occurred in detail. Include Order IDs, Gig IDs, UTR numbers, or names if reporting a specific incident..."
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-foreground">Detailed Explanation *</label>
+              <Textarea
+                placeholder="Provide order IDs, task URLs, transaction references, or relevant context..."
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
-                className="w-full px-4 py-3 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500 resize-none"
+                rows={5}
+                required
               />
             </div>
 
-            <div className="pt-2 flex justify-end">
-              <SubmitButton
-                isSubmitting={isSubmitting}
-                loadingText="Submitting Ticket..."
-                size="lg"
-                className="bg-sky-600 hover:bg-sky-500 shadow-lg shadow-sky-600/25"
-                leftIcon={<Send className="w-4 h-4" />}
-              >
-                Submit Support Ticket
-              </SubmitButton>
-            </div>
+            <Button
+              type="submit"
+              size="lg"
+              className="w-full"
+              isLoading={isSubmitting}
+              rightIcon={<Send className="w-4 h-4" />}
+            >
+              Submit Ticket to Moderator
+            </Button>
           </form>
-        </GlassCard>
-      )}
-
-      {/* Tab 2: My Tickets */}
-      {activeTab === "MY_TICKETS" && (
-        <div className="space-y-4">
+        </Card>
+      ) : (
+        /* Tab: My Tickets */
+        <div className="space-y-3">
           {loading ? (
-            <div className="space-y-3">
+            <div className="space-y-2">
               {[1, 2].map((i) => (
-                <div key={i} className="h-28 rounded-2xl bg-slate-200/50 dark:bg-slate-800 animate-pulse" />
+                <div key={i} className="h-20 rounded-xl bg-secondary/60 animate-pulse border border-border" />
               ))}
             </div>
           ) : tickets.length === 0 ? (
-            <GlassCard className="text-center py-16">
-              <FileQuestion className="w-12 h-12 mx-auto text-slate-400 mb-3 opacity-60" />
-              <h3 className="text-base font-bold text-slate-700 dark:text-slate-300">
-                No tickets submitted yet
-              </h3>
-              <p className="text-xs text-slate-500 mt-1">
-                You have not opened any support queries or complaints.
-              </p>
-              <Button
-                variant="brand"
-                size="sm"
-                className="mt-4"
-                onClick={() => setActiveTab("NEW")}
-              >
-                Create a Ticket
-              </Button>
-            </GlassCard>
+            <Card className="p-8 text-center text-xs text-muted-foreground space-y-2">
+              <FileQuestion className="w-8 h-8 mx-auto opacity-40" />
+              <p className="font-semibold text-foreground">No support tickets found</p>
+              <p>You have not filed any moderation requests.</p>
+            </Card>
           ) : (
-            <div className="space-y-4">
-              {tickets.map((t) => (
-                <GlassCard key={t.id} className="p-5 space-y-3 border-slate-200 dark:border-slate-800">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-sky-500/10 text-sky-400 font-bold">
-                          #{t.id.slice(-6)}
-                        </span>
-                        <Badge
-                          variant={
-                            t.type === "REPORT_USER"
-                              ? "danger"
-                              : t.type === "BUG"
-                              ? "warning"
-                              : "brand"
-                          }
-                          size="sm"
-                        >
-                          {t.type.replace(/_/g, " ")}
-                        </Badge>
-                      </div>
-                      <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                        {t.subject}
-                      </h3>
+            tickets.map((t) => (
+              <Card key={t.id} className="p-5 space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="space-y-1 min-w-0">
+                    <h3 className="font-heading font-bold text-sm text-foreground truncate">
+                      {t.subject}
+                    </h3>
+                    <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                      <Badge variant="secondary" size="sm">
+                        {t.type}
+                      </Badge>
+                      <span>{formatDate(t.createdAt)}</span>
                     </div>
-
-                    <Badge variant={t.status === "RESOLVED" ? "success" : "warning"} size="sm">
-                      {t.status}
-                    </Badge>
                   </div>
 
-                  <p className="text-xs text-slate-600 dark:text-slate-300 whitespace-pre-wrap">
-                    {t.message}
-                  </p>
+                  <Badge
+                    variant={
+                      t.status === "RESOLVED"
+                        ? "success"
+                        : t.status === "IN_PROGRESS"
+                        ? "warning"
+                        : "default"
+                    }
+                    size="sm"
+                  >
+                    {t.status}
+                  </Badge>
+                </div>
 
-                  <div className="pt-2 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400">
-                    <span>Submitted: {formatDate(t.createdAt)}</span>
-                    {t.status === "RESOLVED" && (
-                      <span className="flex items-center gap-1 text-emerald-400 font-bold">
-                        <CheckCircle2 className="w-3.5 h-3.5" />
-                        <span>Resolved by Campus Admin</span>
-                      </span>
-                    )}
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  {t.message}
+                </p>
+
+                {t.adminNotes && (
+                  <div className="p-3 rounded-lg bg-secondary/40 border border-border text-xs space-y-1">
+                    <span className="font-bold text-foreground">Moderator Resolution:</span>
+                    <p className="text-muted-foreground">{t.adminNotes}</p>
                   </div>
-                </GlassCard>
-              ))}
-            </div>
+                )}
+              </Card>
+            ))
           )}
         </div>
       )}

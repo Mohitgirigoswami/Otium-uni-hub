@@ -2,7 +2,7 @@ import React from "react";
 import { AlertTriangle, ArrowLeft } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import Link from "next/link";
-import { Button } from "@/components/ui/Button";
+import { Button } from "@/components/ui/button";
 
 interface ServiceGuardProps {
   campusId?: string | null;

@@ -9,8 +9,11 @@ export function cn(...inputs: ClassValue[]) {
  * Format paise / cents to formatted currency string (INR)
  * @param paise Amount in paise (1 INR = 100 paise)
  */
-export function formatPaiseToRupees(paise: number): string {
-  const rupees = paise / 100;
+export function formatPaiseToRupees(paise: number | undefined | null): string {
+  if (paise === undefined || paise === null || isNaN(Number(paise))) {
+    return "₹0";
+  }
+  const rupees = Number(paise) / 100;
   return new Intl.NumberFormat("en-IN", {
     style: "currency",
     currency: "INR",
@@ -27,9 +30,16 @@ export function rupeesToPaise(rupees: number): number {
 
 /**
  * Calculate attendance deficit or safe bunkable classes
- * Target is 75%
+ * Default target is 75%, but configurable for students needing other thresholds (e.g. 65%, 80%, etc.)
  */
-export function calculateAttendanceMetrics(attended: number, total: number) {
+export function calculateAttendanceMetrics(
+  attended: number,
+  total: number,
+  targetPercentage: number = 75
+) {
+  const target = Math.max(1, Math.min(99, targetPercentage));
+  const targetRatio = target / 100;
+
   if (total === 0) {
     return {
       percentage: 100,
@@ -41,12 +51,15 @@ export function calculateAttendanceMetrics(attended: number, total: number) {
 
   const percentage = (attended / total) * 100;
 
-  if (percentage < 75) {
-    // Formula: (attended + x) / (total + x) >= 0.75
-    // attended + x >= 0.75 * total + 0.75 * x
-    // 0.25 * x >= 0.75 * total - attended
-    // x >= (3 * total - 4 * attended)
-    const consecutiveNeeded = Math.max(0, Math.ceil(3 * total - 4 * attended));
+  if (percentage < target) {
+    // Formula: (attended + x) / (total + x) >= targetRatio
+    // attended + x >= targetRatio * total + targetRatio * x
+    // x * (1 - targetRatio) >= targetRatio * total - attended
+    // x >= (targetRatio * total - attended) / (1 - targetRatio)
+    const consecutiveNeeded = Math.max(
+      0,
+      Math.ceil((targetRatio * total - attended) / (1 - targetRatio))
+    );
     return {
       percentage: Number(percentage.toFixed(1)),
       status: "DANGER",
@@ -54,10 +67,10 @@ export function calculateAttendanceMetrics(attended: number, total: number) {
       canBunk: 0,
     };
   } else {
-    // Formula: attended / (total + y) >= 0.75
-    // 0.75 * (total + y) <= attended
-    // y <= (attended / 0.75) - total = (4 * attended / 3) - total
-    const canBunk = Math.max(0, Math.floor((4 * attended) / 3 - total));
+    // Formula: attended / (total + y) >= targetRatio
+    // targetRatio * (total + y) <= attended
+    // y <= (attended / targetRatio) - total
+    const canBunk = Math.max(0, Math.floor(attended / targetRatio - total));
     return {
       percentage: Number(percentage.toFixed(1)),
       status: "SAFE",
