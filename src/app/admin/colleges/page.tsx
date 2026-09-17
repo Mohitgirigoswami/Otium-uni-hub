@@ -143,7 +143,7 @@ export default function AdminCollegesPage() {
             Multi-Campus College Directory
           </h1>
           <p className="text-xs sm:text-sm text-muted-foreground">
-            Register and manage university campuses. Content across Marketplace, Gigs, and Incognito is isolated by campus.
+            Register and manage university campuses. Content across Marketplace, Gigs, and Whisper Wall is isolated by campus.
           </p>
         </div>
 

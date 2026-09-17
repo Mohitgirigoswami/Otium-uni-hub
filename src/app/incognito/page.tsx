@@ -29,6 +29,10 @@ import {
   Loader2,
   User,
   ShieldCheck,
+  Maximize2,
+  ChevronDown,
+  ChevronUp,
+  ExternalLink,
 } from "lucide-react";
 import { MultiImageUpload } from "@/components/ui/MultiImageUpload";
 import { PostImageGrid } from "@/components/ui/PostImageGrid";
@@ -52,6 +56,22 @@ export default function IncognitoWallPage() {
   const [feedTypeFilter, setFeedTypeFilter] = useState("ALL");
   const [isPostModalOpen, setIsPostModalOpen] = useState(false);
   const [incognitoProfile, setIncognitoProfile] = useState<any | null>(null);
+
+  // Long post readmore & fullscreen modal states
+  const [expandedPostIds, setExpandedPostIds] = useState<Set<string>>(new Set());
+  const [activeModalPost, setActiveModalPost] = useState<any | null>(null);
+
+  const toggleExpand = (id: string) => {
+    setExpandedPostIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
 
   // Form states
   const [content, setContent] = useState("");
@@ -299,10 +319,40 @@ export default function IncognitoWallPage() {
                     )}
                   </div>
 
-                  {/* Body Content */}
-                  <p className="text-xs sm:text-sm text-foreground leading-relaxed whitespace-pre-wrap">
-                    {post.content}
-                  </p>
+                  {/* Body Content with Long Post Read More Toggle */}
+                  {(() => {
+                    const isExpanded = expandedPostIds.has(post.id);
+                    const isLong = (post.content || "").length > 240;
+                    const displayContent =
+                      isLong && !isExpanded
+                        ? `${post.content.slice(0, 240)}...`
+                        : post.content;
+
+                    return (
+                      <div className="space-y-1.5">
+                        <p className="text-xs sm:text-sm text-foreground leading-relaxed whitespace-pre-wrap">
+                          {displayContent}
+                          {isLong && (
+                            <button
+                              type="button"
+                              onClick={() => toggleExpand(post.id)}
+                              className="text-primary hover:underline font-bold text-xs ml-1.5 inline-flex items-center gap-0.5 cursor-pointer align-baseline"
+                            >
+                              {isExpanded ? (
+                                <>
+                                  Show less <ChevronUp className="w-3 h-3 inline" />
+                                </>
+                              ) : (
+                                <>
+                                  Read more <ChevronDown className="w-3 h-3 inline" />
+                                </>
+                              )}
+                            </button>
+                          )}
+                        </p>
+                      </div>
+                    );
+                  })()}
 
                   {/* Attached Images */}
                   {post.images && post.images.length > 0 && (
@@ -335,6 +385,17 @@ export default function IncognitoWallPage() {
                         <MessageSquare className="w-4 h-4" />
                         <span>{post._count?.comments ?? 0}</span>
                       </Link>
+
+                      {/* Fullscreen Expand Action */}
+                      <button
+                        type="button"
+                        onClick={() => setActiveModalPost(post)}
+                        className="flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-primary transition-colors cursor-pointer"
+                        title="Open Fullscreen Post View"
+                      >
+                        <Maximize2 className="w-3.5 h-3.5" />
+                        <span className="hidden sm:inline">Full View</span>
+                      </button>
                     </div>
 
                     {/* Anonymous 1-on-1 Chat */}
@@ -419,6 +480,100 @@ export default function IncognitoWallPage() {
             </Button>
           </form>
         </Modal>
+
+        {/* Full-Screen Post Specific Modal View */}
+        {activeModalPost && (
+          <Modal
+            isOpen={!!activeModalPost}
+            onClose={() => setActiveModalPost(null)}
+            maxWidth="2xl"
+            className="p-6 sm:p-8"
+          >
+            <div className="space-y-6">
+              {/* Header */}
+              <div className="flex items-center justify-between pb-4 border-b border-border">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-secondary border border-border flex items-center justify-center font-mono font-bold text-sm text-primary">
+                    {activeModalPost.authorHandle
+                      ? activeModalPost.authorHandle[0].toUpperCase()
+                      : "A"}
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-sm font-bold text-foreground">
+                        @{activeModalPost.authorHandle || "Anonymous"}
+                      </span>
+                      <Badge variant="secondary" size="sm">
+                        {activeModalPost.feedType}
+                      </Badge>
+                    </div>
+                    <span className="text-xs text-muted-foreground">
+                      {formatDate(activeModalPost.createdAt)}
+                    </span>
+                  </div>
+                </div>
+
+                {activeModalPost.college && (
+                  <Badge variant="outline" size="sm" className="hidden sm:inline-flex">
+                    {activeModalPost.college.name}
+                  </Badge>
+                )}
+              </div>
+
+              {/* Complete Full Text Content */}
+              <div className="max-h-[50vh] overflow-y-auto pr-2">
+                <p className="text-sm sm:text-base text-foreground leading-relaxed whitespace-pre-wrap select-text">
+                  {activeModalPost.content}
+                </p>
+
+                {/* Attached Images in Full View */}
+                {activeModalPost.images && activeModalPost.images.length > 0 && (
+                  <div className="mt-4">
+                    <PostImageGrid images={activeModalPost.images} />
+                  </div>
+                )}
+              </div>
+
+              {/* Modal Footer Actions */}
+              <div className="pt-4 border-t border-border flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-4">
+                  <button
+                    type="button"
+                    onClick={() => handleToggleLike(activeModalPost.id)}
+                    className="flex items-center gap-1.5 text-xs font-semibold text-foreground hover:text-rose-500 transition-colors cursor-pointer"
+                  >
+                    <Heart className="w-4 h-4 text-rose-500 fill-rose-500" />
+                    <span>{activeModalPost._count?.likes ?? 0} Likes</span>
+                  </button>
+
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
+                    <MessageSquare className="w-4 h-4" />
+                    <span>{activeModalPost._count?.comments ?? 0} Comments</span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Link href={`/incognito/${activeModalPost.id}`}>
+                    <Button
+                      size="sm"
+                      rightIcon={<ExternalLink className="w-3.5 h-3.5" />}
+                    >
+                      Open Discussion Thread
+                    </Button>
+                  </Link>
+
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setActiveModalPost(null)}
+                  >
+                    Close
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </Modal>
+        )}
       </div>
     </ClientServiceGuard>
   );

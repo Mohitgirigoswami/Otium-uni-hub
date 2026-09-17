@@ -24,7 +24,7 @@ export const colors = {
     mint: "#ffffff", // Replaced neon mint with crisp white
   },
 
-  // Incognito Monochrome Accents
+  // Whisper Wall Monochrome Accents
   purple: {
     300: "#e4e4e7",
     400: "#d4d4d8",

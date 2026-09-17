@@ -13,9 +13,11 @@ export async function getMarketplaceItems(filters?: {
   condition?: string;
   status?: string;
   search?: string;
+  limit?: number;
 }): Promise<ActionResponse<any[]>> {
   try {
     const where: any = {};
+    const limit = filters?.limit || 40;
 
     if (filters?.status && filters.status !== "ALL") {
       where.status = filters.status;
@@ -38,6 +40,7 @@ export async function getMarketplaceItems(filters?: {
 
     const items = await prisma.marketplaceItem.findMany({
       where,
+      take: limit,
       include: {
         seller: {
           select: {

@@ -8,6 +8,7 @@ import { Navbar } from "@/components/layout/Navbar";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { Footer } from "@/components/layout/Footer";
 import { CommandPalette } from "@/components/CommandPalette";
+import { OnboardingModal } from "@/components/OnboardingModal";
 import { Toaster } from "sonner";
 
 export const metadata: Metadata = {
@@ -48,6 +49,7 @@ export default function RootLayout({
               <MobileNav />
               <Footer />
               <CommandPalette />
+              <OnboardingModal />
               <Toaster position="top-right" richColors closeButton />
             </UserProvider>
           </SessionProvider>

@@ -14,6 +14,7 @@ import React from "react";
 import { render } from "@react-email/render";
 import { PrintStatusEmail } from "@/emails/PrintStatusEmail";
 import { sendEmail } from "@/lib/mail";
+import { sendPrintStationMessage } from "@/actions/print.actions";
 
 /**
  * Helper to verify Print Operator / Admin permissions
@@ -218,6 +219,26 @@ export async function updatePrintOrderStatus(data: {
         console.error("[React Email Render Error]:", mailErr);
       }
     }
+
+    // Dispatch in-app transactional message from Express Print Station system bot
+    let inAppStatusNotice = `🖨️ Print Order #${updated.id.slice(-6).toUpperCase()} status updated to ${data.status.replace(/_/g, " ")}.`;
+    if (data.status === "PRINTING") {
+      inAppStatusNotice = `🖨️ Your print job for "${updated.fileName}" is now printing!`;
+    } else if (data.status === "OUT_FOR_DELIVERY") {
+      inAppStatusNotice = `🚚 Your print job for "${updated.fileName}" is out for delivery to ${updated.deliveryLocation}.`;
+    } else if (data.status === "READY") {
+      inAppStatusNotice = `📦 Your print job for "${updated.fileName}" is ready at ${updated.deliveryLocation}!`;
+    } else if (data.status === "COMPLETED" || data.status === "DELIVERED") {
+      inAppStatusNotice = `✅ Your print job for "${updated.fileName}" has been successfully delivered to ${updated.deliveryLocation}.`;
+    } else if (data.status === "REJECTED") {
+      inAppStatusNotice = `⚠️ Print Order #${updated.id.slice(-6).toUpperCase()} was rejected.${data.rejectionReason ? ` Reason: "${data.rejectionReason}"` : ""}`;
+    } else if (data.status === "ISSUE_REPORTED") {
+      inAppStatusNotice = `⚠️ Issue flagged on Order #${updated.id.slice(-6).toUpperCase()}.${data.rejectionReason ? ` Note: "${data.rejectionReason}"` : ""}`;
+    }
+
+    sendPrintStationMessage(updated.userId, inAppStatusNotice).catch((err) =>
+      console.error("[Admin Update In-App Msg Error]:", err)
+    );
 
     return {
       success: true,

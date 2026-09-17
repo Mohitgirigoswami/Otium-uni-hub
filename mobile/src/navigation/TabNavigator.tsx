@@ -3,7 +3,7 @@ import { StyleSheet, View } from "react-native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons, Feather, MaterialCommunityIcons } from "@expo/vector-icons";
-import { colors } from "../theme/colors";
+import { useTheme } from "../context/ThemeContext";
 
 import { DashboardScreen } from "../screens/DashboardScreen";
 import { PrintStationScreen } from "../screens/PrintStationScreen";
@@ -11,6 +11,7 @@ import { AttendanceScreen } from "../screens/AttendanceScreen";
 import { WhisperWallScreen } from "../screens/WhisperWallScreen";
 import { CgpaPredictorScreen } from "../screens/CgpaPredictorScreen";
 import { ProfileScreen } from "../screens/ProfileScreen";
+import { MessagesScreen } from "../screens/MessagesScreen";
 
 export type RootTabParamList = {
   Dashboard: undefined;
@@ -19,12 +20,14 @@ export type RootTabParamList = {
   Whispers: undefined;
   CGPA: undefined;
   Profile: undefined;
+  Messages: { conversationId?: string; initialTab?: "direct" | "whisper" } | undefined;
 };
 
 const Tab = createBottomTabNavigator<RootTabParamList>();
 
 export function TabNavigator() {
   const insets = useSafeAreaInsets();
+  const { colors } = useTheme();
 
   return (
     <Tab.Navigator
@@ -34,16 +37,17 @@ export function TabNavigator() {
         tabBarStyle: [
           styles.tabBar,
           {
+            backgroundColor: colors.background,
+            borderTopColor: colors.border,
             height: 56 + Math.min(insets.bottom, 16),
             paddingBottom: Math.min(insets.bottom, 12) + 4,
           },
         ],
-        tabBarActiveTintColor: "#FFFFFF",
-        tabBarInactiveTintColor: "#71717A",
+        tabBarActiveTintColor: colors.primary,
+        tabBarInactiveTintColor: colors.textMuted,
         tabBarLabelStyle: styles.tabLabel,
         tabBarItemStyle: styles.tabItem,
       }}
-
     >
       <Tab.Screen
         name="Dashboard"
@@ -140,6 +144,15 @@ export function TabNavigator() {
               />
             </View>
           ),
+        }}
+      />
+
+      {/* Messages Screen (Navigated via header icons, print station links, and whisper walls) */}
+      <Tab.Screen
+        name="Messages"
+        component={MessagesScreen}
+        options={{
+          tabBarButton: () => null,
         }}
       />
     </Tab.Navigator>

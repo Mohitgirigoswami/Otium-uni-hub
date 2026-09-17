@@ -94,10 +94,10 @@ export function CommandPalette() {
       {
         id: "nav-print",
         category: "Navigation",
-        title: "Print Station",
-        subtitle: "Hostel drop-off document printing",
+        title: "Express Printing",
+        subtitle: "Express campus document printing & delivery",
         icon: Printer,
-        keywords: ["print", "xerox", "pdf", "dispatch", "order"],
+        keywords: ["print", "xerox", "pdf", "dispatch", "order", "express"],
         action: () => router.push("/print-station"),
       },
       {
@@ -148,7 +148,7 @@ export function CommandPalette() {
       {
         id: "nav-incognito",
         category: "Navigation",
-        title: "Incognito Whisper Wall",
+        title: "Whisper Wall",
         subtitle: "Anonymous campus bulletin board",
         icon: EyeOff,
         keywords: ["whisper", "wall", "anonymous", "confessions"],

@@ -215,6 +215,17 @@ class ApiClient {
       timeoutMs: options?.timeoutMs || 90000, // 90s for document upload
     });
   }
+
+  /**
+   * Alias for upload() supporting FormData requests
+   */
+  public async postFormData<T = any>(
+    endpoint: string,
+    formData: FormData,
+    options?: RequestOptions
+  ): Promise<ApiResponse<T>> {
+    return this.upload<T>(endpoint, formData, options);
+  }
 }
 
 export const apiClient = new ApiClient(API_BASE_URL);

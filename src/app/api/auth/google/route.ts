@@ -113,28 +113,7 @@ export async function POST(req: NextRequest) {
             };
           }
         }
-      } else {
-        // Mock or simulated string containing email (e.g. "google-oauth-token-student@dtu.ac.in")
-        const extractedEmail = tokenToVerify.includes("@")
-          ? tokenToVerify.replace(/^.*?-/, "")
-          : "student@dtu.ac.in";
-        payload = {
-          email: extractedEmail,
-          name: extractedEmail.split("@")[0].replace(/[._]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
-          picture: undefined,
-          sub: "mock-google-sub",
-        };
       }
-    }
-
-    // 3. Fallback: Direct email / profile passed from client
-    if (!payload && directEmail) {
-      payload = {
-        email: String(directEmail).toLowerCase().trim(),
-        name: directName || String(directEmail).split("@")[0],
-        picture: directPicture || undefined,
-        sub: "direct-sub",
-      };
     }
 
     if (!payload || !payload.email) {
@@ -148,20 +127,18 @@ export async function POST(req: NextRequest) {
     const name = payload.name || email.split("@")[0];
     const picture = payload.picture || null;
 
-    // 4. Domain Check & Campus Assignment
+    // 4. Domain Check & Campus Assignment (Do NOT auto-assign random campus)
     const allowedColleges = await prisma.college.findMany();
-    const defaultCollege = allowedColleges[0] || null;
-
-    let userCollegeId = defaultCollege?.id;
-    const emailDomain = email.split("@")[1];
+    let userCollegeId: string | null = null;
+    const emailDomain = email.split("@")[1]?.toLowerCase();
     if (emailDomain) {
-      const matched = allowedColleges.find(
-        (c) =>
-          c.name.toLowerCase().includes(emailDomain.split(".")[0]) ||
-          emailDomain.includes("dtu") ||
-          emailDomain.includes("edu") ||
-          emailDomain.includes("ac.in")
-      );
+      const matched = allowedColleges.find((c) => {
+        const cDomain = (c as any).domain?.toLowerCase();
+        if (cDomain && emailDomain.includes(cDomain)) return true;
+        const cCode = (c as any).code?.toLowerCase();
+        if (cCode && emailDomain.includes(cCode)) return true;
+        return false;
+      });
       if (matched) {
         userCollegeId = matched.id;
       }
@@ -189,19 +166,6 @@ export async function POST(req: NextRequest) {
         },
       },
     });
-
-    // If user existed without a collegeId, auto-assign default campus
-    if (!user.collegeId && userCollegeId) {
-      user = await prisma.user.update({
-        where: { id: user.id },
-        data: { collegeId: userCollegeId },
-        include: {
-          college: {
-            select: { id: true, name: true, city: true },
-          },
-        },
-      });
-    }
 
     // 6. Guard against banned accounts
     if (user.isBanned) {

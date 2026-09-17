@@ -175,7 +175,7 @@ export default function AdminServicesPage() {
             Campus Service Control Hub
           </h1>
           <p className="text-xs sm:text-sm text-muted-foreground max-w-2xl leading-relaxed">
-            Granularly pause or enable specific student modules (Print Station, Incognito Wall, Marketplace, Cab Split) on a per-campus basis. Paused modules immediately lock student access and display custom maintenance messaging.
+            Granularly pause or enable specific student modules (Express Printing, Whisper Wall, Marketplace, Cab Split) on a per-campus basis. Paused modules immediately lock student access and display custom maintenance messaging.
           </p>
         </div>
 

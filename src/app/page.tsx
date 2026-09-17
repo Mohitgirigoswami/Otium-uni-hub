@@ -51,8 +51,8 @@ export default function LandingPage() {
 
   const CORE_MODULES = [
     {
-      title: "Hostel Cloud Print Station",
-      desc: "Direct document upload, automated page detection, duplex configuration, and hostel delivery slots.",
+      title: "Express Print Station",
+      desc: "Direct document upload, automated page detection, duplex configuration, and express delivery slots.",
       icon: Printer,
       href: "/print-station",
       badge: "Delivery Slots",

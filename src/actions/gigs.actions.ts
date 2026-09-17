@@ -29,9 +29,11 @@ export async function getGigs(filters?: {
   status?: string;
   search?: string;
   collegeId?: string;
+  limit?: number;
 }): Promise<ActionResponse<any[]>> {
   try {
     const where: any = {};
+    const limit = filters?.limit || 40;
 
     if (filters?.category && filters.category !== "ALL") {
       where.category = filters.category;
@@ -54,6 +56,7 @@ export async function getGigs(filters?: {
 
     const gigs = await prisma.taskGig.findMany({
       where,
+      take: limit,
       include: {
         poster: {
           select: {

@@ -36,7 +36,7 @@ export function Footer() {
             <ul className="space-y-1.5 text-xs text-muted-foreground">
               <li>
                 <Link href="/print-station" className="hover:text-foreground transition-colors">
-                  Hostel Cloud Print Station
+                  Express Print Station
                 </Link>
               </li>
               <li>

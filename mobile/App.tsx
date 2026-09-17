@@ -83,7 +83,12 @@ class ErrorBoundary extends React.Component<
   }
 }
 
-export default function App() {
+import { ThemeProvider, useTheme } from "./src/context/ThemeContext";
+import { Spinner } from "./src/components/ui/Spinner";
+import { Badge } from "./src/components/ui/Badge";
+
+function AppContent() {
+  const { colors } = useTheme();
   const [isLoading, setIsLoading] = useState(true);
   const [currentUser, setCurrentUser] = useState<any | null>(null);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
@@ -174,17 +179,43 @@ export default function App() {
 
   if (isLoading) {
     return (
-      <View style={styles.loadingContainer}>
-        <StatusBar barStyle="light-content" backgroundColor={colors.background} />
-        <View style={styles.splashLogoWrap}>
+      <View style={[styles.loadingContainer, { backgroundColor: colors.background }]}>
+        <StatusBar
+          barStyle={colors.statusBar === "light" ? "light-content" : "dark-content"}
+          backgroundColor={colors.background}
+        />
+        <View
+          style={[
+            styles.splashLogoWrap,
+            {
+              backgroundColor: colors.cardSecondary,
+              borderColor: colors.border,
+              shadowColor: colors.primary,
+            },
+          ]}
+        >
           <Animated.Image
             source={require("./assets/logo.png")}
             style={[styles.splashLogo, { transform: [{ scale: pulseAnim }] }]}
             resizeMode="contain"
           />
         </View>
-        <ActivityIndicator size="small" color={colors.brand[400]} style={{ marginTop: 24 }} />
-        <Text style={styles.loadingText}>Welcome to Otium • Syncing Campus Hub...</Text>
+
+        <View style={styles.splashMeta}>
+          <Text style={[styles.splashTitle, { color: colors.text }]}>Otium Uni Hub</Text>
+          <View style={styles.splashBadgeRow}>
+            <Badge variant="primary" size="sm">
+              CAMPUS TELEMETRY
+            </Badge>
+          </View>
+        </View>
+
+        <View style={{ marginTop: 24, alignItems: "center", gap: 12 }}>
+          <Spinner variant="orbit" size="sm" color={colors.primary} />
+          <Text style={[styles.loadingText, { color: colors.textSecondary }]}>
+            Synchronizing Campus Offline State...
+          </Text>
+        </View>
       </View>
     );
   }
@@ -192,13 +223,19 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <ErrorBoundary>
-        <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
-          <StatusBar barStyle="light-content" backgroundColor={colors.background} />
+        <SafeAreaView
+          style={[styles.safeArea, { backgroundColor: colors.background }]}
+          edges={["top", "left", "right"]}
+        >
+          <StatusBar
+            barStyle={colors.statusBar === "light" ? "light-content" : "dark-content"}
+            backgroundColor={colors.background}
+          />
 
           <NavigationContainer>
             {currentUser ? (
               <UserProvider initialUser={currentUser} onLogout={() => setCurrentUser(null)}>
-                <View style={styles.mainContainer}>
+                <View style={[styles.mainContainer, { backgroundColor: colors.background }]}>
                   <Header
                     title="Otium"
                     badge="Campus Hub"
@@ -220,6 +257,14 @@ export default function App() {
         </SafeAreaView>
       </ErrorBoundary>
     </SafeAreaProvider>
+  );
+}
+
+export default function App() {
+  return (
+    <ThemeProvider>
+      <AppContent />
+    </ThemeProvider>
   );
 }
 
@@ -255,6 +300,19 @@ const styles = StyleSheet.create({
   splashLogo: {
     width: 60,
     height: 60,
+  },
+  splashMeta: {
+    alignItems: "center",
+    marginTop: 18,
+    gap: 8,
+  },
+  splashTitle: {
+    fontSize: 22,
+    fontWeight: "900",
+    letterSpacing: -0.5,
+  },
+  splashBadgeRow: {
+    marginTop: 2,
   },
   errorLogo: {
     width: 64,

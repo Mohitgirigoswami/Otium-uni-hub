@@ -100,7 +100,7 @@ const CATEGORIES = [
   { label: "📢 Campus News", value: "CAMPUS_NEWS" },
 ];
 
-export function WhisperWallScreen() {
+export function WhisperWallScreen({ navigation }: any) {
   const { user, setUser } = useUser();
   const [posts, setPosts] = useState<WhisperPost[]>(INITIAL_WHISPERS);
   const [scope, setScope] = useState<"CAMPUS" | "GLOBAL">("CAMPUS");
@@ -113,6 +113,52 @@ export function WhisperWallScreen() {
   const [enlargedImage, setEnlargedImage] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
+
+  // Long Post Expansion & Dedicated Fullscreen View State
+  const [expandedPostIds, setExpandedPostIds] = useState<Set<string>>(new Set());
+  const [activeModalPost, setActiveModalPost] = useState<WhisperPost | null>(null);
+
+  const toggleExpandPost = (id: string) => {
+    setExpandedPostIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const handleStartAnonymousChat = async (post: any) => {
+    if (!post) return;
+    try {
+      const authorId = post.authorId || post.userId || post.profileId;
+      if (!authorId) {
+        setActiveModalPost(null);
+        navigation?.navigate("Messages", { initialTab: "whisper" });
+        return;
+      }
+
+      const res = await apiClient.post("/chat", {
+        participantTwoId: authorId,
+        isAnonymousChat: true,
+      });
+
+      setActiveModalPost(null);
+      if (res.success && res.data) {
+        navigation?.navigate("Messages", {
+          conversationId: res.data.id,
+          initialTab: "whisper",
+        });
+      } else {
+        navigation?.navigate("Messages", { initialTab: "whisper" });
+      }
+    } catch (err) {
+      setActiveModalPost(null);
+      navigation?.navigate("Messages", { initialTab: "whisper" });
+    }
+  };
 
   // Campus Selector Modal State
   const [isCampusModalOpen, setIsCampusModalOpen] = useState(false);
@@ -244,8 +290,9 @@ export function WhisperWallScreen() {
     setPosts((prev) =>
       prev.map((p) => {
         if (p.id === postId) {
+          let updatedPost: WhisperPost;
           if (p.userVote === type) {
-            return {
+            updatedPost = {
               ...p,
               upvotes: type === "UP" ? p.upvotes - 1 : p.upvotes,
               downvotes: type === "DOWN" ? p.downvotes - 1 : p.downvotes,
@@ -254,13 +301,17 @@ export function WhisperWallScreen() {
           } else {
             const oldUp = p.userVote === "UP" ? p.upvotes - 1 : p.upvotes;
             const oldDown = p.userVote === "DOWN" ? p.downvotes - 1 : p.downvotes;
-            return {
+            updatedPost = {
               ...p,
               upvotes: type === "UP" ? oldUp + 1 : oldUp,
               downvotes: type === "DOWN" ? oldDown + 1 : oldDown,
               userVote: type,
             };
           }
+          if (activeModalPost?.id === postId) {
+            setActiveModalPost(updatedPost);
+          }
+          return updatedPost;
         }
         return p;
       })
@@ -512,8 +563,32 @@ export function WhisperWallScreen() {
                   </Badge>
                 </View>
 
-                {/* Post Text Content */}
-                <Text style={styles.postContent}>{post.content}</Text>
+                {/* Post Text Content with Long Post Read More Toggle */}
+                {(() => {
+                  const isExpanded = expandedPostIds.has(post.id);
+                  const isLong = (post.content || "").length > 180;
+                  const displayContent =
+                    isLong && !isExpanded
+                      ? `${post.content.slice(0, 180)}...`
+                      : post.content;
+
+                  return (
+                    <View style={styles.postContentWrapper}>
+                      <Text style={styles.postContent}>{displayContent}</Text>
+                      {isLong && (
+                        <TouchableOpacity
+                          activeOpacity={0.7}
+                          onPress={() => toggleExpandPost(post.id)}
+                          style={styles.readMoreBtn}
+                        >
+                          <Text style={styles.readMoreText}>
+                            {isExpanded ? "Show less ▴" : "Read more ▾"}
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  );
+                })()}
 
                 {/* Post Attached Images (Single or Multi-Grid) */}
                 {post.mediaUrls && post.mediaUrls.length > 0 && (
@@ -594,8 +669,18 @@ export function WhisperWallScreen() {
                     </TouchableOpacity>
                   </View>
 
-                  {/* Comment & Share Counts */}
+                  {/* Comment, Full View & Share Counts */}
                   <View style={styles.rightActions}>
+                    <TouchableOpacity
+                      style={styles.actionCountBtn}
+                      onPress={() => setActiveModalPost(post)}
+                      activeOpacity={0.7}
+                    >
+                      <Feather name="maximize-2" size={14} color={colors.brand[400]} />
+                      <Text style={[styles.actionCountText, { color: colors.brand[400], fontWeight: "700" }]}>
+                        Full View
+                      </Text>
+                    </TouchableOpacity>
                     <TouchableOpacity style={styles.actionCountBtn}>
                       <Ionicons name="chatbubble-outline" size={16} color={colors.slate[400]} />
                       <Text style={styles.actionCountText}>{post.commentCount}</Text>
@@ -752,6 +837,162 @@ export function WhisperWallScreen() {
               resizeMode="contain"
             />
           )}
+        </View>
+      </Modal>
+
+      {/* Dedicated Fullscreen Post Modal */}
+      <Modal
+        visible={!!activeModalPost}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setActiveModalPost(null)}
+      >
+        <View style={styles.fullPostModalOverlay}>
+          <View style={styles.fullPostModalCard}>
+            {/* Modal Header */}
+            <View style={styles.fullPostHeader}>
+              <View style={styles.authorRow}>
+                <View style={styles.avatarCircle}>
+                  <FontAwesome5 name="robot" size={16} color={colors.purple[400]} />
+                </View>
+                <View>
+                  <Text style={styles.authorHandle}>@{activeModalPost?.handle}</Text>
+                  <Text style={styles.postMeta}>
+                    {activeModalPost?.campus} • {activeModalPost?.timeAgo}
+                  </Text>
+                </View>
+              </View>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                {activeModalPost && (
+                  <Badge
+                    variant={
+                      activeModalPost.category === "CONFESSION"
+                        ? "danger"
+                        : activeModalPost.category === "ADVICE"
+                        ? "brand"
+                        : activeModalPost.category === "MEME"
+                        ? "purple"
+                        : "neutral"
+                    }
+                    size="sm"
+                  >
+                    {activeModalPost.category}
+                  </Badge>
+                )}
+                <TouchableOpacity
+                  onPress={() => setActiveModalPost(null)}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  style={styles.closeFullPostBtn}
+                >
+                  <Ionicons name="close" size={22} color={colors.slate[300]} />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Modal Scrollable Body */}
+            <ScrollView
+              style={styles.fullPostBodyScroll}
+              contentContainerStyle={{ paddingBottom: 20, gap: 14 }}
+              showsVerticalScrollIndicator={false}
+            >
+              <Text style={styles.fullPostContent} selectable>
+                {activeModalPost?.content}
+              </Text>
+
+              {/* Attached Images in Full View */}
+              {activeModalPost?.mediaUrls && activeModalPost.mediaUrls.length > 0 && (
+                <View style={{ gap: 10, marginTop: 4 }}>
+                  {activeModalPost.mediaUrls.map((imgUrl, idx) => (
+                    <TouchableOpacity
+                      key={idx}
+                      activeOpacity={0.9}
+                      onPress={() => setEnlargedImage(imgUrl)}
+                      style={styles.fullPostImageWrapper}
+                    >
+                      <Image
+                        source={{ uri: imgUrl }}
+                        style={styles.fullPostImage}
+                        resizeMode="cover"
+                      />
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+
+              {/* Student Identity Protection Notice */}
+              <View style={styles.safetyNoticeBox}>
+                <Ionicons name="shield-checkmark" size={16} color={colors.brand[400]} />
+                <Text style={styles.safetyNoticeText}>
+                  Student identity protected by Otium End-to-End Anonymous Protocol.
+                </Text>
+              </View>
+            </ScrollView>
+
+            {/* Modal Footer Actions */}
+            <View style={styles.fullPostFooter}>
+              <View style={styles.voteGroup}>
+                <TouchableOpacity
+                  onPress={() => activeModalPost && handleVote(activeModalPost.id, "UP")}
+                  style={[
+                    styles.voteBtn,
+                    activeModalPost?.userVote === "UP" && styles.voteBtnUpActive,
+                  ]}
+                >
+                  <Ionicons
+                    name={activeModalPost?.userVote === "UP" ? "arrow-up-circle" : "arrow-up-outline"}
+                    size={18}
+                    color={activeModalPost?.userVote === "UP" ? colors.brand[400] : colors.slate[400]}
+                  />
+                  <Text
+                    style={[
+                      styles.voteCount,
+                      activeModalPost?.userVote === "UP" && { color: colors.brand[400] },
+                    ]}
+                  >
+                    {activeModalPost?.upvotes}
+                  </Text>
+                </TouchableOpacity>
+
+                <View style={styles.voteDivider} />
+
+                <TouchableOpacity
+                  onPress={() => activeModalPost && handleVote(activeModalPost.id, "DOWN")}
+                  style={[
+                    styles.voteBtn,
+                    activeModalPost?.userVote === "DOWN" && styles.voteBtnDownActive,
+                  ]}
+                >
+                  <Ionicons
+                    name={activeModalPost?.userVote === "DOWN" ? "arrow-down-circle" : "arrow-down-outline"}
+                    size={18}
+                    color={activeModalPost?.userVote === "DOWN" ? colors.rose[400] : colors.slate[400]}
+                  />
+                </TouchableOpacity>
+              </View>
+
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                <View style={styles.actionCountBtn}>
+                  <Ionicons name="chatbubble-outline" size={16} color={colors.slate[400]} />
+                  <Text style={styles.actionCountText}>{activeModalPost?.commentCount || 0}</Text>
+                </View>
+
+                <TouchableOpacity
+                  onPress={() => handleStartAnonymousChat(activeModalPost)}
+                  style={styles.anonDmActionBtn}
+                >
+                  <Ionicons name="paper-plane-outline" size={14} color={colors.purple[400]} />
+                  <Text style={styles.anonDmActionText}>Whisper DM</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={() => setActiveModalPost(null)}
+                  style={styles.closeFullPostActionBtn}
+                >
+                  <Text style={styles.closeFullPostActionText}>Done</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
         </View>
       </Modal>
 
@@ -1321,5 +1562,118 @@ const styles = StyleSheet.create({
   fullImage: {
     width: "92%",
     height: "80%",
+  },
+  postContentWrapper: {
+    gap: 6,
+  },
+  readMoreBtn: {
+    alignSelf: "flex-start",
+    paddingVertical: 2,
+  },
+  readMoreText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: colors.brand[400],
+  },
+  fullPostModalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.85)",
+    justifyContent: "flex-end",
+  },
+  fullPostModalCard: {
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.12)",
+    padding: 20,
+    gap: 14,
+    maxHeight: "90%",
+  },
+  fullPostHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.cardBorder,
+  },
+  closeFullPostBtn: {
+    padding: 4,
+    borderRadius: 8,
+    backgroundColor: "rgba(255, 255, 255, 0.06)",
+  },
+  fullPostBodyScroll: {
+    maxHeight: 420,
+  },
+  fullPostContent: {
+    fontSize: 15,
+    lineHeight: 23,
+    color: colors.slate[100],
+  },
+  fullPostImageWrapper: {
+    borderRadius: 14,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    backgroundColor: colors.slate[900],
+  },
+  fullPostImage: {
+    width: "100%",
+    height: 240,
+    borderRadius: 14,
+  },
+  safetyNoticeBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    padding: 10,
+    borderRadius: 10,
+    backgroundColor: "rgba(20, 184, 166, 0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(20, 184, 166, 0.2)",
+    marginTop: 6,
+  },
+  safetyNoticeText: {
+    flex: 1,
+    fontSize: 11,
+    color: colors.slate[300],
+  },
+  fullPostFooter: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: colors.cardBorder,
+  },
+  closeFullPostActionBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 12,
+    backgroundColor: "rgba(255, 255, 255, 0.08)",
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+  },
+  closeFullPostActionText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: colors.slate[200],
+  },
+  anonDmActionBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 8,
+    backgroundColor: "rgba(168, 85, 247, 0.15)",
+    borderWidth: 1,
+    borderColor: "rgba(168, 85, 247, 0.3)",
+  },
+  anonDmActionText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: colors.purple[400],
   },
 });

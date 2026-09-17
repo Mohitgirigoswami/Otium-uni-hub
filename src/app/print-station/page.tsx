@@ -7,12 +7,13 @@ import { Badge } from "@/components/ui/badge";
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { Input } from "@/components/ui/input";
 import { useUser } from "@/components/providers/UserContext";
-import { getPrintOrders, createPrintOrder, getPrintRatesAction } from "@/actions/print.actions";
+import { getPrintOrders, createPrintOrder, getPrintRatesAction, reportPrintOrderIssue } from "@/actions/print.actions";
 import { getPlatformSettingsAction } from "@/actions/platform.actions";
 import { updateUserProfile } from "@/actions/user.actions";
 import { generateUpiUrl, getUpiQrImageUrl } from "@/lib/upi";
 import { formatPaiseToRupees, formatDate } from "@/lib/utils";
 import { toast } from "sonner";
+import Link from "next/link";
 import {
   Printer,
   FileText,
@@ -20,6 +21,8 @@ import {
   MapPin,
   CheckCircle2,
   AlertCircle,
+  AlertTriangle,
+  MessageSquare,
   QrCode,
   Copy,
   ExternalLink,
@@ -35,6 +38,8 @@ import { DocumentUpload } from "@/components/ui/DocumentUpload";
 import { PrintRatesData, calculatePrintCostPaise } from "@/lib/services/print.service";
 import { ClientServiceGuard } from "@/components/ClientServiceGuard";
 import { PrintOrderTracker } from "@/components/print/PrintOrderTracker";
+import { Modal } from "@/components/ui/modal";
+import { Textarea } from "@/components/ui/textarea";
 
 const DELIVERY_LOCATIONS = [
   "Hostel Block 1 (Freshers Boys)",
@@ -63,9 +68,12 @@ export default function PrintStationPage() {
     colorDoublePaise: 800,
     singleSidedRupees: 2.5,
     doubleSidedRupees: 2.0,
+    colorSingleRupees: 10.0,
+    colorDoubleRupees: 8.0,
   });
 
   // Form states
+  const [cooldownSeconds, setCooldownSeconds] = useState<number>(0);
   const [fileName, setFileName] = useState("");
   const [fileUrl, setFileUrl] = useState("");
   const [driveFileId, setDriveFileId] = useState("");
@@ -81,6 +89,40 @@ export default function PrintStationPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [copiedUpi, setCopiedUpi] = useState(false);
   const [platformUpiId, setPlatformUpiId] = useState("otium.escrow@okhdfcbank");
+
+  // Issue reporting states
+  const [reportingOrder, setReportingOrder] = useState<any | null>(null);
+  const [issueReason, setIssueReason] = useState("");
+  const [issueCategory, setIssueCategory] = useState("Print Quality Issue");
+  const [isSubmittingIssue, setIsSubmittingIssue] = useState(false);
+
+  const handleReportIssue = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!reportingOrder || !user || !issueReason.trim() || isSubmittingIssue) return;
+
+    try {
+      setIsSubmittingIssue(true);
+      const res = await reportPrintOrderIssue({
+        orderId: reportingOrder.id,
+        userId: user.id,
+        reason: issueReason.trim(),
+        category: issueCategory,
+      });
+
+      if (res.success) {
+        toast.success("Issue reported! Our campus print manager has been alerted and in-app message sent.");
+        setReportingOrder(null);
+        setIssueReason("");
+        fetchOrders();
+      } else {
+        toast.error(res.error || "Failed to submit issue report.");
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to submit issue report.");
+    } finally {
+      setIsSubmittingIssue(false);
+    }
+  };
 
   useEffect(() => {
     if (user?.phone) {
@@ -236,6 +278,18 @@ export default function PrintStationPage() {
 
       toast.success("Print order queued! The print manager has received your job.");
 
+      // Start 4-second cooldown timer to prevent accidental double-ordering
+      setCooldownSeconds(4);
+      const timer = setInterval(() => {
+        setCooldownSeconds((prev) => {
+          if (prev <= 1) {
+            clearInterval(timer);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+
       // Reset form
       setFileUrl("");
       setFileName("");
@@ -258,13 +312,13 @@ export default function PrintStationPage() {
         <div className="space-y-2 border-b border-border pb-6">
           <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-secondary text-foreground text-xs font-semibold border border-border">
             <Printer className="w-3.5 h-3.5 text-primary" />
-            <span>Hostel Express Print Dispatch</span>
+            <span>Express Print Dispatch</span>
           </div>
           <h1 className="font-heading text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground">
-            Hostel Cloud Print Station
+            Express Print Station
           </h1>
           <p className="text-xs sm:text-sm text-muted-foreground max-w-2xl leading-relaxed">
-            Upload notes or assignments, select duplex configurations, pay via amount-locked UPI, and receive physical delivery at your hostel block.
+            Upload notes or assignments, select duplex configurations, pay via amount-locked UPI, and receive physical delivery at your campus drop point or hostel room.
           </p>
         </div>
 
@@ -537,9 +591,11 @@ export default function PrintStationPage() {
                   size="lg"
                   className="w-full"
                   isLoading={isSubmitting}
-                  disabled={!fileUrl}
+                  disabled={!fileUrl || isSubmitting || cooldownSeconds > 0}
                 >
-                  Confirm & Submit Print Job (₹{totalCostRupees.toFixed(2)})
+                  {cooldownSeconds > 0
+                    ? `✓ Order Placed! Please wait (${cooldownSeconds}s)...`
+                    : `Confirm & Submit Print Job (₹${totalCostRupees.toFixed(2)})`}
                 </Button>
               </form>
             </Card>
@@ -623,11 +679,13 @@ export default function PrintStationPage() {
                         </div>
                         <Badge
                           variant={
-                            ord.status === "COMPLETED"
+                            ord.status === "COMPLETED" || ord.status === "DELIVERED"
                               ? "success"
                               : ord.status === "PRINTING" || ord.status === "OUT_FOR_DELIVERY"
                               ? "warning"
-                              : ord.status === "CANCELLED"
+                              : ord.status === "ISSUE_REPORTED"
+                              ? "warning"
+                              : ord.status === "CANCELLED" || ord.status === "REJECTED"
                               ? "destructive"
                               : "default"
                           }
@@ -637,8 +695,15 @@ export default function PrintStationPage() {
                         </Badge>
                       </div>
 
-                      {/* Animated Mechanical Dispatch Stepper */}
-                      <PrintOrderTracker status={ord.status} />
+                      {/* Animated Mechanical Dispatch Stepper with Observable Issue */}
+                      <PrintOrderTracker
+                        status={ord.status}
+                        issueNote={
+                          ord.deliveryLocation?.includes("ISSUE")
+                            ? ord.deliveryLocation.split("ISSUE")[1]?.replace(/^[^:]*:\s*/, "")
+                            : undefined
+                        }
+                      />
 
                       <div className="flex items-center justify-between text-[11px] text-muted-foreground pt-1 border-t border-border/40">
                         <span>
@@ -652,6 +717,36 @@ export default function PrintStationPage() {
                       <div className="text-[11px] text-muted-foreground truncate">
                         Drop: {ord.deliveryLocation}
                       </div>
+
+                      {/* In-app message updates link & Issue report button */}
+                      <div className="flex items-center justify-between pt-1 border-t border-border/30 text-[11px]">
+                        <Link
+                          href="/messages"
+                          className="inline-flex items-center gap-1 text-primary hover:underline font-medium"
+                        >
+                          <MessageSquare className="w-3 h-3" />
+                          <span>Order Chat Updates</span>
+                        </Link>
+
+                        {ord.status === "ISSUE_REPORTED" ? (
+                          <span className="text-amber-500 font-semibold inline-flex items-center gap-1">
+                            <AlertTriangle className="w-3 h-3" />
+                            <span>Issue Under Review</span>
+                          </span>
+                        ) : ord.status !== "CANCELLED" && ord.status !== "REJECTED" ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setReportingOrder(ord);
+                              setIssueReason("");
+                            }}
+                            className="inline-flex items-center gap-1 text-muted-foreground hover:text-amber-500 transition-colors"
+                          >
+                            <AlertTriangle className="w-3 h-3" />
+                            <span>Report Problem</span>
+                          </button>
+                        ) : null}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -659,6 +754,64 @@ export default function PrintStationPage() {
             </Card>
           </div>
         </div>
+
+        {/* Issue Reporting Modal */}
+        <Modal
+          isOpen={!!reportingOrder}
+          onClose={() => setReportingOrder(null)}
+          title="Report Problem on Print Order"
+          description={`Order #${reportingOrder?.id?.slice(-6).toUpperCase()} — ${reportingOrder?.fileName}`}
+        >
+          <form onSubmit={handleReportIssue} className="space-y-4 pt-2">
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-foreground">Problem Category</label>
+              <select
+                value={issueCategory}
+                onChange={(e) => setIssueCategory(e.target.value)}
+                className="w-full text-xs rounded-md border border-border bg-card p-2 text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+              >
+                <option value="Print Quality Issue">Print Quality Issue (Faded / Streaks / Cut off)</option>
+                <option value="Wrong Pages / Missing Pages">Wrong Pages / Missing Pages</option>
+                <option value="Order Not Found at Drop Location">Order Not Found at Drop Location</option>
+                <option value="Payment / UTR Verification Delay">Payment / UTR Verification Delay</option>
+                <option value="Incorrect Document">Incorrect Document Printed</option>
+                <option value="Other">Other Problem</option>
+              </select>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-foreground">Detailed Description</label>
+              <Textarea
+                placeholder="Explain what went wrong so our campus print operator can reprint or resolve this..."
+                value={issueReason}
+                onChange={(e) => setIssueReason(e.target.value)}
+                rows={3}
+                required
+                className="text-xs"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setReportingOrder(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                size="sm"
+                isLoading={isSubmittingIssue}
+                disabled={!issueReason.trim() || isSubmittingIssue}
+                className="bg-amber-600 hover:bg-amber-700 text-white"
+              >
+                Submit Problem Report
+              </Button>
+            </div>
+          </form>
+        </Modal>
       </div>
     </ClientServiceGuard>
   );

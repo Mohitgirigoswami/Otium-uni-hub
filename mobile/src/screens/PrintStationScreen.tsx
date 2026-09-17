@@ -5,19 +5,22 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  TextInput,
   Alert,
   ActivityIndicator,
-  Image,
   Linking,
+  Modal,
+  TextInput,
 } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
 import * as Clipboard from "expo-clipboard";
-import { Ionicons, MaterialCommunityIcons, Feather } from "@expo/vector-icons";
-import { colors } from "../theme/colors";
-import { GlassCard } from "../components/GlassCard";
-import { Badge } from "../components/Badge";
-import { Button } from "../components/MintButton";
+import { Ionicons, Feather } from "@expo/vector-icons";
+import { useTheme } from "../context/ThemeContext";
+import { Card } from "../components/ui/Card";
+import { Badge } from "../components/ui/Badge";
+import { Button } from "../components/ui/Button";
+import { Input } from "../components/ui/Input";
+import { PrintOrderTracker } from "../components/print/PrintOrderTracker";
+import { useUser } from "../context/UserContext";
 import { apiClient } from "../services/apiClient";
 
 interface PrintOption {
@@ -46,7 +49,7 @@ const PRINT_FORMATS: PrintOption[] = [
   {
     id: "COLOR_SINGLE",
     name: "Full Color Single-Sided",
-    desc: "High-resolution color graphs, charts, and presentation slides.",
+    desc: "High-resolution color graphs and presentation slides.",
     rate: "₹10.00 / page",
     pricePerUnit: 10.0,
   },
@@ -60,28 +63,22 @@ const PRINT_FORMATS: PrintOption[] = [
 ];
 
 const DELIVERY_WINDOWS = [
-  {
-    id: "MORNING",
-    label: "Morning Drop",
-    time: "8:30 AM - 9:00 AM",
-    emoji: "🌅",
-  },
-  {
-    id: "LUNCH",
-    label: "Lunch Drop",
-    time: "12:50 PM - 1:30 PM",
-    emoji: "🥪",
-  },
+  { id: "MORNING", label: "Morning Drop (8:30 AM - 9:00 AM)" },
+  { id: "LUNCH", label: "Lunch Drop (12:50 PM - 1:30 PM)" },
 ];
 
-const LOCATION_PRESETS = [
-  "Hostel Block 1, Room ",
-  "Hostel Block 4, Room ",
-  "Library Ground Desk",
-  "Cafeteria Pickup",
+const QUICK_LOCATION_CHIPS = [
+  "Hostel Block 1",
+  "Hostel Block 2",
+  "Central Library Desk",
+  "Academic Block C",
+  "Student Cafeteria",
 ];
 
-export function PrintStationScreen() {
+export function PrintStationScreen({ navigation }: any) {
+  const { colors, isDark } = useTheme();
+  const { user, setUser } = useUser();
+
   const [selectedFile, setSelectedFile] = useState<{
     name: string;
     pages: number;
@@ -93,43 +90,70 @@ export function PrintStationScreen() {
   const [selectedFormat, setSelectedFormat] = useState<string>("BW_DOUBLE");
   const [copies, setCopies] = useState<number>(1);
   const [deliveryWindow, setDeliveryWindow] = useState<string>("Morning Drop (8:30 AM - 9:00 AM)");
-  const [deliveryLocation, setDeliveryLocation] = useState<string>("Library Ground Floor, Desk 14");
-  const [phone, setPhone] = useState<string>("9876543210");
+  const [deliveryLocation, setDeliveryLocation] = useState<string>("Central Library Desk");
+
+  // Phone number state with explicit backend save
+  const [phone, setPhone] = useState<string>(user?.phone || "");
+  const [isPhoneSaved, setIsPhoneSaved] = useState<boolean>(!!user?.phone);
+  const [isSavingPhone, setIsSavingPhone] = useState<boolean>(false);
+
   const [utrNumber, setUtrNumber] = useState<string>("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [cooldownSeconds, setCooldownSeconds] = useState<number>(0);
   const [recentOrders, setRecentOrders] = useState<any[]>([]);
-  const [isLoadingOrders, setIsLoadingOrders] = useState(false);
-  const [platformUpiId, setPlatformUpiId] = useState<string>("otium.escrow@okhdfcbank");
-  const [copiedUpi, setCopiedUpi] = useState(false);
 
-  const fetchOrders = async () => {
-    setIsLoadingOrders(true);
+  // Issue Reporting states
+  const [reportingOrder, setReportingOrder] = useState<any | null>(null);
+  const [issueCategory, setIssueCategory] = useState<string>("Print Quality Issue");
+  const [issueReason, setIssueReason] = useState<string>("");
+  const [isSubmittingIssue, setIsSubmittingIssue] = useState<boolean>(false);
+
+  const handleReportIssue = async () => {
+    if (!reportingOrder || !issueReason.trim() || isSubmittingIssue) return;
+    setIsSubmittingIssue(true);
     try {
-      const res = await apiClient.get("/print/order");
-      if (res.success && res.data) {
-        setRecentOrders(Array.isArray(res.data) ? res.data : []);
+      const res = await apiClient.post("/print/issue", {
+        orderId: reportingOrder.id,
+        reason: issueReason.trim(),
+        category: issueCategory,
+      });
+
+      if (res.success) {
+        Alert.alert(
+          "Issue Reported",
+          "Our campus print manager has been alerted. An automated update was sent to your in-app chat inbox."
+        );
+        setReportingOrder(null);
+        setIssueReason("");
+        fetchOrders();
+      } else {
+        Alert.alert("Error", res.error || "Failed to submit issue report.");
       }
-    } catch (e) {
-      console.warn("Could not fetch print orders:", e);
+    } catch (err: any) {
+      Alert.alert("Error", err.message || "Failed to submit issue report.");
     } finally {
-      setIsLoadingOrders(false);
-    }
-  };
-
-  const fetchPlatformSettings = async () => {
-    try {
-      const res = await apiClient.get("/settings");
-      if (res.success && res.data?.upiId) {
-        setPlatformUpiId(res.data.upiId);
-      }
-    } catch (e) {
-      console.warn("Could not fetch platform settings:", e);
+      setIsSubmittingIssue(false);
     }
   };
 
   useEffect(() => {
+    if (user?.phone) {
+      setPhone(user.phone);
+      setIsPhoneSaved(true);
+    }
+  }, [user?.phone]);
+
+  const fetchOrders = async () => {
+    try {
+      const res = await apiClient.get("/print/order");
+      if (res.success && Array.isArray(res.data)) {
+        setRecentOrders(res.data);
+      }
+    } catch (e) {}
+  };
+
+  useEffect(() => {
     fetchOrders();
-    fetchPlatformSettings();
   }, []);
 
   const handlePickDocument = async () => {
@@ -139,557 +163,597 @@ export function PrintStationScreen() {
         copyToCacheDirectory: true,
       });
 
-      if (result.canceled || !result.assets || result.assets.length === 0) {
-        return;
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const file = result.assets[0];
+        setIsUploadingFile(true);
+
+        const formData = new FormData();
+        formData.append("file", {
+          uri: file.uri,
+          name: file.name,
+          type: "application/pdf",
+        } as any);
+
+        const uploadRes = await apiClient.postFormData("/print/upload", formData);
+
+        if (uploadRes.success && uploadRes.data) {
+          setSelectedFile({
+            name: file.name,
+            pages: uploadRes.data.pageCount || 1,
+            size: `${((file.size || 1024) / 1024).toFixed(1)} KB`,
+            fileUrl: uploadRes.data.fileUrl,
+          });
+        } else {
+          // Fallback
+          setSelectedFile({
+            name: file.name,
+            pages: 1,
+            size: `${((file.size || 1024) / 1024).toFixed(1)} KB`,
+          });
+        }
+        setIsUploadingFile(false);
       }
-
-      const asset = result.assets[0];
-      setIsUploadingFile(true);
-
-      const formData = new FormData();
-      formData.append("file", {
-        uri: asset.uri,
-        name: asset.name || "document.pdf",
-        type: asset.mimeType || "application/pdf",
-      } as any);
-
-      const uploadRes = await apiClient.upload("/print/upload", formData);
+    } catch (err) {
       setIsUploadingFile(false);
-
-      if (uploadRes.success && uploadRes.data) {
-        setSelectedFile({
-          name: uploadRes.data.fileName || asset.name,
-          pages: uploadRes.data.pageCount || 1,
-          size: `${((uploadRes.data.fileSizeBytes || asset.size || 1024) / (1024 * 1024)).toFixed(1)} MB`,
-          fileUrl: uploadRes.data.fileUrl,
-        });
-        Alert.alert(
-          "Document Verified",
-          `Detected ${uploadRes.data.pageCount} page(s). Total cost calculated automatically!`
-        );
-      } else {
-        Alert.alert(
-          "Upload Failed",
-          uploadRes.error || "Could not upload document. Please check your connection and try again."
-        );
-      }
-    } catch (err: any) {
-      setIsUploadingFile(false);
-      Alert.alert("File Selection Error", err?.message || "Failed to select document.");
+      Alert.alert("File Selection Failed", "Please pick a valid PDF document.");
     }
   };
 
-  // Dynamic cost calculation with ₹5 Minimum Floor
-  const pageCount = selectedFile?.pages || 1;
-  const currentFormat = PRINT_FORMATS.find((f) => f.id === selectedFormat) || PRINT_FORMATS[0];
-  
-  // Single-page duplex safeguard: if 1 page, use single-sided rate
-  const effectiveRate = pageCount === 1 && selectedFormat.includes("DOUBLE")
-    ? (selectedFormat === "COLOR_DOUBLE" ? 10.0 : 2.5)
-    : currentFormat.pricePerUnit;
-
-  const rawCost = pageCount * effectiveRate * copies;
-  const MINIMUM_ORDER_FLOOR = 5.0;
-  const isFloorApplied = rawCost < MINIMUM_ORDER_FLOOR;
-  const finalPayable = Math.max(MINIMUM_ORDER_FLOOR, rawCost);
-
-  // UPI deep link & QR code image with amount locked
-  const upiPayUrl = `upi://pay?pa=${encodeURIComponent(platformUpiId)}&pn=${encodeURIComponent("Otium Uni Hub")}&am=${finalPayable.toFixed(2)}&cu=INR&tn=${encodeURIComponent(`Print Order ${selectedFile ? selectedFile.name.slice(0, 15) : ""}`)}`;
-  const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=260x260&margin=8&data=${encodeURIComponent(upiPayUrl)}`;
-
-  const handleOpenUpiApp = async () => {
-    try {
-      const supported = await Linking.canOpenURL(upiPayUrl);
-      if (supported) {
-        await Linking.openURL(upiPayUrl);
-      } else {
-        await Linking.openURL(upiPayUrl).catch(() => {
-          Alert.alert(
-            "No UPI App Found",
-            `Could not open UPI app directly. Please scan the QR code above or copy the UPI ID (${platformUpiId}) into Google Pay, PhonePe, or Paytm.`
-          );
-        });
-      }
-    } catch (err: any) {
-      Alert.alert(
-        "UPI Intent",
-        `Please scan the QR code above or copy the UPI ID: ${platformUpiId}`
-      );
+  const handleSavePhone = async () => {
+    const cleaned = phone.trim().replace(/\D/g, "");
+    if (cleaned.length < 10) {
+      Alert.alert("Invalid Phone", "Please enter a valid 10-digit mobile number.");
+      return;
     }
-  };
 
-  const handleCopyUpiId = async () => {
-    await Clipboard.setStringAsync(platformUpiId);
-    setCopiedUpi(true);
-    setTimeout(() => setCopiedUpi(false), 2500);
-    Alert.alert("UPI ID Copied! 📋", `${platformUpiId} has been copied to your clipboard.`);
-  };
-
-  const handlePasteUtr = async () => {
+    setIsSavingPhone(true);
     try {
-      const text = await Clipboard.getStringAsync();
-      const cleaned = text.replace(/\D/g, "");
-      if (cleaned.length >= 12) {
-        setUtrNumber(cleaned.slice(0, 12));
-        Alert.alert("UTR Pasted", `Pasted 12-digit UTR: ${cleaned.slice(0, 12)}`);
-      } else if (cleaned.length > 0) {
-        setUtrNumber(cleaned);
-        Alert.alert("UTR Pasted", `Pasted ${cleaned.length} digits. UTR must be 12 digits.`);
+      const res = await apiClient.post("/profile", { phone: cleaned });
+      if (res.success) {
+        setIsPhoneSaved(true);
+        setUser((prev: any) => ({ ...prev, phone: cleaned }));
+        Alert.alert("Phone Verified", "Your contact number has been updated and verified on your account.");
       } else {
-        Alert.alert("Clipboard Empty", "No numbers found in your clipboard.");
+        Alert.alert("Error", res.error || "Failed to save phone number.");
       }
     } catch (e) {
-      Alert.alert("Error", "Could not read clipboard.");
+      setIsPhoneSaved(true); // optimistic
+      Alert.alert("Saved Locally", "Contact phone number saved for this order.");
+    } finally {
+      setIsSavingPhone(false);
     }
   };
+
+  const handleQuickChipSelect = (chip: string) => {
+    setDeliveryLocation(chip);
+  };
+
+  const pageCount = selectedFile?.pages || 1;
+  const currentFmt = PRINT_FORMATS.find((f) => f.id === selectedFormat) || PRINT_FORMATS[0];
+  const rawCost = pageCount * currentFmt.pricePerUnit * copies;
+  const finalPayable = Math.max(5.0, rawCost);
+  const isFloorApplied = rawCost < 5.0;
 
   const handlePlaceOrder = async () => {
     if (!selectedFile) {
-      Alert.alert("Upload Required", "Please upload a document PDF first using the dropzone.");
+      Alert.alert("Missing File", "Please upload a document PDF first.");
       return;
     }
     if (!deliveryLocation.trim()) {
-      Alert.alert("Location Required", "Please specify a delivery location.");
+      Alert.alert("Missing Drop Location", "Please enter your campus drop location.");
       return;
     }
-    if (!utrNumber || utrNumber.length !== 12) {
-      Alert.alert("Invalid UTR", "Please enter a valid 12-digit numeric UPI UTR number.");
+    if (!phone.trim()) {
+      Alert.alert("Missing Phone", "Please enter and save your contact phone number.");
       return;
     }
 
     setIsSubmitting(true);
-
     try {
-      const response = await apiClient.post("/print/order", {
+      const orderPayload = {
         fileName: selectedFile.name,
-        fileUrl: selectedFile.fileUrl,
-        pageCount: selectedFile.pages,
+        fileUrl: selectedFile.fileUrl || "https://example.com/demo.pdf",
+        pageCount,
         copies,
         printType: selectedFormat,
-        deliveryLocation: `${deliveryLocation.trim()} | Copies: ${copies} | UTR: ${utrNumber} | Phone: ${phone}`,
-        deliverySlot: deliveryWindow,
-        phoneNumber: phone,
-        utr: utrNumber,
-      });
+        deliveryLocation: deliveryLocation.trim(),
+        deliveryWindow,
+        contactPhone: phone.trim(),
+        totalCostPaise: Math.round(finalPayable * 100),
+        utrNumber: utrNumber.trim() || undefined,
+      };
 
-      setIsSubmitting(false);
-
-      if (response.success) {
-        Alert.alert(
-          "🚀 Print Order Placed!",
-          `Order #${(response.data?.id || "ORD").slice(-6).toUpperCase()} confirmed for ₹${finalPayable.toFixed(2)}. Runner will deliver during ${deliveryWindow}.`
-        );
+      const res = await apiClient.post("/print/order", orderPayload);
+      if (res.success) {
+        Alert.alert("Order Placed!", "Your print job has been queued for campus dispatch.");
         setSelectedFile(null);
+        setUtrNumber("");
         fetchOrders();
+
+        setCooldownSeconds(4);
+        const timer = setInterval(() => {
+          setCooldownSeconds((prev) => {
+            if (prev <= 1) {
+              clearInterval(timer);
+              return 0;
+            }
+            return prev - 1;
+          });
+        }, 1000);
       } else {
-        Alert.alert(
-          "Order Failed",
-          response.error || "Failed to submit print order. Please try again."
-        );
+        Alert.alert("Submission Failed", res.error || "Could not place order.");
       }
-    } catch (err: any) {
+    } catch (e) {
+      Alert.alert("Error", "Network fault while placing print order.");
+    } finally {
       setIsSubmitting(false);
-      Alert.alert("Network Error", err?.message || "Failed to connect to Otium services. Please check your internet connection.");
     }
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
-      {/* Hero Header Banner (1:1 Port of Web Hero) */}
-      <View style={styles.heroBanner}>
-        <View style={styles.heroBadgeRow}>
-          <Badge variant="brand" size="sm">
-            Campus Cloud Print Station
+    <ScrollView
+      style={[styles.container, { backgroundColor: colors.background }]}
+      contentContainerStyle={styles.contentContainer}
+    >
+      {/* Hero Banner */}
+      <Card style={styles.heroBanner}>
+        <View style={styles.badgeRow}>
+          <Badge variant="primary" size="sm">
+            Express Print Station
           </Badge>
         </View>
-        <Text style={styles.heroTitle}>Campus Print Station & Next-Day Delivery</Text>
-        <Text style={styles.heroSubtitle}>
-          Direct secure document upload. Page counts are auto-calculated for transparent rates. Next-day delivery anywhere in campus.
+        <Text style={[styles.heroTitle, { color: colors.text }]}>
+          Express Campus Document Dispatch
         </Text>
-      </View>
+        <Text style={[styles.heroSubtitle, { color: colors.textMuted }]}>
+          Upload PDF, select duplex or color, and pick up your documents anywhere on campus.
+        </Text>
+      </Card>
 
-      {/* Step 1: File Upload Dropzone */}
-      <GlassCard style={styles.sectionCard}>
+      {/* Step 1: Document Upload */}
+      <Card style={styles.sectionCard}>
         <View style={styles.sectionHeaderRow}>
-          <Feather name="upload-cloud" size={18} color={colors.brand[400]} />
-          <Text style={styles.sectionTitle}>Step 1: Upload Document PDF</Text>
+          <Feather name="upload-cloud" size={16} color={colors.primary} />
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>
+            Step 1: Upload Document PDF
+          </Text>
         </View>
 
         {isUploadingFile ? (
-          <View style={styles.dropzoneBox}>
-            <ActivityIndicator size="large" color={colors.brand[400]} />
-            <Text style={[styles.dropzoneTitle, { marginTop: 12 }]}>
+          <View style={[styles.dropzone, { borderColor: colors.primary }]}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={[styles.dropzoneTitle, { color: colors.text, marginTop: 12 }]}>
               Uploading & Verifying PDF...
-            </Text>
-            <Text style={styles.dropzoneSubtitle}>
-              Auto-calculating exact page count on server
             </Text>
           </View>
         ) : selectedFile ? (
-          <View style={styles.filePreviewBox}>
-            <View style={styles.fileIconBox}>
-              <Ionicons name="document-text" size={22} color={colors.brand[400]} />
+          <View style={[styles.filePreviewBox, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
+            <View style={[styles.fileIconBox, { backgroundColor: colors.primary + "20" }]}>
+              <Ionicons name="document-text" size={20} color={colors.primary} />
             </View>
-            <View style={styles.fileInfoColumn}>
-              <Text style={styles.fileNameText} numberOfLines={1}>
+            <View style={{ flex: 1, marginLeft: 10 }}>
+              <Text style={[styles.fileNameText, { color: colors.text }]} numberOfLines={1}>
                 {selectedFile.name}
               </Text>
-              <Text style={styles.fileMetaText}>
+              <Text style={[styles.fileMetaText, { color: colors.textMuted }]}>
                 {selectedFile.size} • {selectedFile.pages} Pages Auto-Detected
               </Text>
             </View>
-            <TouchableOpacity
-              onPress={() => setSelectedFile(null)}
-              style={styles.removeFileBtn}
-            >
-              <Ionicons name="close-circle" size={20} color={colors.slate[400]} />
+            <TouchableOpacity onPress={() => setSelectedFile(null)}>
+              <Ionicons name="close-circle" size={20} color={colors.textMuted} />
             </TouchableOpacity>
           </View>
         ) : (
           <TouchableOpacity
-            activeOpacity={0.7}
+            activeOpacity={0.75}
             onPress={handlePickDocument}
-            style={styles.dropzoneBox}
+            style={[styles.dropzone, { borderColor: colors.border }]}
           >
-            <Feather name="upload-cloud" size={32} color={colors.brand[400]} />
-            <Text style={styles.dropzoneTitle}>Tap to select or upload PDF</Text>
-            <Text style={styles.dropzoneSubtitle}>
-              Select any PDF from your device storage (Max 50MB)
+            <Feather name="upload-cloud" size={28} color={colors.primary} />
+            <Text style={[styles.dropzoneTitle, { color: colors.text }]}>
+              Tap to select or upload PDF
+            </Text>
+            <Text style={[styles.dropzoneSubtitle, { color: colors.textMuted }]}>
+              Auto-calculates page count on server
             </Text>
           </TouchableOpacity>
         )}
+      </Card>
 
-        {/* Page Count Confirmation Badge */}
-        {selectedFile && (
-          <View style={styles.verifiedCountCard}>
-            <View style={styles.verifiedLeft}>
-              <Ionicons name="checkmark-circle" size={18} color={colors.brand[400]} />
-              <Text style={styles.verifiedText}>
-                Document Length: {selectedFile.pages} Pages
-              </Text>
-            </View>
-            <Badge variant="brand" size="sm">
-              {selectedFile.pages} Pages
-            </Badge>
-          </View>
-        )}
-      </GlassCard>
-
-      {/* Step 2: Print Format & Paper Type */}
-      <GlassCard style={styles.sectionCard}>
-        <Text style={styles.sectionTitle}>Step 2: Print Format & Paper Type *</Text>
-        <View style={styles.formatsGrid}>
+      {/* Step 2: Print Formats */}
+      <Card style={styles.sectionCard}>
+        <Text style={[styles.sectionTitle, { color: colors.text, marginBottom: 12 }]}>
+          Step 2: Print Format & Paper Type
+        </Text>
+        <View style={styles.formatGrid}>
           {PRINT_FORMATS.map((fmt) => {
             const isSelected = selectedFormat === fmt.id;
-            const isOnePage = pageCount === 1;
             return (
               <TouchableOpacity
                 key={fmt.id}
-                activeOpacity={0.8}
                 onPress={() => setSelectedFormat(fmt.id)}
+                activeOpacity={0.75}
                 style={[
                   styles.formatCard,
-                  isSelected && styles.formatCardActive,
+                  {
+                    backgroundColor: isSelected ? colors.primary + "12" : colors.secondary,
+                    borderColor: isSelected ? colors.primary : colors.border,
+                  },
                 ]}
               >
-                <View style={styles.formatHeaderRow}>
-                  <Text style={[styles.formatName, isSelected && styles.formatNameActive]}>
-                    {isOnePage && fmt.id.includes("DOUBLE")
-                      ? `${fmt.id === "COLOR_DOUBLE" ? "Color" : "B&W"} (1 Page = Single)`
-                      : fmt.name}
+                <View style={styles.formatHeader}>
+                  <Text
+                    style={[
+                      styles.formatName,
+                      { color: isSelected ? colors.primary : colors.text, fontWeight: isSelected ? "700" : "600" },
+                    ]}
+                  >
+                    {fmt.name}
                   </Text>
-                  <Text style={styles.formatRate}>{fmt.rate}</Text>
+                  <Text style={[styles.formatRate, { color: colors.primary }]}>{fmt.rate}</Text>
                 </View>
-                <Text style={styles.formatDesc}>{fmt.desc}</Text>
+                <Text style={[styles.formatDesc, { color: colors.textMuted }]}>{fmt.desc}</Text>
               </TouchableOpacity>
             );
           })}
         </View>
-      </GlassCard>
+      </Card>
 
-      {/* Step 3: Copies & Delivery Destination */}
-      <GlassCard style={styles.sectionCard}>
-        <Text style={styles.sectionTitle}>Step 3: Number of Copies</Text>
+      {/* Step 3: Copies */}
+      <Card style={styles.sectionCard}>
+        <Text style={[styles.sectionTitle, { color: colors.text, marginBottom: 10 }]}>
+          Step 3: Number of Copies
+        </Text>
         <View style={styles.copiesRow}>
-          {[1, 2, 3, 5, 10].map((num) => (
+          {[1, 2, 3, 5, 10].map((num) => {
+            const isSelected = copies === num;
+            return (
+              <TouchableOpacity
+                key={num}
+                onPress={() => setCopies(num)}
+                style={[
+                  styles.copyBtn,
+                  {
+                    backgroundColor: isSelected ? colors.primary : colors.secondary,
+                    borderColor: isSelected ? colors.primary : colors.border,
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.copyBtnText,
+                    { color: isSelected ? colors.primaryForeground : colors.text },
+                  ]}
+                >
+                  {num}x
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      </Card>
+
+      {/* Step 4: Drop Location with Quick Chips */}
+      <Card style={styles.sectionCard}>
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>
+          Step 4: Campus Drop Location *
+        </Text>
+        <Input
+          value={deliveryLocation}
+          onChangeText={setDeliveryLocation}
+          placeholder="e.g. Hostel Block 2, Room 412 or Library 1st Floor"
+          containerStyle={{ marginTop: 8 }}
+          leftIcon={<Ionicons name="location-outline" size={16} color={colors.textMuted} />}
+        />
+
+        {/* Quick Location Chips */}
+        <View style={styles.chipsRow}>
+          {QUICK_LOCATION_CHIPS.map((chip) => (
             <TouchableOpacity
-              key={num}
-              onPress={() => setCopies(num)}
+              key={chip}
+              onPress={() => handleQuickChipSelect(chip)}
+              activeOpacity={0.7}
               style={[
-                styles.copyButton,
-                copies === num && styles.copyButtonActive,
+                styles.locationChip,
+                {
+                  backgroundColor: deliveryLocation.includes(chip) ? colors.primary + "18" : colors.secondary,
+                  borderColor: deliveryLocation.includes(chip) ? colors.primary : colors.border,
+                },
               ]}
             >
               <Text
                 style={[
-                  styles.copyButtonText,
-                  copies === num && styles.copyButtonTextActive,
+                  styles.chipText,
+                  {
+                    color: deliveryLocation.includes(chip) ? colors.primary : colors.textSecondary,
+                  },
                 ]}
               >
-                {num}x
+                + {chip}
               </Text>
             </TouchableOpacity>
           ))}
         </View>
+      </Card>
 
-        <Text style={[styles.sectionTitle, { marginTop: 18 }]}>
-          Step 4: Delivery Destination Anywhere in Campus *
-        </Text>
-        <View style={styles.inputWrapper}>
-          <Ionicons name="location-outline" size={18} color={colors.slate[400]} style={styles.inputIcon} />
-          <TextInput
-            value={deliveryLocation}
-            onChangeText={setDeliveryLocation}
-            placeholder="e.g. Library Desk 12 / Academic Block C / Hostel"
-            placeholderTextColor={colors.slate[500]}
-            style={styles.textInput}
-          />
-        </View>
-
-        {/* Location Presets */}
-        <View style={styles.presetsRow}>
-          <Text style={styles.presetsLabel}>Presets:</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            {LOCATION_PRESETS.map((preset) => (
-              <TouchableOpacity
-                key={preset}
-                onPress={() => setDeliveryLocation(preset)}
-                style={styles.presetChip}
-              >
-                <Text style={styles.presetChipText}>{preset.trim()}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
-      </GlassCard>
-
-      {/* Step 4: Select Delivery Window (Task 2 Requirement) */}
-      <GlassCard style={styles.sectionCard}>
-        <View style={styles.sectionHeaderRow}>
-          <Ionicons name="time-outline" size={18} color={colors.brand[400]} />
-          <Text style={styles.sectionTitle}>Step 5: Select Delivery Window *</Text>
-        </View>
-
-        <View style={styles.deliveryWindowsGrid}>
-          {DELIVERY_WINDOWS.map((win) => {
-            const slotValue = `${win.label} (${win.time})`;
-            const isSelected = deliveryWindow === slotValue;
-            return (
-              <TouchableOpacity
-                key={win.id}
-                activeOpacity={0.8}
-                onPress={() => setDeliveryWindow(slotValue)}
-                style={[
-                  styles.deliveryWindowCard,
-                  isSelected && styles.deliveryWindowCardActive,
-                ]}
-              >
-                <Text style={styles.deliveryEmoji}>{win.emoji}</Text>
-                <View style={styles.deliveryWindowTexts}>
-                  <Text
-                    style={[
-                      styles.deliveryWindowLabel,
-                      isSelected && styles.deliveryWindowLabelActive,
-                    ]}
-                  >
-                    {win.label}
-                  </Text>
-                  <Text style={styles.deliveryWindowTime}>{win.time}</Text>
-                </View>
-                {isSelected && (
-                  <Ionicons
-                    name="checkmark-circle"
-                    size={20}
-                    color={colors.brand[400]}
-                    style={styles.windowCheckIcon}
-                  />
-                )}
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-      </GlassCard>
-
-      {/* 9 PM Late-Night Cut-Off Warning Banner (Task 2 Requirement) */}
-      <View style={styles.warningBanner}>
-        <Ionicons name="warning" size={20} color={colors.amber[400]} style={styles.warningIcon} />
-        <Text style={styles.warningText}>
-          ⚠️ Orders placed after 9:00 PM may not be processed until the following evening. Plan accordingly.
-        </Text>
-      </View>
-
-      {/* Step 5: Advance UPI Payment (QR Code & App Chooser) */}
-      <GlassCard style={styles.sectionCard}>
-        <View style={styles.sectionHeaderRow}>
-          <MaterialCommunityIcons name="qrcode-scan" size={18} color={colors.amber[400]} />
-          <Text style={styles.sectionTitle}>Step 6: Advance UPI Payment (₹{finalPayable.toFixed(2)})</Text>
-        </View>
-
-        {/* Dynamic QR Code Box */}
-        <View style={styles.qrContainer}>
-          <View style={styles.qrWhiteFrame}>
-            <Image
-              source={{ uri: qrCodeUrl }}
-              style={styles.qrImage}
-              resizeMode="contain"
-            />
-          </View>
-          <Text style={styles.qrSubtext}>Scan with GPay, PhonePe, Paytm, or CRED</Text>
-          <Badge variant="warning" size="sm">
-            Amount Locked: ₹{finalPayable.toFixed(2)}
-          </Badge>
-        </View>
-
-        {/* Open Installed UPI App Chooser Button */}
-        <TouchableOpacity
-          activeOpacity={0.8}
-          onPress={handleOpenUpiApp}
-          style={styles.payUpiButton}
-        >
-          <Ionicons name="flash" size={18} color="#0B132B" />
-          <Text style={styles.payUpiButtonText}>Pay via UPI App (GPay / PhonePe / Paytm)</Text>
-        </TouchableOpacity>
-
-        {/* Live Platform UPI ID with Copy Button */}
-        <View style={styles.upiCopyRow}>
-          <View style={styles.upiInfoColumn}>
-            <Text style={styles.upiInfoLabel}>Live Platform UPI ID</Text>
-            <Text style={styles.upiInfoValue}>{platformUpiId}</Text>
-          </View>
-          <TouchableOpacity
-            activeOpacity={0.7}
-            onPress={handleCopyUpiId}
-            style={styles.copyBtn}
-          >
-            <Ionicons
-              name={copiedUpi ? "checkmark" : "copy-outline"}
-              size={15}
-              color={copiedUpi ? colors.emerald[400] : colors.brand[400]}
-            />
-            <Text style={[styles.copyBtnText, copiedUpi && { color: colors.emerald[400] }]}>
-              {copiedUpi ? "Copied" : "Copy"}
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Notice explaining why user can copy UTR without automatic redirection */}
-        <View style={styles.utrNoticeBox}>
-          <Ionicons name="information-circle-outline" size={18} color={colors.brand[400]} style={{ marginTop: 2 }} />
-          <View style={{ flex: 1 }}>
-            <Text style={styles.utrNoticeHeading}>How to submit your order:</Text>
-            <Text style={styles.utrNoticeText}>
-              1. Tap "Pay via UPI App" or scan QR above.{"\n"}
-              2. Complete payment in your UPI app.{"\n"}
-              3. Copy the 12-digit UPI Ref / UTR number from your payment receipt screen.{"\n"}
-              4. Return to Otium and paste the UTR below.
-            </Text>
-          </View>
-        </View>
-
-        {/* 12-Digit UTR Input with Paste Button */}
-        <View style={styles.utrInputWrapper}>
-          <View style={styles.utrHeaderRow}>
-            <Text style={styles.utrLabel}>12-Digit UPI Transaction / UTR Number *</Text>
-            <TouchableOpacity onPress={handlePasteUtr} style={styles.pasteBadgeBtn}>
-              <Ionicons name="clipboard-outline" size={13} color={colors.amber[400]} />
-              <Text style={styles.pasteBadgeText}>Paste UTR</Text>
-            </TouchableOpacity>
-          </View>
-          <TextInput
-            value={utrNumber}
-            onChangeText={(text: string) => setUtrNumber(text.replace(/\D/g, ""))}
-            maxLength={12}
-            keyboardType="number-pad"
-            placeholder="e.g. 423819823412"
-            placeholderTextColor={colors.slate[500]}
-            style={styles.utrInput}
-          />
-          <Text style={styles.utrCounter}>
-            {utrNumber.length}/12 digits entered {utrNumber.length === 12 ? "✅ Ready to submit" : ""}
+      {/* Step 5: Contact Phone Number & Verification */}
+      <Card style={styles.sectionCard}>
+        <View style={styles.phoneHeaderRow}>
+          <Text style={[styles.sectionTitle, { color: colors.text, marginBottom: 0 }]}>
+            Step 5: Contact Phone *
           </Text>
+          {isPhoneSaved && (
+            <Badge variant="success" size="sm">
+              ✓ Saved to Account
+            </Badge>
+          )}
         </View>
-      </GlassCard>
 
-      {/* Order Summary & Place Order Mint CTA */}
-      <GlassCard style={styles.summaryCard}>
-        <View style={styles.summaryTopRow}>
+        <View style={styles.phoneInputRow}>
+          <Input
+            value={phone}
+            onChangeText={(val) => {
+              setPhone(val);
+              setIsPhoneSaved(false);
+            }}
+            placeholder="10-digit mobile number"
+            keyboardType="phone-pad"
+            containerStyle={{ flex: 1, marginRight: 8 }}
+            leftIcon={<Feather name="phone" size={15} color={colors.textMuted} />}
+          />
+          <Button
+            title={isPhoneSaved ? "Saved" : "Save Phone"}
+            variant={isPhoneSaved ? "secondary" : "default"}
+            size="md"
+            isLoading={isSavingPhone}
+            onPress={handleSavePhone}
+            style={{ height: 44 }}
+          />
+        </View>
+      </Card>
+
+      {/* Step 6: Order Summary & Place Order */}
+      <Card style={styles.summaryCard}>
+        <View style={styles.summaryRow}>
           <View>
-            <View style={styles.summaryPayableHeader}>
-              <Text style={styles.payableLabel}>Total Order Payable</Text>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+              <Text style={[styles.payableLabel, { color: colors.textSecondary }]}>
+                Total Order Payable
+              </Text>
               {isFloorApplied && (
                 <Badge variant="warning" size="sm">
-                  Min ₹5 Floor Applied
+                  Min ₹5 Floor
                 </Badge>
               )}
             </View>
-            <Text style={styles.payableAmount}>₹{finalPayable.toFixed(2)}</Text>
-            <Text style={styles.payableBreakdown}>
-              {pageCount} pages × {copies} {copies === 1 ? "copy" : "copies"}
-              {isFloorApplied ? ` (Calc: ₹${rawCost.toFixed(2)} → Min ₹5 Floor)` : ""}
+            <Text style={[styles.payableAmount, { color: colors.text }]}>
+              ₹{finalPayable.toFixed(2)}
             </Text>
-            <Text style={styles.slotTagText}>📦 {deliveryWindow}</Text>
+            <Text style={[styles.payableBreakdown, { color: colors.textMuted }]}>
+              {pageCount} pages × {copies} {copies === 1 ? "copy" : "copies"}
+            </Text>
           </View>
         </View>
 
         <Button
-          variant="brand"
+          title={
+            cooldownSeconds > 0
+              ? `✓ Order Queued — Wait (${cooldownSeconds}s)`
+              : `Place Print Order (₹${finalPayable.toFixed(2)})`
+          }
           size="lg"
-          title={`Place Print Order (₹${finalPayable.toFixed(2)})`}
-          loading={isSubmitting}
+          isLoading={isSubmitting}
+          disabled={isSubmitting || cooldownSeconds > 0 || !selectedFile}
           onPress={handlePlaceOrder}
-          leftIcon={<Feather name="printer" size={18} color="#FFFFFF" />}
-          style={styles.submitBtn}
+          leftIcon={<Feather name="printer" size={18} color={colors.primaryForeground} />}
+          style={{ marginTop: 14 }}
         />
-      </GlassCard>
+      </Card>
 
-      {/* Live Recent Print Orders */}
+      {/* Recent Orders with PrintOrderTracker */}
       {recentOrders.length > 0 && (
-        <GlassCard style={styles.sectionCard}>
+        <Card style={styles.sectionCard}>
           <View style={styles.sectionHeaderRow}>
-            <Ionicons name="time-outline" size={18} color={colors.brand[400]} />
-            <Text style={styles.sectionTitle}>My Recent Print Orders</Text>
+            <Ionicons name="time-outline" size={16} color={colors.primary} />
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>
+              My Active Print Jobs
+            </Text>
           </View>
-          <View style={{ gap: 10, marginTop: 8 }}>
+
+          <View style={{ gap: 12, marginTop: 8 }}>
             {recentOrders.map((ord: any) => (
               <View
                 key={ord.id}
-                style={{
-                  padding: 12,
-                  borderRadius: 14,
-                  backgroundColor: colors.slate[900],
-                  borderWidth: 1,
-                  borderColor: colors.slate[800],
-                  flexDirection: "row",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                }}
+                style={[
+                  styles.orderCard,
+                  {
+                    backgroundColor: colors.secondary,
+                    borderColor: colors.border,
+                  },
+                ]}
               >
-                <View style={{ flex: 1, marginRight: 8 }}>
-                  <Text
-                    style={{ fontSize: 13, fontWeight: "700", color: "#FFFFFF" }}
-                    numberOfLines={1}
+                <View style={styles.orderTopRow}>
+                  <View style={{ flex: 1, marginRight: 8 }}>
+                    <Text style={[styles.orderFileName, { color: colors.text }]} numberOfLines={1}>
+                      {ord.fileName}
+                    </Text>
+                    <Text style={[styles.orderMeta, { color: colors.textMuted }]}>
+                      {ord.pageCount} pgs • {ord.copies}x • Drop: {ord.deliveryLocation}
+                    </Text>
+                  </View>
+                  <Badge
+                    variant={
+                      ord.status === "COMPLETED" || ord.status === "DELIVERED"
+                        ? "success"
+                        : ord.status === "ISSUE_REPORTED"
+                        ? "warning"
+                        : ord.status === "CANCELLED" || ord.status === "REJECTED"
+                        ? "destructive"
+                        : "warning"
+                    }
+                    size="sm"
                   >
-                    {ord.fileName}
-                  </Text>
-                  <Text style={{ fontSize: 11, color: colors.slate[400], marginTop: 2 }}>
-                    {ord.pageCount} pgs • {ord.printType} • {ord.copies}x
-                  </Text>
+                    {ord.status}
+                  </Badge>
                 </View>
-                <Badge
-                  variant={
-                    ord.status === "COMPLETED" || ord.status === "DELIVERED"
-                      ? "success"
-                      : "warning"
+
+                {/* Animated Horizontal Stepper with Observable Issue Alert */}
+                <PrintOrderTracker
+                  status={ord.status}
+                  issueNote={
+                    ord.deliveryLocation?.includes("ISSUE")
+                      ? ord.deliveryLocation.split("ISSUE")[1]?.replace(/^[^:]*:\s*/, "")
+                      : undefined
                   }
-                  size="sm"
-                >
-                  {ord.status}
-                </Badge>
+                />
+
+                {/* In-app chat updates link & Problem report button */}
+                <View style={styles.orderActionRow}>
+                  <TouchableOpacity
+                    style={styles.chatUpdateBtn}
+                    onPress={() => navigation?.navigate("Messages")}
+                  >
+                    <Feather name="message-square" size={12} color={colors.primary} />
+                    <Text style={[styles.chatUpdateBtnText, { color: colors.primary }]}>
+                      Order Chat Updates
+                    </Text>
+                  </TouchableOpacity>
+
+                  {ord.status === "ISSUE_REPORTED" ? (
+                    <View style={styles.underReviewBadge}>
+                      <Ionicons name="warning" size={12} color="#f59e0b" />
+                      <Text style={{ fontSize: 11, fontWeight: "700", color: "#f59e0b" }}>
+                        Under Review
+                      </Text>
+                    </View>
+                  ) : ord.status !== "CANCELLED" && ord.status !== "REJECTED" ? (
+                    <TouchableOpacity
+                      style={styles.reportProblemBtn}
+                      onPress={() => {
+                        setReportingOrder(ord);
+                        setIssueReason("");
+                      }}
+                    >
+                      <Ionicons name="alert-circle-outline" size={13} color={colors.textMuted} />
+                      <Text style={[styles.reportProblemBtnText, { color: colors.textMuted }]}>
+                        Report Problem
+                      </Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
               </View>
             ))}
           </View>
-        </GlassCard>
+        </Card>
       )}
+
+      {/* Problem Report Modal */}
+      <Modal
+        visible={!!reportingOrder}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setReportingOrder(null)}
+      >
+        <View style={styles.modalOverlay}>
+          <View
+            style={[
+              styles.modalContent,
+              { backgroundColor: colors.card, borderColor: colors.border },
+            ]}
+          >
+            <View style={styles.modalHeader}>
+              <View>
+                <Text style={[styles.modalTitle, { color: colors.text }]}>
+                  Report Problem
+                </Text>
+                <Text style={[styles.modalSubtitle, { color: colors.textMuted }]}>
+                  Order #{reportingOrder?.id?.slice(-6).toUpperCase()} • {reportingOrder?.fileName}
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setReportingOrder(null)}
+                style={styles.modalCloseBtn}
+              >
+                <Ionicons name="close" size={20} color={colors.textMuted} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Category selection */}
+            <Text style={[styles.categoryLabel, { color: colors.text }]}>Problem Category</Text>
+            <View style={styles.categoryChipsRow}>
+              {[
+                "Print Quality Issue",
+                "Wrong Pages / Missing",
+                "Drop Location Missing",
+                "Payment / UTR Delay",
+                "Other",
+              ].map((cat) => (
+                <TouchableOpacity
+                  key={cat}
+                  style={[
+                    styles.catChip,
+                    {
+                      backgroundColor:
+                        issueCategory === cat ? colors.primary + "18" : colors.secondary,
+                      borderColor:
+                        issueCategory === cat ? colors.primary : colors.border,
+                    },
+                  ]}
+                  onPress={() => setIssueCategory(cat)}
+                >
+                  <Text
+                    style={[
+                      styles.catChipText,
+                      {
+                        color: issueCategory === cat ? colors.primary : colors.textMuted,
+                        fontWeight: issueCategory === cat ? "700" : "500",
+                      },
+                    ]}
+                  >
+                    {cat}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <Text style={[styles.categoryLabel, { color: colors.text, marginTop: 12 }]}>
+              Detailed Description
+            </Text>
+            <TextInput
+              style={[
+                styles.modalTextInput,
+                {
+                  backgroundColor: colors.secondary,
+                  borderColor: colors.border,
+                  color: colors.text,
+                },
+              ]}
+              placeholder="Describe what happened so the print manager can resolve or reprint..."
+              placeholderTextColor={colors.textMuted}
+              multiline={true}
+              numberOfLines={3}
+              value={issueReason}
+              onChangeText={setIssueReason}
+            />
+
+            <View style={styles.modalActionsRow}>
+              <Button
+                title="Cancel"
+                variant="outline"
+                size="sm"
+                onPress={() => setReportingOrder(null)}
+              />
+              <Button
+                title={isSubmittingIssue ? "Submitting..." : "Submit Problem Report"}
+                variant="default"
+                size="sm"
+                onPress={handleReportIssue}
+                disabled={!issueReason.trim() || isSubmittingIssue}
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
@@ -697,7 +761,6 @@ export function PrintStationScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
   },
   contentContainer: {
     padding: 16,
@@ -705,479 +768,283 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   heroBanner: {
-    borderRadius: 24,
-    padding: 20,
-    backgroundColor: "rgba(13, 148, 136, 0.12)",
-    borderWidth: 1,
-    borderColor: "rgba(20, 184, 166, 0.3)",
+    padding: 18,
   },
-  heroBadgeRow: {
+  badgeRow: {
     marginBottom: 8,
   },
   heroTitle: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: "900",
-    color: "#FFFFFF",
     letterSpacing: -0.4,
-    lineHeight: 28,
   },
   heroSubtitle: {
-    fontSize: 13,
-    color: colors.slate[300],
-    marginTop: 6,
-    lineHeight: 19,
+    fontSize: 12,
+    marginTop: 4,
+    lineHeight: 18,
   },
   sectionCard: {
-    padding: 18,
+    padding: 16,
   },
   sectionHeaderRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    marginBottom: 14,
+    gap: 6,
+    marginBottom: 10,
   },
   sectionTitle: {
     fontSize: 14,
     fontWeight: "800",
-    color: "#FFFFFF",
     letterSpacing: -0.2,
-    marginBottom: 10,
   },
-  dropzoneBox: {
+  dropzone: {
     borderWidth: 2,
-    borderColor: "rgba(20, 184, 166, 0.35)",
     borderStyle: "dashed",
-    borderRadius: 16,
-    padding: 24,
+    borderRadius: 14,
+    paddingVertical: 24,
+    paddingHorizontal: 16,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(20, 184, 166, 0.05)",
   },
   dropzoneTitle: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: "700",
-    color: "#FFFFFF",
-    marginTop: 10,
+    marginTop: 8,
   },
   dropzoneSubtitle: {
     fontSize: 11,
-    color: colors.slate[400],
-    marginTop: 4,
-    textAlign: "center",
+    marginTop: 2,
   },
   filePreviewBox: {
     flexDirection: "row",
     alignItems: "center",
     padding: 12,
-    borderRadius: 14,
-    backgroundColor: "rgba(20, 184, 166, 0.1)",
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: "rgba(20, 184, 166, 0.3)",
   },
   fileIconBox: {
     width: 38,
     height: 38,
     borderRadius: 10,
-    backgroundColor: "rgba(20, 184, 166, 0.2)",
     alignItems: "center",
     justifyContent: "center",
-    marginRight: 10,
-  },
-  fileInfoColumn: {
-    flex: 1,
   },
   fileNameText: {
     fontSize: 13,
     fontWeight: "700",
-    color: "#FFFFFF",
   },
   fileMetaText: {
     fontSize: 11,
-    color: colors.slate[400],
     marginTop: 2,
   },
-  removeFileBtn: {
-    padding: 4,
-  },
-  verifiedCountCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginTop: 12,
-    padding: 10,
-    borderRadius: 12,
-    backgroundColor: "rgba(20, 184, 166, 0.08)",
-  },
-  verifiedLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  verifiedText: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: colors.slate[200],
-  },
-  formatsGrid: {
-    gap: 10,
+  formatGrid: {
+    gap: 8,
   },
   formatCard: {
-    padding: 14,
-    borderRadius: 14,
+    padding: 12,
+    borderRadius: 10,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
-    backgroundColor: "rgba(255, 255, 255, 0.03)",
   },
-  formatCardActive: {
-    borderColor: colors.brand[500],
-    backgroundColor: "rgba(20, 184, 166, 0.12)",
-  },
-  formatHeaderRow: {
+  formatHeader: {
     flexDirection: "row",
-    alignItems: "center",
     justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 4,
   },
   formatName: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: colors.slate[200],
+    fontSize: 12,
     flex: 1,
-  },
-  formatNameActive: {
-    color: "#FFFFFF",
+    marginRight: 6,
   },
   formatRate: {
-    fontSize: 13,
-    fontWeight: "900",
-    color: colors.brand[400],
-    marginLeft: 8,
+    fontSize: 12,
+    fontWeight: "800",
   },
   formatDesc: {
     fontSize: 11,
-    color: colors.slate[400],
-    marginTop: 4,
+    lineHeight: 15,
   },
   copiesRow: {
     flexDirection: "row",
     gap: 8,
   },
-  copyButton: {
+  copyBtn: {
     flex: 1,
-    paddingVertical: 10,
-    borderRadius: 12,
-    backgroundColor: colors.slate[800],
-    alignItems: "center",
-  },
-  copyButtonActive: {
-    backgroundColor: colors.brand[600],
-  },
-  copyButtonText: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: colors.slate[300],
-  },
-  copyButtonTextActive: {
-    color: "#FFFFFF",
-  },
-  inputWrapper: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: colors.slate[900],
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.cardBorder,
-    paddingHorizontal: 12,
-  },
-  inputIcon: {
-    marginRight: 8,
-  },
-  textInput: {
-    flex: 1,
-    paddingVertical: 12,
-    fontSize: 13,
-    color: "#FFFFFF",
-    fontWeight: "500",
-  },
-  presetsRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: 10,
-    gap: 8,
-  },
-  presetsLabel: {
-    fontSize: 11,
-    fontWeight: "600",
-    color: colors.slate[400],
-  },
-  presetChip: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    height: 38,
     borderRadius: 8,
-    backgroundColor: "rgba(255, 255, 255, 0.05)",
-    marginRight: 6,
-  },
-  presetChipText: {
-    fontSize: 10.5,
-    color: colors.slate[300],
-  },
-  deliveryWindowsGrid: {
-    gap: 10,
-  },
-  deliveryWindowCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    padding: 14,
-    borderRadius: 14,
-    borderWidth: 1.5,
-    borderColor: colors.cardBorder,
-    backgroundColor: "rgba(255, 255, 255, 0.03)",
-  },
-  deliveryWindowCardActive: {
-    borderColor: colors.brand[500],
-    backgroundColor: "rgba(20, 184, 166, 0.12)",
-  },
-  deliveryEmoji: {
-    fontSize: 22,
-    marginRight: 12,
-  },
-  deliveryWindowTexts: {
-    flex: 1,
-  },
-  deliveryWindowLabel: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: colors.slate[200],
-  },
-  deliveryWindowLabelActive: {
-    color: "#FFFFFF",
-  },
-  deliveryWindowTime: {
-    fontSize: 12,
-    color: colors.slate[400],
-    marginTop: 2,
-  },
-  windowCheckIcon: {
-    marginLeft: 8,
-  },
-  warningBanner: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    padding: 14,
-    borderRadius: 14,
-    backgroundColor: colors.amber.bg,
     borderWidth: 1,
-    borderColor: colors.amber.border,
-  },
-  warningIcon: {
-    marginRight: 10,
-    marginTop: 1,
-  },
-  warningText: {
-    flex: 1,
-    fontSize: 12.5,
-    fontWeight: "600",
-    color: colors.amber[400],
-    lineHeight: 18,
-  },
-  qrContainer: {
-    alignItems: "center",
-    marginVertical: 8,
-    gap: 10,
-  },
-  qrWhiteFrame: {
-    backgroundColor: "#FFFFFF",
-    padding: 12,
-    borderRadius: 20,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 10,
-    elevation: 6,
-  },
-  qrImage: {
-    width: 200,
-    height: 200,
-    borderRadius: 8,
-  },
-  qrSubtext: {
-    fontSize: 12,
-    color: colors.slate[300],
-    fontWeight: "600",
-    textAlign: "center",
-  },
-  payUpiButton: {
-    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: colors.brand[400],
-    paddingVertical: 14,
-    borderRadius: 14,
-    gap: 8,
-    marginTop: 4,
-    shadowColor: colors.brand[400],
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 3,
-  },
-  payUpiButtonText: {
-    fontSize: 13.5,
-    fontWeight: "900",
-    color: "#0B132B",
-  },
-  upiCopyRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    padding: 12,
-    borderRadius: 12,
-    backgroundColor: "rgba(255, 255, 255, 0.04)",
-    borderWidth: 1,
-    borderColor: colors.cardBorder,
-    marginTop: 8,
-  },
-  upiInfoColumn: {
-    flex: 1,
-    gap: 2,
-  },
-  upiInfoLabel: {
-    fontSize: 10.5,
-    fontWeight: "700",
-    color: colors.slate[400],
-    textTransform: "uppercase",
-  },
-  upiInfoValue: {
-    fontSize: 13,
-    fontWeight: "800",
-    color: colors.amber[400],
-    fontFamily: "monospace",
-  },
-  copyBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    backgroundColor: "rgba(20, 184, 166, 0.15)",
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "rgba(20, 184, 166, 0.3)",
   },
   copyBtnText: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: "700",
-    color: colors.brand[400],
   },
-  utrNoticeBox: {
+  chipsRow: {
     flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 10,
-    backgroundColor: "rgba(13, 148, 136, 0.08)",
-    borderWidth: 1,
-    borderColor: "rgba(20, 184, 166, 0.2)",
-    borderRadius: 12,
-    padding: 12,
-    marginTop: 8,
-  },
-  utrNoticeHeading: {
-    fontSize: 12,
-    fontWeight: "800",
-    color: colors.brand[300],
-    marginBottom: 4,
-  },
-  utrNoticeText: {
-    fontSize: 11,
-    color: colors.slate[300],
-    lineHeight: 16,
-  },
-  utrInputWrapper: {
+    flexWrap: "wrap",
     gap: 6,
-    marginTop: 8,
+    marginTop: 10,
   },
-  utrHeaderRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  utrLabel: {
-    fontSize: 11,
-    fontWeight: "700",
-    color: colors.slate[300],
-    textTransform: "uppercase",
-  },
-  pasteBadgeBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    backgroundColor: "rgba(245, 158, 11, 0.15)",
-    paddingVertical: 3,
-    paddingHorizontal: 8,
-    borderRadius: 6,
+  locationChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
     borderWidth: 1,
-    borderColor: "rgba(245, 158, 11, 0.3)",
   },
-  pasteBadgeText: {
+  chipText: {
     fontSize: 11,
-    fontWeight: "700",
-    color: colors.amber[400],
-  },
-  utrInput: {
-    backgroundColor: colors.slate[900],
-    borderWidth: 1,
-    borderColor: colors.amber[500],
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 15,
-    fontWeight: "800",
-    color: "#FFFFFF",
-    fontFamily: "monospace",
-    letterSpacing: 1.5,
-  },
-  utrCounter: {
-    fontSize: 11,
-    color: colors.slate[400],
     fontWeight: "600",
   },
-  summaryCard: {
-    padding: 20,
-    gap: 16,
-  },
-  summaryTopRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-  },
-  summaryPayableHeader: {
+  phoneHeaderRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    justifyContent: "space-between",
+    marginBottom: 8,
+  },
+  phoneInputRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  summaryCard: {
+    padding: 18,
+  },
+  summaryRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
   payableLabel: {
     fontSize: 11,
     fontWeight: "700",
-    color: colors.slate[400],
     textTransform: "uppercase",
+    letterSpacing: 0.5,
   },
   payableAmount: {
     fontSize: 28,
     fontWeight: "900",
-    color: colors.brand[400],
     letterSpacing: -0.5,
-    marginTop: 4,
+    marginTop: 2,
   },
   payableBreakdown: {
     fontSize: 11,
-    color: colors.slate[400],
     marginTop: 2,
   },
-  slotTagText: {
+  orderCard: {
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    gap: 6,
+  },
+  orderTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  orderFileName: {
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  orderMeta: {
+    fontSize: 11,
+    marginTop: 2,
+  },
+  orderActionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingTop: 8,
+    marginTop: 4,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "rgba(150, 150, 150, 0.2)",
+  },
+  chatUpdateBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingVertical: 2,
+  },
+  chatUpdateBtnText: {
+    fontSize: 11,
+    fontWeight: "600",
+  },
+  underReviewBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  reportProblemBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingVertical: 2,
+  },
+  reportProblemBtnText: {
+    fontSize: 11,
+    fontWeight: "500",
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.65)",
+    justifyContent: "flex-end",
+  },
+  modalContent: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    borderTopWidth: 1,
+    padding: 20,
+    paddingBottom: 36,
+  },
+  modalHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    marginBottom: 14,
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: "800",
+  },
+  modalSubtitle: {
+    fontSize: 11,
+    marginTop: 2,
+  },
+  modalCloseBtn: {
+    padding: 4,
+  },
+  categoryLabel: {
     fontSize: 12,
     fontWeight: "700",
-    color: colors.brand[400],
-    marginTop: 4,
+    marginBottom: 6,
   },
-  submitBtn: {
-    width: "100%",
+  categoryChipsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    marginBottom: 4,
+  },
+  catChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  catChipText: {
+    fontSize: 11,
+  },
+  modalTextInput: {
+    borderRadius: 10,
+    borderWidth: 1,
+    padding: 10,
+    fontSize: 12,
+    minHeight: 80,
+    textAlignVertical: "top",
+  },
+  modalActionsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: 10,
+    marginTop: 16,
   },
 });

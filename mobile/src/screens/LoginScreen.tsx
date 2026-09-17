@@ -54,11 +54,6 @@ interface LoginScreenProps {
   onLoginSuccess: (user: any) => void;
 }
 
-const DEMO_GOOGLE_PROFILES = [
-  { label: "DTU Student (Official)", email: "student@dtu.ac.in", name: "Aarav Sharma" },
-  { label: "Super Admin (Staff)", email: "admin@dtu.ac.in", name: "Admin Portal" },
-];
-
 export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
   const [isLoading, setIsLoading] = useState(false);
 
@@ -223,12 +218,6 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
     }
 
     setIsLoading(false);
-    // Instant fallback to verified test account if browser blocked by Google security policy in Expo Go
-    await processGoogleBackendAuth({
-      idToken: "google-token-student@dtu.ac.in",
-      email: "student@dtu.ac.in",
-      name: "Aarav Sharma",
-    });
   };
 
   return (
@@ -283,30 +272,6 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
               </View>
             )}
           </TouchableOpacity>
-
-          {/* Quick Verified Profiles */}
-          <View style={styles.quickTestSection}>
-            <Text style={styles.quickTestLabel}>Or sign in instantly with test profile:</Text>
-            <View style={styles.quickProfileGrid}>
-              {DEMO_GOOGLE_PROFILES.map((profile) => (
-                <TouchableOpacity
-                  key={profile.email}
-                  disabled={isLoading}
-                  onPress={() =>
-                    processGoogleBackendAuth({
-                      idToken: `google-token-${profile.email}`,
-                      email: profile.email,
-                      name: profile.name,
-                    })
-                  }
-                  style={styles.profileChip}
-                >
-                  <Ionicons name="person-circle-outline" size={16} color={colors.brand[400]} />
-                  <Text style={styles.profileChipText}>{profile.label}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
         </GlassCard>
 
         {/* Security Footnote */}
@@ -427,38 +392,6 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: "#FFFFFF",
     letterSpacing: -0.2,
-  },
-  quickTestSection: {
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: "rgba(255, 255, 255, 0.08)",
-    gap: 10,
-  },
-  quickTestLabel: {
-    fontSize: 11.5,
-    fontWeight: "700",
-    color: colors.slate[400],
-    textTransform: "uppercase",
-    letterSpacing: 0.4,
-  },
-  quickProfileGrid: {
-    gap: 8,
-  },
-  profileChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    borderRadius: 12,
-    backgroundColor: "rgba(20, 184, 166, 0.08)",
-    borderWidth: 1,
-    borderColor: "rgba(20, 184, 166, 0.25)",
-  },
-  profileChipText: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: colors.brand[300],
   },
   footerNote: {
     flexDirection: "row",

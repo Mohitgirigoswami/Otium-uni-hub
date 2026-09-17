@@ -89,6 +89,7 @@ export async function updateUserProfile(data: {
   phone?: string;
   department?: string;
   year?: number;
+  collegeId?: string;
 }): Promise<ActionResponse<any>> {
   try {
     const rateCheck = await checkRateLimit(data.userId);
@@ -110,6 +111,7 @@ export async function updateUserProfile(data: {
         ...(data.phone !== undefined && { phone: data.phone.trim() }),
         ...(data.department !== undefined && { department: data.department.trim() }),
         ...(data.year !== undefined && { year: Number(data.year) }),
+        ...(data.collegeId !== undefined && { collegeId: data.collegeId }),
       },
       include: {
         incognitoProfile: true,

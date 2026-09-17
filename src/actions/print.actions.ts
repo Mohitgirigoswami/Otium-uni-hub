@@ -215,6 +215,13 @@ export async function createPrintOrder(data: {
       });
     }
 
+    // Trigger one-way in-app dispatch message into student chat inbox
+    const paidRupees = (order.totalCost / 100).toFixed(2);
+    sendPrintStationMessage(
+      order.userId,
+      `🖨️ Order #${order.id.slice(-6).toUpperCase()} received: ${order.fileName} (${order.pageCount} pgs, ${order.printType}, ₹${paidRupees}). Scheduled delivery: ${order.deliverySlot || "Next Available Slot"} at ${order.deliveryLocation}.`
+    ).catch((err) => console.error("[Print Order In-App Msg Error]:", err));
+
     return {
       success: true,
       data: order,
@@ -224,6 +231,131 @@ export async function createPrintOrder(data: {
     return {
       success: false,
       error: error?.message || "Failed to submit print order. Please try again.",
+    };
+  }
+}
+
+/**
+ * One-way in-app dispatch message from "Express Print Station" system bot to student chat inbox
+ */
+export async function sendPrintStationMessage(
+  userId: string,
+  content: string
+): Promise<ActionResponse<any>> {
+  try {
+    if (!userId || !content) return { success: false, error: "Invalid parameters." };
+
+    // 1. Get or create system Print Desk user
+    const systemUser = await prisma.user.upsert({
+      where: { email: "printing@otiumhub.in" },
+      update: {},
+      create: {
+        name: "Express Print Station",
+        email: "printing@otiumhub.in",
+        role: "PRINT_MANAGER",
+        image: "https://api.dicebear.com/9.x/bottts/svg?seed=print-desk",
+      },
+    });
+
+    if (systemUser.id === userId) return { success: true };
+
+    // 2. Get or create direct conversation between Print Desk and Student
+    let conversation = await prisma.conversation.findFirst({
+      where: {
+        isAnonymousChat: false,
+        OR: [
+          { participantOneId: systemUser.id, participantTwoId: userId },
+          { participantOneId: userId, participantTwoId: systemUser.id },
+        ],
+      },
+    });
+
+    if (!conversation) {
+      conversation = await prisma.conversation.create({
+        data: {
+          participantOneId: systemUser.id,
+          participantTwoId: userId,
+          isAnonymousChat: false,
+        },
+      });
+    }
+
+    // 3. Insert one-way automated dispatch message
+    const message = await prisma.message.create({
+      data: {
+        conversationId: conversation.id,
+        senderId: systemUser.id,
+        content: content.trim(),
+      },
+    });
+
+    // Update conversation timestamp for sorting
+    await prisma.conversation.update({
+      where: { id: conversation.id },
+      data: { updatedAt: new Date() },
+    });
+
+    return { success: true, data: message };
+  } catch (error: any) {
+    console.error("[sendPrintStationMessage Error]:", error);
+    return { success: false, error: error?.message };
+  }
+}
+
+/**
+ * Report problem or issue on an existing print order
+ */
+export async function reportPrintOrderIssue(data: {
+  orderId: string;
+  userId: string;
+  reason: string;
+  category?: string;
+}): Promise<ActionResponse<any>> {
+  try {
+    if (!data.orderId || !data.userId || !data.reason?.trim()) {
+      return { success: false, error: "Order ID and issue reason are required." };
+    }
+
+    const order = await prisma.printOrder.findUnique({
+      where: { id: data.orderId },
+      include: { user: true },
+    });
+
+    if (!order) {
+      return { success: false, error: "Print order not found." };
+    }
+
+    if (order.userId !== data.userId) {
+      return { success: false, error: "You can only report issues on your own print orders." };
+    }
+
+    const categoryText = data.category || "General Issue";
+    const cleanReason = data.reason.trim();
+    const updatedLocation = `${order.deliveryLocation} | ISSUE [${categoryText}]: ${cleanReason}`;
+
+    const updated = await prisma.printOrder.update({
+      where: { id: data.orderId },
+      data: {
+        status: "ISSUE_REPORTED",
+        deliveryLocation: updatedLocation,
+      },
+    });
+
+    // Send one-way in-app dispatch to the student's conversation inbox
+    await sendPrintStationMessage(
+      data.userId,
+      `⚠️ Issue Reported for Order #${order.id.slice(-6).toUpperCase()} (${categoryText}):\n"${cleanReason}"\n\nOur campus print manager has been alerted and is reviewing this order.`
+    );
+
+    return {
+      success: true,
+      data: updated,
+    };
+  } catch (error: any) {
+    console.error("Error in reportPrintOrderIssue:", error);
+    return {
+      success: false,
+      error: error?.message || "Failed to report issue on print order.",
     };
   }
 }

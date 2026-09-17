@@ -1,8 +1,8 @@
 import React from "react";
 import { View, Text, StyleSheet, TouchableOpacity, Image } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { colors } from "../theme/colors";
-import { Badge } from "./Badge";
+import { useTheme } from "../context/ThemeContext";
+import { Badge } from "./ui/Badge";
 
 interface HeaderProps {
   title?: string;
@@ -17,8 +17,18 @@ export function Header({
   campusName = "DTU Campus",
   onNotificationPress,
 }: HeaderProps) {
+  const { colors, isDark } = useTheme();
+
   return (
-    <View style={styles.headerContainer}>
+    <View
+      style={[
+        styles.headerContainer,
+        {
+          backgroundColor: colors.background,
+          borderBottomColor: colors.border,
+        },
+      ]}
+    >
       <View style={styles.leftSection}>
         <View style={styles.titleRow}>
           <Image
@@ -26,24 +36,30 @@ export function Header({
             style={styles.logoImage}
             resizeMode="contain"
           />
-          <Text style={styles.brandTitle}>Otium</Text>
-          <Badge variant="brand" size="sm" style={styles.badge}>
+          <Text style={[styles.brandTitle, { color: colors.text }]}>{title}</Text>
+          <Badge variant="primary" size="sm" style={styles.badge}>
             {badge}
           </Badge>
         </View>
         <View style={styles.campusRow}>
-          <View style={styles.activeDot} />
-          <Text style={styles.campusText}>{campusName}</Text>
+          <View style={[styles.activeDot, { backgroundColor: colors.primary }]} />
+          <Text style={[styles.campusText, { color: colors.textSecondary }]}>{campusName}</Text>
         </View>
       </View>
 
       <TouchableOpacity
         activeOpacity={0.7}
         onPress={onNotificationPress}
-        style={styles.iconButton}
+        style={[
+          styles.iconButton,
+          {
+            backgroundColor: colors.card,
+            borderColor: colors.border,
+          },
+        ]}
       >
-        <Ionicons name="notifications-outline" size={20} color={colors.slate[200]} />
-        <View style={styles.notificationDot} />
+        <Ionicons name="notifications-outline" size={18} color={colors.text} />
+        <View style={[styles.notificationDot, { backgroundColor: colors.primary }]} />
       </TouchableOpacity>
     </View>
   );
@@ -55,11 +71,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 18,
-    paddingTop: 10,
-    paddingBottom: 12,
-    backgroundColor: colors.background,
+    paddingTop: 8,
+    paddingBottom: 10,
     borderBottomWidth: 1,
-    borderBottomColor: "rgba(255, 255, 255, 0.06)",
   },
   leftSection: {
     flexDirection: "column",
@@ -70,13 +84,12 @@ const styles = StyleSheet.create({
     gap: 7,
   },
   logoImage: {
-    width: 24,
-    height: 24,
+    width: 22,
+    height: 22,
   },
   brandTitle: {
-    fontSize: 21,
+    fontSize: 20,
     fontWeight: "900",
-    color: "#FFFFFF",
     letterSpacing: -0.5,
   },
   badge: {
@@ -91,31 +104,27 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: colors.brand[400],
     marginRight: 6,
   },
   campusText: {
     fontSize: 11,
     fontWeight: "600",
-    color: colors.slate[400],
   },
   iconButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: colors.surface,
+    width: 36,
+    height: 36,
+    borderRadius: 10,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
     alignItems: "center",
     justifyContent: "center",
+    position: "relative",
   },
   notificationDot: {
     position: "absolute",
-    top: 9,
-    right: 9,
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: colors.brand[400],
+    top: 7,
+    right: 8,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
   },
 });

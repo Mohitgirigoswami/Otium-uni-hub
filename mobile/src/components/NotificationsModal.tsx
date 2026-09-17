@@ -27,7 +27,7 @@ export function NotificationsModal({
       id: "1",
       icon: "print",
       iconType: "feather",
-      title: "Hostel Print Station Active",
+      title: "Express Print Station Active",
       message: "Direct PDF upload is online. Fast morning and afternoon desk delivery active.",
       time: "10m ago",
       tag: "SERVICE",

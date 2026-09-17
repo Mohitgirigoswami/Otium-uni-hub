@@ -15,18 +15,19 @@ import {
   Platform,
 } from "react-native";
 import { Ionicons, Feather, MaterialCommunityIcons } from "@expo/vector-icons";
-import { colors } from "../theme/colors";
-import { GlassCard } from "../components/GlassCard";
-import { Badge } from "../components/Badge";
-import { Button } from "../components/MintButton";
+import { useTheme } from "../context/ThemeContext";
+import { THEMES, ThemeId } from "../theme/themes";
+import { Card } from "../components/ui/Card";
+import { Badge } from "../components/ui/Badge";
+import { Button } from "../components/ui/Button";
 import { apiClient } from "../services/apiClient";
 import { useUser } from "../context/UserContext";
 
 export function ProfileScreen() {
-  const { user, setUser, signOut, refreshUser } = useUser();
+  const { theme: currentThemeId, colors, setTheme, isDark } = useTheme();
+  const { user, setUser, signOut } = useUser();
   const [profileData, setProfileData] = useState<any>(user);
   const [colleges, setColleges] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Edit Profile Modal State
@@ -122,40 +123,66 @@ export function ProfileScreen() {
         .slice(0, 2)
     : "ST";
 
+  const themeList = Object.values(THEMES);
+
   return (
     <ScrollView
-      style={styles.container}
+      style={[styles.container, { backgroundColor: colors.background }]}
       contentContainerStyle={styles.contentContainer}
       refreshControl={
         <RefreshControl
           refreshing={isRefreshing}
           onRefresh={onRefresh}
-          tintColor={colors.brand[400]}
+          tintColor={colors.primary}
         />
       }
+      showsVerticalScrollIndicator={false}
     >
       {/* Header Profile Card */}
-      <GlassCard style={styles.profileCard}>
+      <Card style={styles.profileCard}>
         <View style={styles.profileTopRow}>
           {currentUser.image ? (
             <Image source={{ uri: currentUser.image }} style={styles.avatarImage} />
           ) : (
-            <View style={styles.avatarCircle}>
-              <Text style={styles.avatarText}>{initials}</Text>
+            <View
+              style={[
+                styles.avatarCircle,
+                {
+                  backgroundColor: colors.primary,
+                  borderColor: colors.border,
+                },
+              ]}
+            >
+              <Text style={[styles.avatarText, { color: colors.primaryForeground }]}>
+                {initials}
+              </Text>
             </View>
           )}
 
           <View style={styles.profileInfo}>
             <View style={styles.nameRow}>
-              <Text style={styles.userName}>{currentUser.name || "Student"}</Text>
-              <Badge variant="brand" size="sm">
+              <Text
+                style={[styles.userName, { color: colors.text }]}
+                numberOfLines={1}
+              >
+                {currentUser.name || "Student"}
+              </Text>
+              <Badge variant="primary" size="sm">
                 {currentUser.role || "STUDENT"}
               </Badge>
             </View>
-            <Text style={styles.userEmail}>{currentUser.email || "student@campus.edu"}</Text>
+            <Text
+              style={[styles.userEmail, { color: colors.textSecondary }]}
+              numberOfLines={1}
+            >
+              {currentUser.email || "student@campus.edu"}
+            </Text>
             <View style={styles.campusRow}>
-              <Ionicons name="school-outline" size={14} color={colors.brand[400]} />
-              <Text style={styles.campusName}>
+              <Ionicons name="school-outline" size={13} color={colors.primary} />
+              <Text
+                style={[styles.campusName, { color: colors.primary }]}
+                numberOfLines={1}
+              >
                 {currentUser.college?.name || "Campus Affiliation Pending"}
               </Text>
             </View>
@@ -164,92 +191,256 @@ export function ProfileScreen() {
 
         <TouchableOpacity
           onPress={openEditModal}
-          style={styles.editProfileBtn}
+          style={[
+            styles.editProfileBtn,
+            {
+              backgroundColor: colors.cardSecondary,
+              borderColor: colors.border,
+            },
+          ]}
           activeOpacity={0.8}
         >
-          <Feather name="edit-2" size={14} color={colors.brand[400]} />
-          <Text style={styles.editProfileBtnText}>Edit Student Profile</Text>
+          <Feather name="edit-2" size={13} color={colors.primary} />
+          <Text style={[styles.editProfileBtnText, { color: colors.primary }]}>
+            Edit Student Profile
+          </Text>
         </TouchableOpacity>
-      </GlassCard>
+      </Card>
 
       {/* Quick Campus Stats */}
       <View style={styles.statsRow}>
-        <View style={styles.statCard}>
-          <Feather name="printer" size={18} color={colors.brand[400]} />
-          <Text style={styles.statValue}>{currentUser.stats?.printOrders || 0}</Text>
-          <Text style={styles.statLabel}>Print Orders</Text>
+        <View
+          style={[
+            styles.statCard,
+            {
+              backgroundColor: colors.card,
+              borderColor: colors.border,
+            },
+          ]}
+        >
+          <Feather name="printer" size={18} color={colors.primary} />
+          <Text style={[styles.statValue, { color: colors.text }]}>
+            {currentUser.stats?.printOrders || 0}
+          </Text>
+          <Text style={[styles.statLabel, { color: colors.textMuted }]}>
+            Print Orders
+          </Text>
         </View>
-        <View style={styles.statCard}>
-          <Ionicons name="calendar-outline" size={18} color={colors.electric[400]} />
-          <Text style={styles.statValue}>{currentUser.stats?.attendanceSubjects || 0}</Text>
-          <Text style={styles.statLabel}>Subjects</Text>
+        <View
+          style={[
+            styles.statCard,
+            {
+              backgroundColor: colors.card,
+              borderColor: colors.border,
+            },
+          ]}
+        >
+          <Ionicons name="calendar-outline" size={18} color={colors.accent} />
+          <Text style={[styles.statValue, { color: colors.text }]}>
+            {currentUser.stats?.attendanceSubjects || 0}
+          </Text>
+          <Text style={[styles.statLabel, { color: colors.textMuted }]}>
+            Subjects
+          </Text>
         </View>
-        <View style={styles.statCard}>
-          <MaterialCommunityIcons name="calculator-variant-outline" size={18} color={colors.purple[400]} />
-          <Text style={styles.statValue}>{currentUser.stats?.savedSemesters || 0}</Text>
-          <Text style={styles.statLabel}>Semesters</Text>
+        <View
+          style={[
+            styles.statCard,
+            {
+              backgroundColor: colors.card,
+              borderColor: colors.border,
+            },
+          ]}
+        >
+          <MaterialCommunityIcons
+            name="calculator-variant-outline"
+            size={18}
+            color={colors.success}
+          />
+          <Text style={[styles.statValue, { color: colors.text }]}>
+            {currentUser.stats?.savedSemesters || 0}
+          </Text>
+          <Text style={[styles.statLabel, { color: colors.textMuted }]}>
+            Semesters
+          </Text>
         </View>
       </View>
 
-      {/* Academic Details Card */}
-      <GlassCard style={styles.detailsCard}>
-        <Text style={styles.sectionTitle}>Academic Information</Text>
+      {/* Interactive 4-Theme Selector */}
+      <Card style={styles.sectionCard}>
+        <View style={styles.sectionHeaderRow}>
+          <View>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>
+              Campus Visual Theme
+            </Text>
+            <Text style={[styles.sectionSubtitle, { color: colors.textSecondary }]}>
+              Real-time palette switching across all app modules
+            </Text>
+          </View>
+          <Badge variant="primary" size="sm">
+            4 THEMES
+          </Badge>
+        </View>
 
-        <View style={styles.detailRow}>
-          <View style={styles.detailIconBox}>
-            <Ionicons name="book-outline" size={16} color={colors.slate[400]} />
+        <View style={styles.themeGrid}>
+          {themeList.map((t) => {
+            const isSelected = currentThemeId === t.id;
+            return (
+              <TouchableOpacity
+                key={t.id}
+                activeOpacity={0.8}
+                onPress={() => setTheme(t.id as ThemeId)}
+                style={[
+                  styles.themeCard,
+                  {
+                    backgroundColor: t.colors.card,
+                    borderColor: isSelected ? t.colors.primary : t.colors.border,
+                    borderWidth: isSelected ? 2 : 1,
+                  },
+                ]}
+              >
+                <View style={styles.themeCardTop}>
+                  <Text
+                    style={[
+                      styles.themeName,
+                      { color: t.colors.text, fontWeight: isSelected ? "800" : "700" },
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {t.name}
+                  </Text>
+                  {isSelected && (
+                    <Ionicons
+                      name="checkmark-circle"
+                      size={18}
+                      color={t.colors.primary}
+                    />
+                  )}
+                </View>
+
+                <Text
+                  style={[styles.themeTagline, { color: t.colors.textSecondary }]}
+                  numberOfLines={2}
+                >
+                  {t.tagline}
+                </Text>
+
+                {/* Swatch dots */}
+                <View style={styles.swatchRow}>
+                  <View
+                    style={[
+                      styles.swatchDot,
+                      { backgroundColor: t.colors.background, borderColor: t.colors.border },
+                    ]}
+                  />
+                  <View
+                    style={[
+                      styles.swatchDot,
+                      { backgroundColor: t.colors.primary, borderColor: t.colors.border },
+                    ]}
+                  />
+                  <View
+                    style={[
+                      styles.swatchDot,
+                      { backgroundColor: t.colors.accent, borderColor: t.colors.border },
+                    ]}
+                  />
+                  <View
+                    style={[
+                      styles.swatchDot,
+                      { backgroundColor: t.colors.cardSecondary, borderColor: t.colors.border },
+                    ]}
+                  />
+                  <Text
+                    style={[
+                      styles.themeModeBadge,
+                      { color: t.colors.textMuted },
+                    ]}
+                  >
+                    {t.isDark ? "Dark" : "Light"}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      </Card>
+
+      {/* Academic Details Card */}
+      <Card style={styles.sectionCard}>
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>
+          Academic Information
+        </Text>
+
+        <View style={[styles.detailRow, { borderBottomColor: colors.border }]}>
+          <View style={[styles.detailIconBox, { backgroundColor: colors.cardSecondary }]}>
+            <Ionicons name="book-outline" size={15} color={colors.primary} />
           </View>
           <View style={styles.detailTextBox}>
-            <Text style={styles.detailLabel}>Department / Branch</Text>
-            <Text style={styles.detailValue}>
+            <Text style={[styles.detailLabel, { color: colors.textMuted }]}>
+              Department / Branch
+            </Text>
+            <Text style={[styles.detailValue, { color: colors.text }]}>
               {currentUser.department || "Computer Science & Engineering"}
             </Text>
           </View>
         </View>
 
-        <View style={styles.detailRow}>
-          <View style={styles.detailIconBox}>
-            <Ionicons name="calendar-number-outline" size={16} color={colors.slate[400]} />
+        <View style={[styles.detailRow, { borderBottomColor: colors.border }]}>
+          <View style={[styles.detailIconBox, { backgroundColor: colors.cardSecondary }]}>
+            <Ionicons name="calendar-number-outline" size={15} color={colors.primary} />
           </View>
           <View style={styles.detailTextBox}>
-            <Text style={styles.detailLabel}>Academic Year</Text>
-            <Text style={styles.detailValue}>
+            <Text style={[styles.detailLabel, { color: colors.textMuted }]}>
+              Academic Year
+            </Text>
+            <Text style={[styles.detailValue, { color: colors.text }]}>
               Year {currentUser.year || 2} (Undergraduate)
             </Text>
           </View>
         </View>
 
-        <View style={styles.detailRow}>
-          <View style={styles.detailIconBox}>
-            <Ionicons name="call-outline" size={16} color={colors.slate[400]} />
+        <View style={[styles.detailRow, { borderBottomColor: colors.border }]}>
+          <View style={[styles.detailIconBox, { backgroundColor: colors.cardSecondary }]}>
+            <Ionicons name="call-outline" size={15} color={colors.primary} />
           </View>
           <View style={styles.detailTextBox}>
-            <Text style={styles.detailLabel}>Phone Number</Text>
-            <Text style={styles.detailValue}>{currentUser.phone || "Not provided"}</Text>
+            <Text style={[styles.detailLabel, { color: colors.textMuted }]}>
+              Phone Number
+            </Text>
+            <Text style={[styles.detailValue, { color: colors.text }]}>
+              {currentUser.phone || "Not provided"}
+            </Text>
           </View>
         </View>
 
-        <View style={styles.detailRow}>
-          <View style={styles.detailIconBox}>
-            <Ionicons name="shield-checkmark-outline" size={16} color={colors.slate[400]} />
+        <View style={[styles.detailRow, { borderBottomWidth: 0 }]}>
+          <View style={[styles.detailIconBox, { backgroundColor: colors.cardSecondary }]}>
+            <Ionicons name="shield-checkmark-outline" size={15} color={colors.primary} />
           </View>
           <View style={styles.detailTextBox}>
-            <Text style={styles.detailLabel}>Anonymous Alias</Text>
-            <Text style={styles.detailValue}>
+            <Text style={[styles.detailLabel, { color: colors.textMuted }]}>
+              Anonymous Alias
+            </Text>
+            <Text style={[styles.detailValue, { color: colors.text }]}>
               {currentUser.incognitoProfile?.handle || "Auto-assigned on first whisper"}
             </Text>
           </View>
         </View>
-      </GlassCard>
+      </Card>
 
       {/* App & Connectivity Settings */}
-      <GlassCard style={styles.settingsCard}>
-        <Text style={styles.sectionTitle}>App & Connectivity</Text>
+      <Card style={styles.sectionCard}>
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>
+          App & Connectivity
+        </Text>
 
         <View style={styles.settingItem}>
           <View style={styles.settingLeft}>
-            <View style={styles.onlineDot} />
-            <Text style={styles.settingLabel}>Otium Campus Network</Text>
+            <View style={[styles.onlineDot, { backgroundColor: colors.success }]} />
+            <Text style={[styles.settingLabel, { color: colors.text }]}>
+              Otium Campus Network
+            </Text>
           </View>
           <Badge variant="success" size="sm">
             LIVE SYNC
@@ -257,23 +448,46 @@ export function ProfileScreen() {
         </View>
 
         <View style={styles.settingItem}>
-          <Text style={styles.settingLabel}>App Build Version</Text>
-          <Text style={styles.versionText}>v1.0.0 (Release)</Text>
+          <Text style={[styles.settingLabel, { color: colors.text }]}>
+            Active Visual Theme
+          </Text>
+          <Badge variant="primary" size="sm">
+            {THEMES[currentThemeId]?.name || "Default"}
+          </Badge>
         </View>
-      </GlassCard>
 
-      {/* Proper Sign Out Button */}
-      <TouchableOpacity
-        onPress={signOut}
-        style={styles.signOutButton}
-        activeOpacity={0.8}
+        <View style={styles.settingItem}>
+          <Text style={[styles.settingLabel, { color: colors.text }]}>
+            App Build Version
+          </Text>
+          <Text style={[styles.versionText, { color: colors.textMuted }]}>
+            v1.2.0 (SDK 54 Release)
+          </Text>
+        </View>
+      </Card>
+
+      {/* Sign Out Button */}
+      <Button
+        variant="destructive"
+        size="lg"
+        onPress={() => {
+          Alert.alert("Sign Out", "Are you sure you want to sign out from Otium?", [
+            { text: "Cancel", style: "cancel" },
+            { text: "Sign Out", style: "destructive", onPress: signOut },
+          ]);
+        }}
+        icon={<Ionicons name="log-out-outline" size={18} color={colors.destructiveForeground} />}
       >
-        <Ionicons name="log-out-outline" size={18} color="#FFFFFF" />
-        <Text style={styles.signOutButtonText}>Sign Out from Otium</Text>
-      </TouchableOpacity>
+        Sign Out from Otium
+      </Button>
 
-      {/* Edit Profile Modal with Keyboard UX */}
-      <Modal visible={isEditModalOpen} animationType="slide" transparent onRequestClose={() => setIsEditModalOpen(false)}>
+      {/* Edit Profile Modal */}
+      <Modal
+        visible={isEditModalOpen}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setIsEditModalOpen(false)}
+      >
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : "height"}
           style={styles.keyboardAvoidingModal}
@@ -283,11 +497,24 @@ export function ProfileScreen() {
             activeOpacity={1}
             onPress={() => setIsEditModalOpen(false)}
           />
-          <View style={styles.modalContainer}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Edit Student Profile</Text>
-              <TouchableOpacity onPress={() => setIsEditModalOpen(false)} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-                <Ionicons name="close" size={22} color={colors.slate[400]} />
+          <View
+            style={[
+              styles.modalContainer,
+              {
+                backgroundColor: colors.card,
+                borderColor: colors.border,
+              },
+            ]}
+          >
+            <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>
+                Edit Student Profile
+              </Text>
+              <TouchableOpacity
+                onPress={() => setIsEditModalOpen(false)}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              >
+                <Ionicons name="close" size={22} color={colors.textSecondary} />
               </TouchableOpacity>
             </View>
 
@@ -298,54 +525,96 @@ export function ProfileScreen() {
               showsVerticalScrollIndicator={false}
             >
               <View style={styles.formGroup}>
-                <Text style={styles.formLabel}>Full Name *</Text>
+                <Text style={[styles.formLabel, { color: colors.textMuted }]}>
+                  Full Name *
+                </Text>
                 <TextInput
                   value={editName}
                   onChangeText={setEditName}
                   placeholder="e.g. John Doe"
-                  placeholderTextColor={colors.slate[500]}
-                  style={styles.input}
+                  placeholderTextColor={colors.textMuted}
+                  style={[
+                    styles.input,
+                    {
+                      backgroundColor: colors.cardSecondary,
+                      borderColor: colors.border,
+                      color: colors.text,
+                    },
+                  ]}
                 />
               </View>
 
               <View style={styles.formGroup}>
-                <Text style={styles.formLabel}>Department / Branch</Text>
+                <Text style={[styles.formLabel, { color: colors.textMuted }]}>
+                  Department / Branch
+                </Text>
                 <TextInput
                   value={editDepartment}
                   onChangeText={setEditDepartment}
                   placeholder="e.g. Computer Engineering"
-                  placeholderTextColor={colors.slate[500]}
-                  style={styles.input}
+                  placeholderTextColor={colors.textMuted}
+                  style={[
+                    styles.input,
+                    {
+                      backgroundColor: colors.cardSecondary,
+                      borderColor: colors.border,
+                      color: colors.text,
+                    },
+                  ]}
                 />
               </View>
 
               <View style={styles.formGroup}>
-                <Text style={styles.formLabel}>Academic Year (1 - 5)</Text>
+                <Text style={[styles.formLabel, { color: colors.textMuted }]}>
+                  Academic Year (1 - 5)
+                </Text>
                 <TextInput
                   value={editYear}
                   onChangeText={setEditYear}
                   keyboardType="number-pad"
                   placeholder="2"
-                  placeholderTextColor={colors.slate[500]}
-                  style={styles.input}
+                  placeholderTextColor={colors.textMuted}
+                  style={[
+                    styles.input,
+                    {
+                      backgroundColor: colors.cardSecondary,
+                      borderColor: colors.border,
+                      color: colors.text,
+                    },
+                  ]}
                 />
               </View>
 
               <View style={styles.formGroup}>
-                <Text style={styles.formLabel}>Phone Number</Text>
+                <Text style={[styles.formLabel, { color: colors.textMuted }]}>
+                  Phone Number
+                </Text>
                 <TextInput
                   value={editPhone}
                   onChangeText={setEditPhone}
                   keyboardType="phone-pad"
                   placeholder="+91 98765 43210"
-                  placeholderTextColor={colors.slate[500]}
-                  style={styles.input}
+                  placeholderTextColor={colors.textMuted}
+                  style={[
+                    styles.input,
+                    {
+                      backgroundColor: colors.cardSecondary,
+                      borderColor: colors.border,
+                      color: colors.text,
+                    },
+                  ]}
                 />
               </View>
 
               <View style={styles.formGroup}>
-                <Text style={styles.formLabel}>Select University / Campus</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.collegePillsRow}>
+                <Text style={[styles.formLabel, { color: colors.textMuted }]}>
+                  Select University / Campus
+                </Text>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  style={styles.collegePillsRow}
+                >
                   {colleges.map((col) => {
                     const isSelected = editCollegeId === col.id;
                     return (
@@ -354,13 +623,24 @@ export function ProfileScreen() {
                         onPress={() => setEditCollegeId(col.id)}
                         style={[
                           styles.collegePill,
-                          isSelected && styles.collegePillActive,
+                          {
+                            backgroundColor: isSelected
+                              ? colors.primary
+                              : colors.cardSecondary,
+                            borderColor: isSelected
+                              ? colors.primary
+                              : colors.border,
+                          },
                         ]}
                       >
                         <Text
                           style={[
                             styles.collegePillText,
-                            isSelected && styles.collegePillTextActive,
+                            {
+                              color: isSelected
+                                ? colors.primaryForeground
+                                : colors.textSecondary,
+                            },
                           ]}
                         >
                           {col.name}
@@ -371,18 +651,15 @@ export function ProfileScreen() {
                 </ScrollView>
               </View>
 
-              <TouchableOpacity
+              <Button
+                variant="default"
+                size="lg"
                 onPress={handleSaveProfile}
-                disabled={isSaving}
-                style={[styles.saveButton, isSaving && { opacity: 0.7 }]}
-                activeOpacity={0.8}
+                isLoading={isSaving}
+                style={{ marginTop: 10, marginBottom: 20 }}
               >
-                {isSaving ? (
-                  <ActivityIndicator size="small" color="#0B132B" />
-                ) : (
-                  <Text style={styles.saveButtonText}>Save Changes</Text>
-                )}
-              </TouchableOpacity>
+                Save Changes
+              </Button>
             </ScrollView>
           </View>
         </KeyboardAvoidingView>
@@ -394,7 +671,6 @@ export function ProfileScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
   },
   contentContainer: {
     padding: 16,
@@ -402,8 +678,8 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   profileCard: {
-    padding: 20,
-    gap: 16,
+    padding: 18,
+    gap: 14,
   },
   profileTopRow: {
     flexDirection: "row",
@@ -411,28 +687,25 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   avatarCircle: {
-    width: 60,
-    height: 60,
-    borderRadius: 20,
-    backgroundColor: colors.brand[600],
+    width: 56,
+    height: 56,
+    borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: colors.brand[400],
   },
   avatarImage: {
-    width: 60,
-    height: 60,
-    borderRadius: 20,
+    width: 56,
+    height: 56,
+    borderRadius: 18,
   },
   avatarText: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: "900",
-    color: "#FFFFFF",
   },
   profileInfo: {
     flex: 1,
-    gap: 4,
+    gap: 3,
   },
   nameRow: {
     flexDirection: "row",
@@ -440,40 +713,34 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   userName: {
-    fontSize: 17,
+    fontSize: 16.5,
     fontWeight: "800",
-    color: "#FFFFFF",
   },
   userEmail: {
     fontSize: 12,
-    color: colors.slate[400],
   },
   campusRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 5,
+    gap: 4,
     marginTop: 2,
   },
   campusName: {
     fontSize: 11.5,
     fontWeight: "600",
-    color: colors.brand[400],
   },
   editProfileBtn: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
-    paddingVertical: 10,
+    paddingVertical: 9,
     borderRadius: 12,
-    backgroundColor: "rgba(20, 184, 166, 0.1)",
     borderWidth: 1,
-    borderColor: "rgba(20, 184, 166, 0.3)",
   },
   editProfileBtnText: {
     fontSize: 12.5,
     fontWeight: "700",
-    color: colors.brand[400],
   },
   statsRow: {
     flexDirection: "row",
@@ -483,46 +750,86 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 14,
     borderRadius: 14,
-    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
     alignItems: "center",
     gap: 4,
   },
   statValue: {
     fontSize: 18,
     fontWeight: "900",
-    color: "#FFFFFF",
     marginTop: 2,
   },
   statLabel: {
     fontSize: 10.5,
     fontWeight: "600",
-    color: colors.slate[400],
   },
-  detailsCard: {
-    padding: 20,
+  sectionCard: {
+    padding: 18,
     gap: 14,
   },
+  sectionHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+  },
   sectionTitle: {
-    fontSize: 14,
+    fontSize: 14.5,
     fontWeight: "800",
-    color: "#FFFFFF",
-    marginBottom: 4,
+  },
+  sectionSubtitle: {
+    fontSize: 11.5,
+    marginTop: 2,
+  },
+  themeGrid: {
+    gap: 10,
+    marginTop: 4,
+  },
+  themeCard: {
+    padding: 14,
+    borderRadius: 14,
+    gap: 6,
+  },
+  themeCardTop: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  themeName: {
+    fontSize: 14,
+  },
+  themeTagline: {
+    fontSize: 11.5,
+    lineHeight: 16,
+  },
+  swatchRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 4,
+  },
+  swatchDot: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    borderWidth: 1,
+  },
+  themeModeBadge: {
+    fontSize: 10.5,
+    fontWeight: "700",
+    marginLeft: 4,
+    textTransform: "uppercase",
   },
   detailRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    paddingVertical: 8,
+    paddingVertical: 9,
     borderBottomWidth: 1,
-    borderBottomColor: "rgba(255, 255, 255, 0.04)",
   },
   detailIconBox: {
     width: 32,
     height: 32,
     borderRadius: 10,
-    backgroundColor: colors.slate[800],
     alignItems: "center",
     justifyContent: "center",
   },
@@ -531,18 +838,12 @@ const styles = StyleSheet.create({
   },
   detailLabel: {
     fontSize: 10.5,
-    color: colors.slate[400],
     fontWeight: "600",
   },
   detailValue: {
     fontSize: 13,
-    color: "#FFFFFF",
     fontWeight: "700",
     marginTop: 1,
-  },
-  settingsCard: {
-    padding: 20,
-    gap: 12,
   },
   settingItem: {
     flexDirection: "row",
@@ -559,37 +860,14 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: colors.emerald[400],
   },
   settingLabel: {
     fontSize: 12.5,
     fontWeight: "600",
-    color: colors.slate[300],
   },
   versionText: {
     fontSize: 12,
-    color: colors.slate[400],
     fontWeight: "600",
-  },
-  signOutButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    backgroundColor: colors.rose[600],
-    paddingVertical: 14,
-    borderRadius: 14,
-    marginTop: 4,
-    shadowColor: colors.rose[500],
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  signOutButtonText: {
-    color: "#FFFFFF",
-    fontSize: 14,
-    fontWeight: "800",
   },
   keyboardAvoidingModal: {
     flex: 1,
@@ -600,11 +878,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   modalContainer: {
-    backgroundColor: colors.surface,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.1)",
     maxHeight: "88%",
     padding: 20,
     gap: 16,
@@ -615,12 +891,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: colors.cardBorder,
   },
   modalTitle: {
     fontSize: 16,
     fontWeight: "800",
-    color: "#FFFFFF",
   },
   modalScroll: {
     flexGrow: 0,
@@ -635,18 +909,14 @@ const styles = StyleSheet.create({
   formLabel: {
     fontSize: 11,
     fontWeight: "700",
-    color: colors.slate[400],
     textTransform: "uppercase",
   },
   input: {
-    backgroundColor: colors.slate[900],
     borderWidth: 1,
-    borderColor: colors.cardBorder,
     borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 13.5,
-    color: "#FFFFFF",
   },
   collegePillsRow: {
     flexDirection: "row",
@@ -657,33 +927,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 10,
-    backgroundColor: colors.slate[800],
     borderWidth: 1,
-    borderColor: colors.cardBorder,
-  },
-  collegePillActive: {
-    backgroundColor: colors.brand[600],
-    borderColor: colors.brand[400],
   },
   collegePillText: {
     fontSize: 12,
     fontWeight: "700",
-    color: colors.slate[300],
-  },
-  collegePillTextActive: {
-    color: "#FFFFFF",
-  },
-  saveButton: {
-    backgroundColor: colors.brand[400],
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: "center",
-    marginTop: 10,
-    marginBottom: 20,
-  },
-  saveButtonText: {
-    color: "#0B132B",
-    fontSize: 14,
-    fontWeight: "800",
   },
 });

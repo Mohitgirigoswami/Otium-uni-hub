@@ -30,6 +30,22 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
   const [jwtToken, setJwtToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // 0. Instant restore from cached profile for 0ms initial render
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const cached = sessionStorage.getItem("otium_cached_web_user");
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (parsed && parsed.id) {
+            setUser(parsed);
+            setLoading(false);
+          }
+        }
+      } catch {}
+    }
+  }, []);
+
   const loadUser = useCallback(async (userId?: string) => {
     try {
       setLoading(true);
@@ -49,6 +65,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
               const meData = await meRes.json();
               if (meData.success && meData.user) {
                 setUser(meData.user);
+                sessionStorage.setItem("otium_cached_web_user", JSON.stringify(meData.user));
                 setLoading(false);
                 return;
               }
@@ -65,6 +82,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
         const res = await getUserById(targetId);
         if (res.success && res.data) {
           setUser(res.data);
+          sessionStorage.setItem("otium_cached_web_user", JSON.stringify(res.data));
           setLoading(false);
           return;
         }
@@ -106,6 +124,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
   const handleSignOut = async () => {
     if (typeof window !== "undefined") {
       localStorage.removeItem("otium_jwt_token");
+      sessionStorage.removeItem("otium_cached_web_user");
     }
     setJwtToken(null);
     setUser(null);

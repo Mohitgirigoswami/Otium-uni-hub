@@ -1,0 +1,428 @@
+# Otium Uni Hub — Frontend UI/UX Architecture & Design System Guide
+
+> **Target Audience:** AI Engineering Agents & Human Developers  
+> **Status:** Living Master Specification  
+> **Rule for Agents:** You **MUST** read this document before touching any frontend code on Web or Mobile. After making **ANY** frontend UI/UX change, you **MUST** update this document to keep it synchronized with the codebase.
+
+---
+
+## Table of Contents
+1. [Agent Operational Directives & Rules of Engagement](#1-agent-operational-directives--rules-of-engagement)
+2. [High-Level Frontend Architectural Flow](#2-high-level-frontend-architectural-flow)
+   - [A. Web Platform Flow (Next.js 14 App Router)](#a-web-platform-flow-nextjs-14-app-router)
+   - [B. Mobile Platform Flow (React Native / Expo 54)](#b-mobile-platform-flow-react-native--expo-54)
+3. [Universal Theme System & Multi-Theme Engine](#3-universal-theme-system--multi-theme-engine)
+   - [The 4 Core Themes](#the-4-core-themes)
+   - [Step-by-Step Guide: How to Add a New Theme](#step-by-step-guide-how-to-add-a-new-theme)
+4. [Component Library & Parity Map (Web vs Mobile)](#4-component-library--parity-map-web-vs-mobile)
+5. [Core Screen Layouts, UI Hierarchy & UX Workflows](#5-core-screen-layouts-ui-hierarchy--ux-workflows)
+   - [1. Dashboard / Campus Hub](#1-dashboard--campus-hub)
+   - [2. Express Printing (Formerly Hostel Print)](#2-express-printing-formerly-hostel-print)
+   - [3. 75% Attendance Guardrail & Offline Sync](#3-75-attendance-guardrail--offline-sync)
+   - [4. Whisper Wall (Formerly Incognito)](#4-whisper-wall-formerly-incognito)
+   - [5. CGPA & SGPA Forecaster](#5-cgpa--sgpa-forecaster)
+   - [6. Profile & Live Theme Switcher](#6-profile--live-theme-switcher)
+   - [7. Phase 1 Messaging & Express Print In-App Updates](#7-phase-1-messaging--express-print-in-app-updates)
+6. [Motion Design, Animations & Micro-Interactions](#6-motion-design-animations--micro-interactions)
+7. [Agent Maintenance Checklist & Updating Rules](#7-agent-maintenance-checklist--updating-rules)
+
+---
+
+## 1. Agent Operational Directives & Rules of Engagement
+
+### ⚠️ MANDATORY RULES FOR ALL AI AGENTS:
+
+1. **DOCUMENT SYNCHRONIZATION OBLIGATION**:
+   Whenever you alter existing UI components, add new screens, introduce new themes, change navigation routes, or adjust animation parameters, you **must immediately update this file (`FRONTEND_UI_UX_ARCHITECTURE.md`)** to reflect your changes. Leaving this document out of date is unacceptable.
+
+2. **WEB & MOBILE PARITY**:
+   Otium Uni Hub exists simultaneously as a Next.js 14 web app and a React Native Expo mobile app. Whenever you build or fix a feature for one platform, evaluate if the counterpart platform requires the same upgrade (e.g., anti-double-click cooldowns, campus selection, theme responsiveness, read-more expansion).
+
+3. **STRICT THEME DISCIPLINE — NO HARDCODED COLOR VALUES**:
+   - **On Web**: Never use hardcoded colors like `text-white`, `bg-black`, `bg-gray-800`, or arbitrary hex codes in components. Always utilize semantic Tailwind/CSS variables:
+     - `bg-background` (Page background)
+     - `text-foreground` (Primary high-contrast text)
+     - `text-muted-foreground` (Secondary label text)
+     - `bg-card` and `border-border` (Card containers)
+     - `bg-primary` and `text-primary-foreground` (Brand callouts)
+     - `bg-secondary` (Subtle container backdrops)
+     - `bg-destructive` (Danger states)
+   - **On Mobile**: Never hardcode `#ffffff`, `#000000`, or raw hexes into styles. Always consume theme tokens via `useTheme()`:
+     ```tsx
+     const { colors, isDark } = useTheme();
+     // Use: colors.background, colors.surface, colors.text, colors.textMuted, colors.primary, colors.border
+     ```
+
+4. **LEAN BRAND NOMENCLATURE**:
+   Legacy names have been retired. Do not re-introduce them in UI copy:
+   - ❌ `Hostel Printing` / `Hostel Print` ➔ ✅ **`Express Printing`** or **`Express Print Station`**
+   - ❌ `Incognito Wall` / `Incognito Post` ➔ ✅ **`Whisper Wall`** / **`Anonymous Whisper`**
+   - ❌ `Incognito Handle` ➔ ✅ **`Whisper Wall Alias`** or **`Anonymous Alias`**
+
+5. **PERFORMANCE & LAYOUT STABILITY**:
+   - Avoid heavy blocking loading screens that unmount route layouts. Use top telemetry pulse bars (`h-0.5 animate-pulse`) and compact orbital indicators.
+   - Cache user profile data in `sessionStorage` (web) and `AsyncStorage` / `SecureStore` (mobile) to achieve instantaneous 0ms client-side hydration.
+   - Keep query bounds (`take: 40`) on server actions to stop unbounded full-table scans.
+
+---
+
+## 2. High-Level Frontend Architectural Flow
+
+### A. Web Platform Flow (Next.js 14 App Router)
+
+```mermaid
+graph TD
+    A[Browser Request / Navigation] --> B[src/app/layout.tsx]
+    B --> C[ThemeScript - Prevent Theme Flash]
+    B --> D[SessionProvider - NextAuth]
+    B --> E[UserProvider - Auth State & User Cache]
+    E --> F[OnboardingModal - First Login Campus Intercept]
+    B --> G[CommandPalette - Ctrl+K / Cmd+K Global Deck]
+    B --> H[Navbar / MobileNav - Adaptive Dock Layout]
+    B --> I[ClientServiceGuard - Maintenance Status Check]
+    I --> J[Page Component - e.g. /print-station, /attendance]
+    J --> K[Server Actions - Database Operations]
+```
+
+1. **Root Layout (`src/app/layout.tsx`)**:
+   - Executes `ThemeScript` inline in the document head to read `otium-theme` from `localStorage` before paint, preventing white flash on dark modes.
+   - Wraps the application tree in `SessionProvider` (NextAuth), `UserProvider` (global user context), and `Toaster` (Sonner toast notifications).
+   - Mounts the global `<CommandPalette />` for `Ctrl+K` navigation and `<OnboardingModal />`.
+
+2. **Client State & Hydration (`src/components/providers/UserContext.tsx`)**:
+   - Reads cached user state from `sessionStorage` (`otium_cached_web_user`) immediately on mount to render profile badges in 0ms.
+   - Asynchronously validates the session against `/api/auth/me` in the background.
+   - Provides `user`, `loading`, `refreshUser()`, and `handleSignOut()`.
+
+3. **Campus Onboarding Intercept (`src/components/OnboardingModal.tsx`)**:
+   - Automatically intercepts authenticated students if `user && !user.collegeId`.
+   - Prompts for **University Campus** (required), with optional fields for **Phone Number**, **Department**, and **Academic Year**.
+   - Ensures that multi-campus data isolation (marketplace listings, campus whisper feeds, delivery drops) is properly scoped from session 1.
+
+4. **Service Maintenance Guard (`src/components/ClientServiceGuard.tsx`)**:
+   - Guards all student modules (`PRINT_STATION`, `ATTENDANCE`, `INCOGNITO_WALL`, `GIG_HUB`, `MARKETPLACE`, `CAB_SPLIT`).
+   - If an admin toggles a campus service off, the screen renders an amber hazard radar beacon with custom admin notice and an interactive "Ping Service Status" Framer Motion button that checks service recovery in real-time.
+
+---
+
+### B. Mobile Platform Flow (React Native / Expo 54)
+
+```mermaid
+graph TD
+    A[App Launch] --> B[mobile/App.tsx]
+    B --> C[ThemeProvider - @otium_theme Cache]
+    C --> D[UserProvider - Token in SecureStore, Cache in AsyncStorage]
+    D --> E{Cached Session?}
+    E -->|Yes| F[Hydrate Profile & Show TabNavigator]
+    E -->|No| G[Auth Flow / Login Screen]
+    F --> H[TabNavigator - Hub, Attendance, Print, Whispers, CGPA, Profile]
+    H --> I[Screen Components with Offline Sync Support]
+```
+
+1. **App Bootstrap (`mobile/App.tsx`)**:
+   - Restores the active theme from `@otium_theme` (`AsyncStorage`) and applies corresponding `StatusBar` style (`light-content` vs `dark-content`).
+   - Restores session credentials from `SecureStore` (`@otium_auth_token`) and profile data from `AsyncStorage` (`@otium_cached_user`).
+   - If offline or network times out, the app boots cleanly into cached mode without kicking the student out to login.
+
+2. **Navigation Hierarchy (`mobile/src/navigation/TabNavigator.tsx`)**:
+   - Renders a floating bottom tab bar with safe-area insets:
+     - 🏠 **Hub** (`DashboardScreen.tsx`): Overview, attendance safety gauge, quick launcher.
+     - 📅 **Attendance** (`AttendanceScreen.tsx`): Course cards, liquid slider, bunk/recovery math.
+     - 🖨️ **Print** (`PrintStationScreen.tsx`): Document upload, page calculation, cooldown protection.
+     - 👁️ **Whispers** (`WhisperWallScreen.tsx`): Campus wall, inline read-more, full-screen post modal.
+     - 🎓 **CGPA** (`CgpaPredictorScreen.tsx`): 270° SVG radial dial gauge, target semester forecast.
+     - 👤 **Profile** (`ProfileScreen.tsx`): Live theme picker, contact details, anonymous alias.
+
+3. **Standalone APK & EAS Build Requirement (Google OAuth Strict Security Policy)**:
+   > [!IMPORTANT]
+   > **EXPO GO CANNOT BE USED FOR AUTHENTICATION**:
+   > Standard Expo Go **cannot** execute Google Sign-In due to Google Cloud OAuth's strict security architecture:
+   > - Google OAuth requires exact registration of the Android package name (`com.otium.unihub`) and the release/debug SHA-1 signing certificate fingerprint.
+   > - The generic Expo Go client runs under `host.exp.exponent` with Expo's shared debug key, which Google OAuth rejects with `DEVELOPER_ERROR` (Status Code 10).
+   > - Therefore, mobile testing and production use **MUST** be compiled into a standalone APK via EAS Build (`npx eas-cli build --platform android --profile preview`) or a local development client (`npx expo run:android`), which embeds `@react-native-google-signin/google-signin` and native Gradle plugins.
+
+---
+
+## 3. Universal Theme System & Multi-Theme Engine
+
+Otium Uni Hub features **4 synchronized platform themes** across Web and Mobile.
+
+### The 4 Core Themes
+
+| Theme ID | Name | Core Aesthetic | Primary Accent | Background Base |
+| :--- | :--- | :--- | :--- | :--- |
+| `cyber-neon` | **Obsidian Cyber** | Dark futuristic cyber grid with electric cyan/teal accents | Electric Cyan (`#14b8a6` / `#2dd4bf`) | Deep Obsidian (`#050811`) |
+| `emerald-campus` | **Emerald Campus** | Collegiate organic sage, pine & varsity green tones | Campus Emerald (`#059669` / `#10b981`) | Deep Evergreen Slate (`#06130d`) |
+| `minimal-luxe` | **Minimal Luxe** | High-end paper & architectural black ink with taupe highlights | Warm Luxury Taupe (`#d97706` / `#b45309`) | Rich Charcoal Canvas (`#09090b`) |
+| `minimal-dark` | **Minimal Dark** | Stark monochrome OLED black & pure white high contrast | Crisp Polar White (`#ffffff` / `#e4e4e7`) | OLED Pitch Black (`#000000`) |
+
+---
+
+### Step-by-Step Guide: How to Add a New Theme
+
+Follow this exact 5-step protocol whenever adding a 5th or custom campus theme:
+
+#### Step 1: Define CSS Variables on Web (`src/app/globals.css`)
+Open `src/app/globals.css` and add your new theme block under the existing theme selectors:
+
+```css
+[data-theme="nordic-frost"] {
+  --background: 215 28% 9%;
+  --foreground: 210 40% 98%;
+  --card: 217 24% 12%;
+  --card-foreground: 210 40% 98%;
+  --popover: 217 24% 12%;
+  --popover-foreground: 210 40% 98%;
+  --primary: 199 89% 48%;          /* Frost Blue */
+  --primary-foreground: 0 0% 100%;
+  --secondary: 217 20% 18%;
+  --secondary-foreground: 210 40% 98%;
+  --muted: 217 19% 22%;
+  --muted-foreground: 215 20% 65%;
+  --accent: 199 89% 48%;
+  --accent-foreground: 0 0% 100%;
+  --destructive: 0 62% 30%;
+  --destructive-foreground: 210 40% 98%;
+  --border: 217 20% 20%;
+  --input: 217 20% 20%;
+  --ring: 199 89% 48%;
+  --metallic-shine: linear-gradient(135deg, rgba(56, 189, 248, 0.25) 0%, rgba(255, 255, 255, 0.05) 50%, rgba(56, 189, 248, 0.25) 100%);
+}
+```
+
+#### Step 2: Register the Theme in Web Command Palette (`src/components/CommandPalette.tsx`)
+Locate `THEME_ACTIONS` in `src/components/CommandPalette.tsx` and append:
+
+```typescript
+{
+  id: "theme-nordic-frost",
+  category: "Themes",
+  title: "Switch to Nordic Frost",
+  subtitle: "Glacial blue and arctic deep contrast",
+  icon: Palette,
+  keywords: ["theme", "nordic", "frost", "blue", "ice"],
+  action: () => applyTheme("nordic-frost"),
+}
+```
+
+#### Step 3: Define the Mobile Theme Object (`mobile/src/theme/themes.ts`)
+Open `mobile/src/theme/themes.ts` and define the typed theme configuration:
+
+```typescript
+export const nordicFrostTheme: ThemeDefinition = {
+  id: "nordic-frost",
+  name: "Nordic Frost",
+  tagline: "Glacial blue and arctic deep contrast",
+  isDark: true,
+  colors: {
+    background: "#0c121e",
+    surface: "#131b2e",
+    cardSecondary: "#1a253d",
+    primary: "#38bdf8",
+    primaryDark: "#0284c7",
+    accent: "#7dd3fc",
+    text: "#f0f9ff",
+    textMuted: "#94a3b8",
+    border: "rgba(56, 189, 248, 0.2)",
+    cardBorder: "rgba(56, 189, 248, 0.15)",
+    danger: "#f87171",
+    warning: "#fbbf24",
+    success: "#34d399",
+  },
+};
+```
+
+#### Step 4: Register in Mobile Theme Array (`mobile/src/theme/themes.ts`)
+Add the new theme to `AVAILABLE_THEMES` and `THEMES_MAP`:
+
+```typescript
+export const AVAILABLE_THEMES: ThemeDefinition[] = [
+  obsidianCyberTheme,
+  emeraldCampusTheme,
+  minimalLuxeTheme,
+  minimalDarkTheme,
+  nordicFrostTheme, // <-- Append here
+];
+
+export const THEMES_MAP: Record<string, ThemeDefinition> = {
+  "cyber-neon": obsidianCyberTheme,
+  "emerald-campus": emeraldCampusTheme,
+  "minimal-luxe": minimalLuxeTheme,
+  "minimal-dark": minimalDarkTheme,
+  "nordic-frost": nordicFrostTheme, // <-- Append here
+};
+```
+
+#### Step 5: Verify Both Platforms
+1. Run `npx next build` in workspace root to ensure web CSS compiles.
+2. Run `npx tsc --noEmit` in `mobile/` to verify mobile theme types.
+3. Open `ProfileScreen.tsx` on mobile to confirm the new card appears in the grid.
+
+---
+
+## 4. Component Library & Parity Map (Web vs Mobile)
+
+Otium maintains a strict 1:1 component design equivalence between shadcn/ui on Web and our custom React Native primitives:
+
+| Element | Web Component (`src/components/ui/`) | Mobile Component (`mobile/src/components/ui/`) | Styling Notes |
+| :--- | :--- | :--- | :--- |
+| **Button** | `button.tsx` | `Button.tsx` | Variants: `default`, `secondary`, `outline`, `destructive`, `ghost`. Supports `isLoading` with orbital spinner, and `leftIcon` / `rightIcon` slots. |
+| **Card** | `card.tsx` | `Card.tsx` | Variants: `default`, `outline`, `secondary`. Uses border tokens and surface elevation. |
+| **Badge** | `badge.tsx` | `Badge.tsx` | Variants: `default`, `outline`, `primary`, `success`, `warning`, `destructive`. |
+| **Input** | `input.tsx` | `Input.tsx` | Supports focus rings, error messages, and icon accessories. |
+| **Spinner** | `spinner.tsx` (Framer Motion) | `Spinner.tsx` (Animated SVG) | Variants: `orbit` (dual counter-rotating rings + satellite particle), `radar` (expanding sonar rings), `classic` (gradient arc). |
+| **Liquid Slider** | `liquid-slider.tsx` | `LiquidSlider.tsx` | Physical thumb stretching (`scaleX: 1.25, scaleY: 0.88`), magnetic floating percentage tooltip, quick-snap preset chips (65%, 75%, 80%, 85%). |
+| **Radial CGPA Gauge** | `RadialCgpaGauge.tsx` | `RadialCgpaGauge.tsx` | 270° SVG arc meter (0.00 - 10.00 scale), animated spring sweep, centered GPA readout, tier badge. |
+| **Print Order Tracker** | `PrintOrderTracker.tsx` | `PrintOrderTracker.tsx` | Horizontal laser timeline connecting `Submitted` → `Printing` → `Dispatched` → `Ready`. |
+| **Service Guard** | `ClientServiceGuard.tsx` | `ClientServiceGuard.tsx` | Concentric amber hazard beacon, admin notice, and live "Ping Service" status check. |
+
+---
+
+## 5. Core Screen Layouts, UI Hierarchy & UX Workflows
+
+### 1. Dashboard / Campus Hub
+* **Web**: `src/app/dashboard/page.tsx`
+* **Mobile**: `mobile/src/screens/DashboardScreen.tsx`
+* **UX Principles**:
+  - Hero greeting with university campus badge and fast switcher.
+  - 75% attendance circular health summary widget.
+  - Quick launcher deck linking directly to Express Printing, Gigs, Marketplace, and Whisper Wall.
+  - Telemetry notifications panel showing recent campus orders and deliveries.
+
+---
+
+### 2. Express Printing (Formerly Hostel Print)
+* **Web**: `src/app/print-station/page.tsx`
+* **Mobile**: `mobile/src/screens/PrintStationScreen.tsx`
+* **UX Principles & Anti-Double-Order Cooldown**:
+  - **Document Selection**: PDF upload with direct-to-cloud resumable streaming and client-side page detection (`pdf-lib`).
+  - **Configuration**: Duplex selection (B&W Double, B&W Single, Color Single, Color Double). Single-page discount bypass prevention is enforced on the server.
+  - **Campus Drop Location**: Dropdown or open text input with hostel block / library desk presets.
+  - **Contact Phone Sync**: Inline telephone input with SMS delivery alert confirmation.
+  - **Anti-Spam 4-Second Submission Cooldown**:
+    ```tsx
+    // When the order submits successfully:
+    setCooldownSeconds(4);
+    const timer = setInterval(() => {
+      setCooldownSeconds((prev) => {
+        if (prev <= 1) { clearInterval(timer); return 0; }
+        return prev - 1;
+      });
+    }, 1000);
+    // Button is disabled with label: "✓ Order Placed! Please wait (4s)..."
+    ```
+  - **Order Tracking & Observable Issue State**:
+    - Renders `PrintOrderTracker` displaying the live status pipeline.
+    - When `status === "ISSUE_REPORTED"`, an observable amber alert node and hazard banner are rendered directly inside the delivery timeline stepper, detailing the reported problem and status ("Under Review").
+    - **Report Problem Action**: Both Web and Mobile feature a "Report Problem" modal dialog allowing students to report issues (Print quality faded, wrong/missing pages, drop location delivery issue, payment verification) with detailed notes.
+  - **One-Way In-App System Dispatch Bot ("Express Print Station")**:
+    - A dedicated system bot account (`Express Print Station` / `printing@otiumhub.in`) automatically sends transactional in-app SMS-style messages into the student's messaging inbox.
+    - Updates are dispatched immediately on:
+      1. Order placement & UPI receipt confirmation
+      2. Step status changes (`PRINTING`, `OUT_FOR_DELIVERY`, `READY`, `DELIVERED`, `REJECTED`, `ISSUE_REPORTED`)
+      3. Problem report submission acknowledgments.
+
+---
+
+### 3. 75% Attendance Guardrail & Offline Sync
+* **Web**: `src/app/attendance/page.tsx`
+* **Mobile**: `mobile/src/screens/AttendanceScreen.tsx`
+* **UX Principles & Uncluttered Card Layout**:
+  - **Uncluttered Cards**: Session weighting buttons (`1h`, `2h`, `3h`, `4h`) are **hidden from the main cards** and located inside the Add/Edit Subject modal sheet.
+  - **Action Controls**: Course cards feature simple `+ Attended` and `+ Bunked` quick-tap buttons.
+  - **Bunk / Recovery Math**: Automatically computes and badges `"Safe to bunk N classes"` (green) or `"Must attend N consecutive classes to reach target"` (rose).
+  - **Offline Sync Queue (Mobile)**:
+    - If offline, course modifications save to `AsyncStorage` (`@otium_attendance_subjects`).
+    - Failed sync mutations append to `@otium_attendance_pending_sync`.
+    - Automatically flushes queued mutations when connectivity restores. Status badges display `⚡ Live Synced` vs `☁️ Offline Mode`.
+
+---
+
+### 4. Whisper Wall (Formerly Incognito)
+* **Web**: `src/app/incognito/page.tsx` & `src/app/incognito/[postId]/page.tsx`
+* **Mobile**: `mobile/src/screens/WhisperWallScreen.tsx`
+* **UX Principles, Inline Read-More & Full-Screen View**:
+  - **Privacy Guarantee**: True pseudonymity using robot avatar seeds (`@CyberScholar`, `@ShadowRunner`). Student roll numbers are never exposed.
+  - **Inline "Read more" Expansion**: Posts exceeding 180 chars (mobile) or 240 chars (web) are clamped with an inline toggle:
+    ```tsx
+    const isExpanded = expandedPostIds.has(post.id);
+    const isLong = post.content.length > 180;
+    // Toggles between "Read more ▾" and "Show less ▴"
+    ```
+  - **Dedicated Full-Screen Post Modal**:
+    - Tapping `"Full View"` or the post maximize icon triggers `activeModalPost`.
+    - Renders complete un-clamped text, full-resolution attached photos, synchronized upvote/downvote counter, comment counts, and direct thread link.
+    - **Whisper DM Action**: Features a `"Whisper DM"` trigger button in the modal footer allowing students to start a 100% anonymous direct message thread with the author without ever knowing or exposing each other's identity.
+  - **Campus vs Global Scope**: Toggle between student's local campus feed and the universal university network.
+
+---
+
+### 5. CGPA & SGPA Forecaster
+* **Web**: `src/app/cgpa/page.tsx`
+* **Mobile**: `mobile/src/screens/CgpaPredictorScreen.tsx`
+* **UX Principles**:
+  - **Radial Dial**: 270° SVG arc meter adapting to theme colors.
+  - **Classification Tiers**:
+    - `≥ 8.50`: First Class with Distinction (Emerald)
+    - `≥ 7.50`: First Class Honours (Cyan/Primary)
+    - `≥ 6.50`: First Class (Amber)
+    - `< 6.50`: Pass Standing (Neutral)
+  - **Simulator**: Interactive credit slider calculating needed SGPA in future semesters to reach graduation targets.
+
+---
+
+### 6. Profile & Live Theme Switcher
+* **Web**: `src/app/profile/page.tsx`
+* **Mobile**: `mobile/src/screens/ProfileScreen.tsx`
+* **UX Principles**:
+  - **Interactive Theme Grid**: Cards showing theme swatches, title, tagline, and active selection indicator. Tapping switches the active theme immediately and persists to storage.
+  - **Anonymous Pseudonym Management**: Edit Whisper Wall handle and re-seed avatar identity.
+  - **Academic & Contact Meta**: Manage campus affiliation, department, and SMS delivery phone.
+
+---
+
+### 7. Phase 1 Messaging & Express Print In-App Updates
+* **Web**: `src/app/messages/page.tsx`
+* **Mobile**: `mobile/src/screens/MessagesScreen.tsx`
+* **UX Principles & Strict Phase 1 Isolation**:
+  - **Strict Scope**: Confined exclusively to Phase 1 social and transactional features (Peer chats, Express Print Station order updates, Whisper Wall anonymous DMs). Pure calculator tools like **Attendance** and **CGPA** have zero forced messaging.
+  - **Dual-Inbox Architecture**:
+    - **Direct & Print Updates Tab**: Real-name peer chatting, campus networking, and automated one-way order dispatch messages from `Express Print Station`.
+    - **Whisper DMs Tab**: 100% secret anonymous conversations initiated from Whisper Wall posts and comments, powered by cryptographic blind IDs (`sha256(userId + salt)`). Real names, emails, and database user IDs are completely scrubbed.
+  - **REST API Parity**: Mobile and Web connect to universal REST endpoints (`/api/chat` and `/api/chat/[id]/messages`) with Bearer token authentication and real-time polling.
+
+---
+
+## 6. Motion Design, Animations & Micro-Interactions
+
+Otium uses physics-based spring transitions rather than linear CSS fades:
+
+1. **Liquid Slider Thumb Physics**:
+   - As the slider is dragged horizontally, the thumb physically stretches along the velocity axis (`transform: scaleX(1.25) scaleY(0.88)`). Upon release, it snaps back organically.
+2. **Radial CGPA Arc Sweep**:
+   - Animated SVG stroke calculation using `strokeDashoffset`:
+     $$\text{offset} = \text{circumference} \times \left(1 - \frac{\text{GPA}}{10.0} \times \frac{270^\circ}{360^\circ}\right)$$
+3. **Orbital Dual-Ring Spinner**:
+   - Outer ring rotates clockwise (`360deg` over 1.6s). Inner ring counter-rotates (`-360deg` over 2.4s). A small satellite dot orbits along the periphery.
+4. **Amber Hazard Radar Beacon**:
+   - Concentric expanding sonar wave keyframes (`@keyframes sonar-pulse`) communicating maintenance status without alarming users.
+
+---
+
+## 7. Agent Maintenance Checklist & Updating Rules
+
+Whenever you make frontend changes, work through this checklist before concluding your turn:
+
+- [ ] **No Hardcoded Hex Colors**: Are all styles referencing CSS semantic tokens (`bg-background`, `text-foreground`, etc.) or Mobile `colors`?
+- [ ] **Naming Consistency**: Are there zero legacy references to "hostel print" or "incognito"?
+- [ ] **Web Build Check**: Did you run `npx next build` or `npx tsc --noEmit` on web with 0 errors?
+- [ ] **Mobile Type Check**: Did you run `npx tsc --noEmit` inside `mobile/` with 0 errors?
+- [ ] **Mobile Bundle Test**: Did you verify `npx expo export --platform android` bundles cleanly?
+- [ ] **DOCUMENT SYNCHRONIZATION**: Did you update this file (`FRONTEND_UI_UX_ARCHITECTURE.md`) with:
+  - Any new screen paths or routes added?
+  - Any new components or component variants introduced?
+  - Any theme token adjustments?
+  - Any workflow or button state modifications?
+
+---
+*Document maintained by Antigravity AI Engineering Suite.*

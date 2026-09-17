@@ -71,7 +71,7 @@ function LoginContent() {
               Single Sign-On for Campus Daily Logistics.
             </h1>
             <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
-              Authenticate using your institutional Google account to access your hostel print queue, record attendance metrics, and view university marketplace listings.
+              Authenticate using your institutional Google account to access your express print queue, record attendance metrics, and view university marketplace listings.
             </p>
           </div>
 
@@ -79,10 +79,10 @@ function LoginContent() {
             <div className="p-3.5 rounded-lg border border-border bg-card space-y-1">
               <div className="flex items-center gap-1.5 text-xs font-bold text-foreground">
                 <Printer className="w-4 h-4 text-primary" />
-                <span>Print Dispatch</span>
+                <span>Express Printing</span>
               </div>
               <p className="text-[11px] text-muted-foreground leading-normal">
-                Scheduled hostel delivery slots
+                Scheduled express delivery slots
               </p>
             </div>
 

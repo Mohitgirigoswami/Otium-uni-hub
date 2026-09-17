@@ -66,3 +66,16 @@
   * Clean, seamless drag-and-drop file upload with progress feedback and zero external OAuth popups.
   * Server-side auto-calculation of PDF page count via `pdf-lib`.
   * Embedded PDF viewer modal in Admin Print Queue with 1-click Ctrl+P printing for operators.
+
+---
+
+## ADR-007: Standalone EAS Build Requirement for Mobile (Google OAuth Strict Security Policy)
+* **Status:** Accepted
+* **Context:** Google Sign-In via `@react-native-google-signin/google-signin` fails inside the generic Expo Go mobile app because Google Cloud OAuth strictly enforces client ID verification against the registered native package name (`com.otium.unihub`) and the SHA-1 signing certificate fingerprint. Expo Go runs under its own package name (`host.exp.exponent`), resulting in `DEVELOPER_ERROR` (code 10).
+* **Decision:**
+  * Mandate standalone APK builds via EAS Build (`npx eas-cli build --platform android --profile preview`) and custom development client builds (`npx expo run:android`) for all mobile testing and distribution.
+  * Embed native credentials (`EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID`, `EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID`, `com.otium.unihub`, and `expo-build-properties` with `usesCleartextTraffic: true`) directly in the build pipeline.
+* **Consequences:**
+  * Testing Google Sign-In on mobile requires installing the compiled standalone APK rather than launching via Expo Go.
+  * Preserves full native authentication security and matches production behavior 1:1.
+

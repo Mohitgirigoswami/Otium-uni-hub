@@ -8,6 +8,8 @@ export interface PrintRatesData {
   colorDoublePaise: number; // e.g. 800 for ₹8.00
   singleSidedRupees: number; // 2.50
   doubleSidedRupees: number; // 2.00
+  colorSingleRupees?: number; // 10.00
+  colorDoubleRupees?: number; // 8.00
 }
 
 /**

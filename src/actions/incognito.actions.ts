@@ -93,12 +93,14 @@ export async function getIncognitoPosts(params?: {
   scope?: "CAMPUS" | "GLOBAL";
   collegeId?: string | null;
   userId?: string;
+  limit?: number;
 }): Promise<ActionResponse<any[]>> {
   try {
     const where: any = {};
     const feedType = typeof params === "string" ? params : params?.feedType;
     const scope = typeof params === "object" ? params?.scope : "CAMPUS";
     const collegeId = typeof params === "object" ? params?.collegeId : null;
+    const limit = typeof params === "object" && params?.limit ? params.limit : 40;
 
     if (feedType && feedType !== "ALL") {
       where.feedType = feedType;
@@ -111,6 +113,7 @@ export async function getIncognitoPosts(params?: {
 
     const posts = await prisma.incognitoPost.findMany({
       where,
+      take: limit,
       include: {
         profile: {
           select: {

@@ -374,7 +374,7 @@ export default function AdminGigsEscrowPage() {
                       <span className="font-bold text-primary">{writerDisplay}</span>
                       {gig.isAnonymousWriter && (
                         <span className="text-[9px] px-1.5 py-0.5 rounded bg-primary/10 text-primary font-bold ml-1">
-                          Incognito
+                          Anonymous
                         </span>
                       )}
                     </div>

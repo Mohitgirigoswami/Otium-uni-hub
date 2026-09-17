@@ -10,9 +10,10 @@ import {
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { Ionicons, Feather, MaterialCommunityIcons } from "@expo/vector-icons";
-import { colors } from "../theme/colors";
-import { GlassCard } from "../components/GlassCard";
-import { Badge } from "../components/Badge";
+import { useTheme } from "../context/ThemeContext";
+import { Card } from "../components/ui/Card";
+import { Badge } from "../components/ui/Badge";
+import { Button } from "../components/ui/Button";
 import { useUser } from "../context/UserContext";
 import { apiClient } from "../services/apiClient";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -20,6 +21,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 export function DashboardScreen() {
   const navigation = useNavigation<any>();
   const { user, refreshUser } = useUser();
+  const { colors, isDark } = useTheme();
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Quick live metrics
@@ -48,7 +50,7 @@ export function DashboardScreen() {
       }
     } catch {}
 
-    // 2. Fetch fresh attendance from backend (with offline reconciliation)
+    // 2. Fetch fresh attendance from backend
     try {
       let syncPayload: any[] = [];
       const cached = await AsyncStorage.getItem("@otium_attendance_subjects");
@@ -70,22 +72,12 @@ export function DashboardScreen() {
         const pct = tot > 0 ? (att / tot) * 100 : 100;
         const crit = subjects.filter((s: any) => (s.totalClasses > 0 ? (s.attendedClasses / s.totalClasses) * 100 < 75 : false)).length;
         setAttendanceData({ percentage: pct, attended: att, total: tot, criticalCount: crit });
-
-        const mapped = subjects.map((s: any) => ({
-          id: s.id,
-          name: s.name,
-          code: s.code || "SUB",
-          attended: s.attendedClasses ?? 0,
-          total: s.totalClasses ?? 0,
-          periodWeight: s.periodWeight ?? 1,
-        }));
-        await AsyncStorage.setItem("@otium_attendance_subjects", JSON.stringify(mapped));
       }
     } catch {}
 
-    // 3. Fetch fresh whisper preview
+    // 3. Fetch latest whisper
     try {
-      const whisperRes = await apiClient.get("/incognito?scope=CAMPUS");
+      const whisperRes = await apiClient.get("/incognito?limit=1");
       if (whisperRes.success && Array.isArray(whisperRes.data) && whisperRes.data.length > 0) {
         setRecentWhisper(whisperRes.data[0]);
       }
@@ -108,54 +100,86 @@ export function DashboardScreen() {
 
   return (
     <ScrollView
-      style={styles.container}
+      style={[styles.container, { backgroundColor: colors.background }]}
       contentContainerStyle={styles.contentContainer}
       refreshControl={
-        <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} tintColor={colors.brand[400]} />
+        <RefreshControl
+          refreshing={isRefreshing}
+          onRefresh={onRefresh}
+          tintColor={colors.primary}
+        />
       }
     >
-      {/* Welcome Hero Card */}
-      <View style={styles.heroCard}>
+      {/* 1. Welcome Hero Greeting Card */}
+      <Card style={styles.heroCard}>
         <View style={styles.heroTopRow}>
           <View style={styles.heroBadge}>
-            <Image source={require("../../assets/logo.png")} style={styles.heroLogo} resizeMode="contain" />
-            <Text style={styles.heroBadgeText}>Otium University Hub</Text>
+            <Image
+              source={require("../../assets/logo.png")}
+              style={styles.heroLogo}
+              resizeMode="contain"
+            />
+            <Text style={[styles.heroBadgeText, { color: colors.textSecondary }]}>
+              Otium Uni Hub
+            </Text>
           </View>
-          <Badge variant="brand" size="sm">
-            {campusName}
-          </Badge>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+            <Badge variant="primary" size="sm">
+              {campusName}
+            </Badge>
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={() => navigation.navigate("Messages")}
+              style={[
+                styles.heroMsgBtn,
+                { backgroundColor: colors.card, borderColor: colors.border },
+              ]}
+            >
+              <Feather name="message-square" size={15} color={colors.primary} />
+            </TouchableOpacity>
+          </View>
         </View>
 
-        <Text style={styles.heroGreeting}>Welcome back, {displayName}!</Text>
-        <Text style={styles.heroSubtitle}>
-          {user?.department ? `${user.department} • Year ${user.year || 1}` : "Campus Command Center"}
+        <Text style={[styles.heroGreeting, { color: colors.text }]}>
+          Welcome back, {displayName}!
         </Text>
-        <Text style={styles.heroDesc}>
+        <Text style={[styles.heroSubtitle, { color: colors.primary }]}>
+          {user?.department ? `${user.department} • Year ${user.year || 1}` : "Campus Operations"}
+        </Text>
+        <Text style={[styles.heroDesc, { color: colors.textMuted }]}>
           Your academic guardrails, print station orders, anonymous whisper wall, and grade calculators are synced live.
         </Text>
-      </View>
+      </Card>
 
-      {/* Quick Launch Command Bar (Fast Module Access) */}
+      {/* 2. Quick Launch Grid */}
       <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Campus Quick Launch</Text>
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>
+          Campus Portals
+        </Text>
       </View>
 
       <View style={styles.quickGrid}>
+        {/* Attendance Tile */}
         <TouchableOpacity
           activeOpacity={0.8}
           onPress={() => navigation.navigate("Attendance")}
-          style={[styles.quickTile, styles.tileAttendance]}
+          style={[
+            styles.quickTile,
+            { backgroundColor: colors.card, borderColor: colors.border },
+          ]}
         >
-          <View style={[styles.tileIconWrap, { backgroundColor: "rgba(16, 185, 129, 0.2)" }]}>
-            <Ionicons name="calendar" size={22} color={colors.emerald[400]} />
+          <View style={[styles.tileIconWrap, { backgroundColor: colors.success + "20" }]}>
+            <Ionicons name="calendar" size={20} color={colors.success} />
           </View>
-          <Text style={styles.tileTitle}>Attendance</Text>
-          <Text style={styles.tileDesc}>Bunk calculator & guardrails</Text>
+          <Text style={[styles.tileTitle, { color: colors.text }]}>Attendance</Text>
+          <Text style={[styles.tileDesc, { color: colors.textMuted }]}>
+            Bunk calculator & rules
+          </Text>
           <View style={styles.tileBadgeRow}>
             <Text
               style={[
                 styles.tileMetric,
-                { color: isSafeAttendance ? colors.emerald[400] : colors.rose[400] },
+                { color: isSafeAttendance ? colors.success : colors.destructive },
               ]}
             >
               {attendanceData.percentage.toFixed(1)}%
@@ -163,140 +187,129 @@ export function DashboardScreen() {
           </View>
         </TouchableOpacity>
 
+        {/* Print Station Tile */}
         <TouchableOpacity
           activeOpacity={0.8}
           onPress={() => navigation.navigate("Print")}
-          style={[styles.quickTile, styles.tilePrint]}
+          style={[
+            styles.quickTile,
+            { backgroundColor: colors.card, borderColor: colors.border },
+          ]}
         >
-          <View style={[styles.tileIconWrap, { backgroundColor: "rgba(20, 184, 166, 0.2)" }]}>
-            <Feather name="printer" size={22} color={colors.brand[400]} />
+          <View style={[styles.tileIconWrap, { backgroundColor: colors.primary + "20" }]}>
+            <Feather name="printer" size={20} color={colors.primary} />
           </View>
-          <Text style={styles.tileTitle}>Print Station</Text>
-          <Text style={styles.tileDesc}>Instant file upload & UPI</Text>
+          <Text style={[styles.tileTitle, { color: colors.text }]}>Print Station</Text>
+          <Text style={[styles.tileDesc, { color: colors.textMuted }]}>
+            Hostel drop-off orders
+          </Text>
           <View style={styles.tileBadgeRow}>
-            <Text style={[styles.tileMetric, { color: colors.brand[400] }]}>Ready</Text>
+            <Text style={[styles.tileMetric, { color: colors.primary }]}>Active</Text>
           </View>
         </TouchableOpacity>
 
+        {/* Whisper Wall Tile */}
         <TouchableOpacity
           activeOpacity={0.8}
           onPress={() => navigation.navigate("Whispers")}
-          style={[styles.quickTile, styles.tileWhispers]}
+          style={[
+            styles.quickTile,
+            { backgroundColor: colors.card, borderColor: colors.border },
+          ]}
         >
-          <View style={[styles.tileIconWrap, { backgroundColor: "rgba(139, 92, 246, 0.2)" }]}>
-            <Ionicons name="eye-off" size={22} color="#A78BFA" />
+          <View style={[styles.tileIconWrap, { backgroundColor: colors.accent + "30" }]}>
+            <Ionicons name="eye-off" size={20} color={colors.accent} />
           </View>
-          <Text style={styles.tileTitle}>Whisper Wall</Text>
-          <Text style={styles.tileDesc}>Anonymous campus memes</Text>
+          <Text style={[styles.tileTitle, { color: colors.text }]}>Whisper Wall</Text>
+          <Text style={[styles.tileDesc, { color: colors.textMuted }]}>
+            Anonymous student board
+          </Text>
           <View style={styles.tileBadgeRow}>
-            <Text style={[styles.tileMetric, { color: "#A78BFA" }]}>Live Feed</Text>
+            <Text style={[styles.tileMetric, { color: colors.textSecondary }]}>Live Feed</Text>
           </View>
         </TouchableOpacity>
 
+        {/* CGPA Tile */}
         <TouchableOpacity
           activeOpacity={0.8}
           onPress={() => navigation.navigate("CGPA")}
-          style={[styles.quickTile, styles.tileCgpa]}
+          style={[
+            styles.quickTile,
+            { backgroundColor: colors.card, borderColor: colors.border },
+          ]}
         >
-          <View style={[styles.tileIconWrap, { backgroundColor: "rgba(245, 158, 11, 0.2)" }]}>
-            <MaterialCommunityIcons name="calculator-variant" size={22} color="#FBBF24" />
+          <View style={[styles.tileIconWrap, { backgroundColor: colors.warning + "20" }]}>
+            <MaterialCommunityIcons name="calculator-variant" size={20} color={colors.warning} />
           </View>
-          <Text style={styles.tileTitle}>CGPA Predictor</Text>
-          <Text style={styles.tileDesc}>Semester transcript & SGPA</Text>
+          <Text style={[styles.tileTitle, { color: colors.text }]}>CGPA Forecaster</Text>
+          <Text style={[styles.tileDesc, { color: colors.textMuted }]}>
+            Semester transcript & SGPA
+          </Text>
           <View style={styles.tileBadgeRow}>
-            <Text style={[styles.tileMetric, { color: "#FBBF24" }]}>Forecaster</Text>
+            <Text style={[styles.tileMetric, { color: colors.warning }]}>Forecaster</Text>
+          </View>
+        </TouchableOpacity>
+
+        {/* Messages & DMs Tile */}
+        <TouchableOpacity
+          activeOpacity={0.8}
+          onPress={() => navigation.navigate("Messages")}
+          style={[
+            styles.quickTile,
+            { backgroundColor: colors.card, borderColor: colors.border },
+          ]}
+        >
+          <View style={[styles.tileIconWrap, { backgroundColor: colors.primary + "20" }]}>
+            <Feather name="message-circle" size={20} color={colors.primary} />
+          </View>
+          <Text style={[styles.tileTitle, { color: colors.text }]}>Messages & DMs</Text>
+          <Text style={[styles.tileDesc, { color: colors.textMuted }]}>
+            Direct chat & print updates
+          </Text>
+          <View style={styles.tileBadgeRow}>
+            <Text style={[styles.tileMetric, { color: colors.primary }]}>Dual Inbox</Text>
           </View>
         </TouchableOpacity>
       </View>
 
-      {/* Live Academic Guardrail Status Card */}
-      <GlassCard style={styles.statusCard}>
+      {/* 3. Live Academic Guardrail Status Card */}
+      <Card style={styles.statusCard}>
         <View style={styles.statusCardHeader}>
           <View style={styles.statusIconWrap}>
             <Ionicons
               name={isSafeAttendance ? "shield-checkmark" : "warning"}
-              size={20}
-              color={isSafeAttendance ? colors.emerald[400] : colors.rose[400]}
+              size={18}
+              color={isSafeAttendance ? colors.success : colors.destructive}
             />
           </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.statusTitle}>75% Minimum Attendance Status</Text>
-            <Text style={styles.statusSubtitle}>
-              {isSafeAttendance
-                ? "You are safely above the university exam eligibility requirement."
-                : "Warning: Critical courses below 75% threshold. Attend next lectures!"}
+          <View style={{ flex: 1, marginLeft: 10 }}>
+            <Text style={[styles.statusCardTitle, { color: colors.text }]}>
+              {isSafeAttendance ? "Attendance Status Safe" : "Attendance Under Target"}
+            </Text>
+            <Text style={[styles.statusCardSubtitle, { color: colors.textMuted }]}>
+              {attendanceData.criticalCount > 0
+                ? `${attendanceData.criticalCount} course(s) require recovery lectures`
+                : "All tracked courses meet minimum safety guidelines"}
             </Text>
           </View>
+          <Badge variant={isSafeAttendance ? "success" : "destructive"} size="sm">
+            {attendanceData.percentage.toFixed(0)}%
+          </Badge>
         </View>
 
-        <View style={styles.kpiRow}>
-          <View style={styles.kpiItem}>
-            <Text style={styles.kpiLabel}>Aggregate Rate</Text>
-            <Text
-              style={[
-                styles.kpiValue,
-                { color: isSafeAttendance ? colors.emerald[400] : colors.rose[400] },
-              ]}
-            >
-              {attendanceData.percentage.toFixed(1)}%
-            </Text>
-          </View>
-          <View style={styles.kpiItem}>
-            <Text style={styles.kpiLabel}>Total Classes</Text>
-            <Text style={[styles.kpiValue, { color: "#FFFFFF" }]}>
-              {attendanceData.attended}/{attendanceData.total}
-            </Text>
-          </View>
-          <View style={styles.kpiItem}>
-            <Text style={styles.kpiLabel}>At Risk Courses</Text>
-            <Text
-              style={[
-                styles.kpiValue,
-                { color: attendanceData.criticalCount > 0 ? colors.rose[400] : colors.emerald[400] },
-              ]}
-            >
-              {attendanceData.criticalCount}
-            </Text>
-          </View>
+        {/* Progress Bar */}
+        <View style={[styles.progressTrack, { backgroundColor: colors.secondary }]}>
+          <View
+            style={[
+              styles.progressBar,
+              {
+                width: `${Math.min(Math.max(attendanceData.percentage, 0), 100)}%`,
+                backgroundColor: isSafeAttendance ? colors.success : colors.destructive,
+              },
+            ]}
+          />
         </View>
-
-        <TouchableOpacity
-          activeOpacity={0.8}
-          onPress={() => navigation.navigate("Attendance")}
-          style={styles.actionRowBtn}
-        >
-          <Text style={styles.actionRowBtnText}>Open Full Attendance Guardrails</Text>
-          <Feather name="arrow-right" size={14} color={colors.brand[400]} />
-        </TouchableOpacity>
-      </GlassCard>
-
-      {/* Community Whisper Spotlight */}
-      {recentWhisper && (
-        <GlassCard style={styles.whisperPreviewCard}>
-          <View style={styles.whisperPreviewHeader}>
-            <View style={styles.whisperMetaRow}>
-              <Ionicons name="flame" size={16} color="#F97316" />
-              <Text style={styles.whisperBadgeText}>Trending Campus Whisper</Text>
-            </View>
-            <Badge variant="neutral" size="sm">
-              {recentWhisper.category || "CONFESSION"}
-            </Badge>
-          </View>
-
-          <Text style={styles.whisperContent} numberOfLines={3}>
-            "{recentWhisper.content}"
-          </Text>
-
-          <TouchableOpacity
-            activeOpacity={0.8}
-            onPress={() => navigation.navigate("Whispers")}
-            style={styles.whisperViewBtn}
-          >
-            <Text style={styles.whisperViewBtnText}>Join the Conversation on Whisper Wall</Text>
-            <Feather name="message-circle" size={14} color="#A78BFA" />
-          </TouchableOpacity>
-        </GlassCard>
-      )}
+      </Card>
     </ScrollView>
   );
 }
@@ -304,67 +317,70 @@ export function DashboardScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
   },
   contentContainer: {
     padding: 16,
-    paddingBottom: 36,
+    paddingBottom: 32,
     gap: 16,
   },
   heroCard: {
-    borderRadius: 24,
-    padding: 20,
-    backgroundColor: "rgba(20, 184, 166, 0.1)",
-    borderWidth: 1.5,
-    borderColor: "rgba(20, 184, 166, 0.3)",
+    padding: 18,
   },
   heroTopRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 12,
+    justifyContent: "space-between",
+    marginBottom: 10,
   },
   heroBadge: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: 6,
   },
   heroLogo: {
-    width: 22,
-    height: 22,
+    width: 18,
+    height: 18,
+  },
+  heroMsgBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
   },
   heroBadgeText: {
-    fontSize: 12,
-    fontWeight: "800",
-    color: colors.brand[400],
-    letterSpacing: 0.2,
+    fontSize: 11,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
   },
   heroGreeting: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: "900",
-    color: "#FFFFFF",
-    letterSpacing: -0.4,
+    letterSpacing: -0.5,
   },
   heroSubtitle: {
     fontSize: 13,
     fontWeight: "700",
-    color: colors.brand[300],
-    marginTop: 4,
+    marginTop: 2,
+    marginBottom: 6,
   },
   heroDesc: {
     fontSize: 12,
-    color: colors.slate[300],
-    marginTop: 8,
     lineHeight: 18,
   },
   sectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     marginTop: 4,
   },
   sectionTitle: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: "800",
-    color: "#FFFFFF",
     letterSpacing: -0.2,
+    textTransform: "uppercase",
   },
   quickGrid: {
     flexDirection: "row",
@@ -373,154 +389,70 @@ const styles = StyleSheet.create({
   },
   quickTile: {
     width: "48%",
+    flexGrow: 1,
     padding: 14,
-    borderRadius: 16,
-    backgroundColor: colors.surface,
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
-    gap: 4,
-  },
-  tileAttendance: {
-    borderLeftWidth: 3,
-    borderLeftColor: colors.emerald[400],
-  },
-  tilePrint: {
-    borderLeftWidth: 3,
-    borderLeftColor: colors.brand[400],
-  },
-  tileWhispers: {
-    borderLeftWidth: 3,
-    borderLeftColor: "#A78BFA",
-  },
-  tileCgpa: {
-    borderLeftWidth: 3,
-    borderLeftColor: "#FBBF24",
   },
   tileIconWrap: {
-    width: 38,
-    height: 38,
+    width: 36,
+    height: 36,
     borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 6,
+    marginBottom: 10,
   },
   tileTitle: {
     fontSize: 14,
     fontWeight: "800",
-    color: "#FFFFFF",
+    letterSpacing: -0.2,
   },
   tileDesc: {
-    fontSize: 10.5,
-    color: colors.slate[400],
+    fontSize: 11,
+    marginTop: 2,
+    lineHeight: 14,
   },
   tileBadgeRow: {
-    marginTop: 8,
+    marginTop: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
   tileMetric: {
-    fontSize: 13,
-    fontWeight: "900",
+    fontSize: 12,
+    fontWeight: "700",
   },
   statusCard: {
-    padding: 18,
-    gap: 14,
+    padding: 16,
   },
   statusCardHeader: {
     flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 12,
+    alignItems: "center",
+    marginBottom: 12,
   },
   statusIconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: "rgba(255, 255, 255, 0.04)",
+    width: 32,
+    height: 32,
+    borderRadius: 8,
     alignItems: "center",
     justifyContent: "center",
   },
-  statusTitle: {
-    fontSize: 14,
-    fontWeight: "800",
-    color: "#FFFFFF",
-  },
-  statusSubtitle: {
-    fontSize: 11.5,
-    color: colors.slate[400],
-    marginTop: 2,
-    lineHeight: 16,
-  },
-  kpiRow: {
-    flexDirection: "row",
-    gap: 8,
-    backgroundColor: "rgba(255, 255, 255, 0.03)",
-    borderRadius: 12,
-    padding: 10,
-    borderWidth: 1,
-    borderColor: colors.cardBorder,
-  },
-  kpiItem: {
-    flex: 1,
-    alignItems: "center",
-  },
-  kpiLabel: {
-    fontSize: 9.5,
+  statusCardTitle: {
+    fontSize: 13,
     fontWeight: "700",
-    color: colors.slate[400],
-    textTransform: "uppercase",
   },
-  kpiValue: {
-    fontSize: 14,
-    fontWeight: "900",
-    marginTop: 2,
+  statusCardSubtitle: {
+    fontSize: 11,
+    marginTop: 1,
   },
-  actionRowBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: "rgba(255, 255, 255, 0.06)",
+  progressTrack: {
+    width: "100%",
+    height: 6,
+    borderRadius: 3,
+    overflow: "hidden",
   },
-  actionRowBtnText: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: colors.brand[400],
-  },
-  whisperPreviewCard: {
-    padding: 16,
-    gap: 10,
-  },
-  whisperPreviewHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  whisperMetaRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-  whisperBadgeText: {
-    fontSize: 12,
-    fontWeight: "800",
-    color: "#F97316",
-  },
-  whisperContent: {
-    fontSize: 12.5,
-    color: colors.slate[200],
-    lineHeight: 18,
-    fontStyle: "italic",
-  },
-  whisperViewBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: "rgba(255, 255, 255, 0.06)",
-  },
-  whisperViewBtnText: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: "#A78BFA",
+  progressBar: {
+    height: "100%",
+    borderRadius: 3,
   },
 });
