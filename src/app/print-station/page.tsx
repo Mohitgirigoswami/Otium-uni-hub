@@ -34,6 +34,7 @@ import { PrintTypeEnum } from "@/lib/types";
 import { DocumentUpload } from "@/components/ui/DocumentUpload";
 import { PrintRatesData, calculatePrintCostPaise } from "@/lib/services/print.service";
 import { ClientServiceGuard } from "@/components/ClientServiceGuard";
+import { PrintOrderTracker } from "@/components/print/PrintOrderTracker";
 
 const DELIVERY_LOCATIONS = [
   "Hostel Block 1 (Freshers Boys)",
@@ -609,7 +610,7 @@ export default function PrintStationPage() {
                   {orders.map((ord) => (
                     <div
                       key={ord.id}
-                      className="p-3.5 rounded-lg border border-border bg-card/60 space-y-2 text-xs"
+                      className="p-3.5 rounded-lg border border-border bg-card/60 space-y-3 text-xs"
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div className="space-y-0.5 min-w-0">
@@ -635,6 +636,9 @@ export default function PrintStationPage() {
                           {ord.status.replace(/_/g, " ")}
                         </Badge>
                       </div>
+
+                      {/* Animated Mechanical Dispatch Stepper */}
+                      <PrintOrderTracker status={ord.status} />
 
                       <div className="flex items-center justify-between text-[11px] text-muted-foreground pt-1 border-t border-border/40">
                         <span>

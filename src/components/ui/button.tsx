@@ -3,6 +3,7 @@
 import * as React from "react";
 import { cva, type VariantProps } from "class-variance-authority";
 import { Loader2 } from "lucide-react";
+import { Spinner, type SpinnerVariant } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
@@ -49,6 +50,7 @@ export interface ButtonProps
     VariantProps<typeof buttonVariants> {
   asChild?: boolean;
   isLoading?: boolean;
+  spinnerVariant?: SpinnerVariant;
   leftIcon?: React.ReactNode;
   rightIcon?: React.ReactNode;
 }
@@ -60,6 +62,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       variant,
       size,
       isLoading = false,
+      spinnerVariant = "orbit",
       leftIcon,
       rightIcon,
       children,
@@ -76,7 +79,12 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         {...props}
       >
         {isLoading ? (
-          <Loader2 className="w-4 h-4 mr-2 animate-spin flex-shrink-0" />
+          <Spinner
+            variant={spinnerVariant}
+            size="xs"
+            colorClassName="text-current"
+            className="mr-2 flex-shrink-0"
+          />
         ) : leftIcon ? (
           <span className="mr-2 inline-flex items-center flex-shrink-0">
             {leftIcon}

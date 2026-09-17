@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { CourseGradeItem } from "@/lib/types";
 import { ClientServiceGuard } from "@/components/ClientServiceGuard";
+import { RadialCgpaGauge } from "@/components/cgpa/RadialCgpaGauge";
 
 const GRADE_OPTIONS = [
   { label: "O (Outstanding)", point: 10 },
@@ -209,46 +210,41 @@ export default function CgpaPage() {
         </div>
 
         {/* Top Summary Metrics */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Card className="p-5 space-y-1.5">
-            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-              Cumulative CGPA
-            </span>
-            <div className="flex items-baseline gap-2">
-              <span className="font-heading text-3xl font-extrabold text-foreground">
-                {cumulativeTotalCredits > 0 ? cumulativeCGPA.toFixed(2) : "N/A"}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-stretch">
+          <Card className="p-5 flex flex-col justify-between space-y-4">
+            <div className="space-y-1.5">
+              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                Cumulative CGPA
               </span>
-              <span className="text-xs text-muted-foreground">/ 10.0</span>
+              <div className="flex items-baseline gap-2">
+                <span className="font-heading text-3xl font-extrabold text-foreground">
+                  {cumulativeTotalCredits > 0 ? cumulativeCGPA.toFixed(2) : "N/A"}
+                </span>
+                <span className="text-xs text-muted-foreground">/ 10.0</span>
+              </div>
             </div>
-            <p className="text-[11px] text-muted-foreground">
-              Across {cumulativeTotalCredits} completed credits
+            <p className="text-[11px] text-muted-foreground pt-2 border-t border-border/40">
+              Across {cumulativeTotalCredits} completed university credits
             </p>
           </Card>
 
-          <Card className="p-5 space-y-1.5">
-            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-              Current Semester SGPA
-            </span>
-            <div className="flex items-baseline gap-2">
-              <span className="font-heading text-3xl font-extrabold text-primary">
-                {currentSemesterGPA.toFixed(2)}
-              </span>
-              <span className="text-xs text-muted-foreground">/ 10.0</span>
-            </div>
-            <p className="text-[11px] text-muted-foreground">
-              {totalActiveCredits} credits registered in active table
-            </p>
-          </Card>
+          <RadialCgpaGauge
+            gpa={currentSemesterGPA}
+            title="Current Term SGPA"
+            subtitle={`${totalActiveCredits} credits registered in active worksheet`}
+          />
 
-          <Card className="p-5 space-y-1.5">
-            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-              Archived Semesters
-            </span>
-            <div className="font-heading text-3xl font-extrabold text-foreground">
-              {savedSemesters.length}
+          <Card className="p-5 flex flex-col justify-between space-y-4">
+            <div className="space-y-1.5">
+              <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                Archived Semesters
+              </span>
+              <div className="font-heading text-3xl font-extrabold text-foreground">
+                {savedSemesters.length}
+              </div>
             </div>
-            <p className="text-[11px] text-muted-foreground">
-              Saved in verified university transcript
+            <p className="text-[11px] text-muted-foreground pt-2 border-t border-border/40">
+              Saved in verified academic transcript
             </p>
           </Card>
         </div>

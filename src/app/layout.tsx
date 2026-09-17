@@ -7,6 +7,7 @@ import { UserProvider } from "@/components/providers/UserContext";
 import { Navbar } from "@/components/layout/Navbar";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { Footer } from "@/components/layout/Footer";
+import { CommandPalette } from "@/components/CommandPalette";
 import { Toaster } from "sonner";
 
 export const metadata: Metadata = {
@@ -46,6 +47,7 @@ export default function RootLayout({
               </main>
               <MobileNav />
               <Footer />
+              <CommandPalette />
               <Toaster position="top-right" richColors closeButton />
             </UserProvider>
           </SessionProvider>

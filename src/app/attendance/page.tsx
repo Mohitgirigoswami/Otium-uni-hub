@@ -32,6 +32,7 @@ import {
   Check,
 } from "lucide-react";
 import { ClientServiceGuard } from "@/components/ClientServiceGuard";
+import { LiquidSlider } from "@/components/ui/liquid-slider";
 
 export default function AttendancePage() {
   const { user, refreshUser } = useUser();
@@ -316,59 +317,34 @@ export default function AttendancePage() {
           </div>
 
           <div className="pt-4 space-y-3">
-            {/* Liquid Slider Container */}
-            <div className="space-y-2">
-              <div className="flex justify-between items-center text-xs font-semibold text-foreground">
-                <span className="text-muted-foreground">Threshold Gauge:</span>
-                <span className="font-heading text-lg font-extrabold text-primary">
-                  {targetPercentage}%
-                </span>
-              </div>
-
-              <div className="relative flex items-center">
-                <input
-                  type="range"
-                  min={50}
-                  max={95}
-                  step={1}
-                  value={targetPercentage}
-                  onChange={(e) => handleTargetChange(Number(e.target.value))}
-                  className="w-full h-2.5 bg-secondary rounded-lg appearance-none cursor-pointer accent-primary"
-                />
-              </div>
-
-              <div className="flex justify-between text-[10px] text-muted-foreground font-mono">
-                <span>50% (Min)</span>
-                <span>65% (Medical/Duty)</span>
-                <span className="font-bold text-foreground">75% (Standard)</span>
-                <span>85% (Honors)</span>
-                <span>95% (Max)</span>
-              </div>
+            <div className="flex justify-between items-center text-xs font-semibold text-foreground">
+              <span className="text-muted-foreground">Threshold Gauge:</span>
+              <span className="font-heading text-lg font-extrabold text-primary">
+                {targetPercentage}%
+              </span>
             </div>
 
-            {/* Quick Presets */}
-            <div className="flex flex-wrap items-center gap-1.5 pt-1">
-              <span className="text-[11px] text-muted-foreground mr-1">Quick Select:</span>
-              {[
+            <LiquidSlider
+              min={50}
+              max={95}
+              step={1}
+              value={targetPercentage}
+              onChange={handleTargetChange}
+              unit="%"
+              presets={[
                 { label: "65% Medical / Duty", value: 65 },
                 { label: "75% AICTE Standard", value: 75 },
                 { label: "80% Dept Strict", value: 80 },
                 { label: "85% Honors Quota", value: 85 },
-              ].map((preset) => (
-                <button
-                  key={preset.value}
-                  type="button"
-                  onClick={() => handleTargetChange(preset.value)}
-                  className={cn(
-                    "text-[10px] px-2.5 py-1 rounded-md transition-all font-medium border",
-                    targetPercentage === preset.value
-                      ? "bg-primary text-primary-foreground border-primary font-bold shadow-xs"
-                      : "bg-secondary/70 hover:bg-secondary text-muted-foreground hover:text-foreground border-border"
-                  )}
-                >
-                  {preset.label}
-                </button>
-              ))}
+              ]}
+            />
+
+            <div className="flex justify-between text-[10px] text-muted-foreground font-mono pt-1">
+              <span>50% (Min Safe)</span>
+              <span>65% (Medical/Duty)</span>
+              <span className="font-bold text-foreground">75% (Standard)</span>
+              <span>85% (Honors)</span>
+              <span>95% (Max Strict)</span>
             </div>
           </div>
         </Card>
