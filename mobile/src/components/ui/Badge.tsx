@@ -4,6 +4,7 @@ import { useTheme } from "../../context/ThemeContext";
 
 export type BadgeVariant =
   | "default"
+  | "secondary"
   | "outline"
   | "success"
   | "warning"
@@ -42,6 +43,17 @@ export function Badge({
           text: {
             color: colors.primaryForeground,
             fontWeight: "700",
+          },
+        };
+      case "secondary":
+        return {
+          container: {
+            backgroundColor: colors.secondary,
+            borderColor: colors.border,
+          },
+          text: {
+            color: colors.textSecondary,
+            fontWeight: "600",
           },
         };
       case "outline":
@@ -100,6 +112,7 @@ export function Badge({
         };
     }
   };
+
 
   const isSmall = size === "sm";
 

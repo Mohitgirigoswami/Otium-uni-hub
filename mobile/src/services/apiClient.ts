@@ -94,12 +94,23 @@ class ApiClient {
       }
 
       if (!response.ok) {
+        let rawError = responseData?.error || responseData?.message;
+        if (
+          typeof rawError === "string" &&
+          (rawError.trim().startsWith("<") || rawError.includes("<!DOCTYPE") || rawError.includes("<html"))
+        ) {
+          if (response.status === 404) {
+            rawError = "Service endpoint not found on server (HTTP 404). Backend deployment required.";
+          } else if (response.status >= 500) {
+            rawError = `Server error (HTTP ${response.status}). The server encountered an error processing your request.`;
+          } else {
+            rawError = `HTTP ${response.status}: Request failed.`;
+          }
+        }
+
         return {
           success: false,
-          error:
-            responseData?.error ||
-            responseData?.message ||
-            `HTTP ${response.status}: Request failed.`,
+          error: rawError || `HTTP ${response.status}: Request failed.`,
           status: response.status,
           data: responseData,
         };

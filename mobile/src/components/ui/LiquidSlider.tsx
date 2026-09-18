@@ -50,10 +50,12 @@ export function LiquidSlider({
 
   const percent = ((clamp(value) - min) / (max - min)) * 100;
 
+  const initialThumbX = useRef(0);
+
   const handleUpdate = useCallback(
-    (locationX: number) => {
+    (xPos: number) => {
       if (trackWidth <= 0) return;
-      const ratio = Math.min(Math.max(locationX / trackWidth, 0), 1);
+      const ratio = Math.min(Math.max(xPos / trackWidth, 0), 1);
       const raw = min + ratio * (max - min);
       const stepped = Math.round(raw / step) * step;
       onChange(clamp(stepped));
@@ -65,7 +67,7 @@ export function LiquidSlider({
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: () => true,
-      onPanResponderGrant: (evt) => {
+      onPanResponderGrant: (evt, gestureState) => {
         setIsDragging(true);
         Animated.parallel([
           Animated.spring(thumbScale, {
@@ -83,10 +85,17 @@ export function LiquidSlider({
           }),
         ]).start();
 
-        handleUpdate(evt.nativeEvent.locationX);
+        const currentThumbX = (percent / 100) * trackWidth;
+        if (Math.abs(evt.nativeEvent.locationX - currentThumbX) > 28 && evt.nativeEvent.locationX > 0) {
+          initialThumbX.current = evt.nativeEvent.locationX;
+          handleUpdate(evt.nativeEvent.locationX);
+        } else {
+          initialThumbX.current = currentThumbX;
+        }
       },
-      onPanResponderMove: (evt) => {
-        handleUpdate(evt.nativeEvent.locationX);
+      onPanResponderMove: (evt, gestureState) => {
+        const nextX = initialThumbX.current + gestureState.dx;
+        handleUpdate(nextX);
       },
       onPanResponderRelease: () => {
         setIsDragging(false);

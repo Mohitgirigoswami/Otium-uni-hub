@@ -12,6 +12,7 @@ import {
   Modal,
   RefreshControl,
   Image,
+  Alert,
 } from "react-native";
 import { Ionicons, Feather } from "@expo/vector-icons";
 import { useTheme } from "../context/ThemeContext";
@@ -19,6 +20,7 @@ import { useUser } from "../context/UserContext";
 import { apiClient } from "../services/apiClient";
 import { Card } from "../components/ui/Card";
 import { Badge } from "../components/ui/Badge";
+import { Button } from "../components/ui/Button";
 
 export interface ConversationItem {
   id: string;
@@ -30,6 +32,10 @@ export interface ConversationItem {
   createdAt: string;
 }
 
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
+const STORAGE_KEY_CONVERSATIONS = "@otium_cached_conversations";
+
 export function MessagesScreen({ navigation, route }: any) {
   const { colors, isDark } = useTheme();
   const { user } = useUser();
@@ -38,8 +44,15 @@ export function MessagesScreen({ navigation, route }: any) {
     route?.params?.initialTab === "whisper" ? "whisper" : "direct"
   );
   const [conversations, setConversations] = useState<ConversationItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+
+  // New Classmate Chat Modal
+  const [isNewChatOpen, setIsNewChatOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [isSearchingUsers, setIsSearchingUsers] = useState(false);
+  const [isStartingChat, setIsStartingChat] = useState(false);
 
   // Active chat thread modal
   const [activeConv, setActiveConv] = useState<ConversationItem | null>(null);
@@ -50,17 +63,74 @@ export function MessagesScreen({ navigation, route }: any) {
 
   const flatListRef = useRef<FlatList>(null);
 
+  const searchClassmates = async (q: string) => {
+    setSearchQuery(q);
+    if (!q.trim()) {
+      setSearchResults([]);
+      return;
+    }
+    setIsSearchingUsers(true);
+    try {
+      const userParam = user?.id ? `&userId=${encodeURIComponent(user.id)}` : "";
+      const collegeParam = user?.collegeId ? `&collegeId=${encodeURIComponent(user.collegeId)}` : "";
+      const res = await apiClient.get(`/users?search=${encodeURIComponent(q.trim())}${userParam}${collegeParam}`);
+      if (res.success && Array.isArray(res.data)) {
+        setSearchResults(res.data.filter((u: any) => u.id !== user?.id));
+      }
+    } catch {
+      setSearchResults([]);
+    } finally {
+      setIsSearchingUsers(false);
+    }
+  };
+
+  const handleStartClassmateChat = async (classmate: any) => {
+    setIsStartingChat(true);
+    try {
+      const res = await apiClient.post("/chat", {
+        participantTwoId: classmate.id,
+        isAnonymousChat: false,
+      });
+
+      if (res.success && res.data) {
+        setIsNewChatOpen(false);
+        setSearchQuery("");
+        setSearchResults([]);
+        await fetchConversations();
+        openChat(res.data);
+      } else {
+        Alert.alert("Chat Error", res.error || "Failed to start conversation.");
+      }
+    } catch (err: any) {
+      Alert.alert("Chat Error", err.message || "Failed to start conversation.");
+    } finally {
+      setIsStartingChat(false);
+    }
+  };
+
   const fetchConversations = async (isPull = false) => {
     if (isPull) setRefreshing(true);
-    else if (conversations.length === 0) setLoading(true);
 
+    // 1. Immediate cache restore
+    try {
+      const cached = await AsyncStorage.getItem(STORAGE_KEY_CONVERSATIONS);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setConversations(parsed);
+        }
+      }
+    } catch {}
+
+    // 2. Fetch fresh from server
     try {
       const res = await apiClient.get("/chat");
       if (res.success && Array.isArray(res.data)) {
         setConversations(res.data);
+        AsyncStorage.setItem(STORAGE_KEY_CONVERSATIONS, JSON.stringify(res.data)).catch(() => {});
       }
     } catch (err) {
-      console.error("[Fetch Conversations Error]:", err);
+      console.log("[Fetch Conversations Note]: Operating in offline cached mode");
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -71,28 +141,69 @@ export function MessagesScreen({ navigation, route }: any) {
     fetchConversations();
     const interval = setInterval(() => fetchConversations(false), 12000);
     return () => clearInterval(interval);
-  }, []);
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (route?.params?.initialTab) {
+      setActiveTab(route.params.initialTab === "whisper" ? "whisper" : "direct");
+    }
+  }, [route?.params?.initialTab]);
 
   // Handle open conversation passed from route params (e.g. from WhisperWall or PrintStation)
   useEffect(() => {
-    if (route?.params?.conversationId && conversations.length > 0) {
-      const found = conversations.find((c) => c.id === route.params.conversationId);
+    if (route?.params?.conversationId) {
+      const convId = route.params.conversationId;
+      const found = conversations.find((c) => c.id === convId);
       if (found) {
         openChat(found);
+      } else {
+        apiClient.get(`/chat/${convId}/messages`).then((res) => {
+          if (res.success) {
+            const stub: ConversationItem = {
+              id: convId,
+              isAnonymousChat: route?.params?.initialTab === "whisper",
+              otherParticipant: {
+                id: "peer",
+                name: route?.params?.initialTab === "whisper" ? "Anonymous Whisperer" : "Campus Student",
+              },
+              messages: Array.isArray(res.data) ? res.data : [],
+              updatedAt: new Date().toISOString(),
+              createdAt: new Date().toISOString(),
+            };
+            openChat(stub);
+            fetchConversations();
+          }
+        });
       }
     }
-  }, [route?.params?.conversationId, conversations]);
+  }, [route?.params?.conversationId]);
 
   const openChat = async (conv: ConversationItem) => {
     setActiveConv(conv);
     setLoadingThread(true);
+
+    // Preload from active conversation messages if available
+    if (Array.isArray(conv.messages) && conv.messages.length > 0) {
+      setThreadMessages(conv.messages);
+    }
+
     try {
+      const threadCacheKey = `@otium_thread_${conv.id}`;
+      const cached = await AsyncStorage.getItem(threadCacheKey);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setThreadMessages(parsed);
+        }
+      }
+
       const res = await apiClient.get(`/chat/${conv.id}/messages`);
       if (res.success && Array.isArray(res.data)) {
         setThreadMessages(res.data);
+        AsyncStorage.setItem(threadCacheKey, JSON.stringify(res.data)).catch(() => {});
       }
     } catch (err) {
-      console.error("[Open Chat Error]:", err);
+      console.log("[Open Chat Note]: Operating in offline cached thread mode");
     } finally {
       setLoadingThread(false);
       setTimeout(() => flatListRef.current?.scrollToEnd({ animated: false }), 100);
@@ -155,12 +266,22 @@ export function MessagesScreen({ navigation, route }: any) {
           <Ionicons name="chevron-back" size={24} color={colors.text} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: colors.text }]}>Messages</Text>
-        <TouchableOpacity
-          onPress={() => fetchConversations(true)}
-          style={styles.refreshBtn}
-        >
-          <Feather name="refresh-cw" size={16} color={colors.textMuted} />
-        </TouchableOpacity>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+          <TouchableOpacity
+            onPress={() => setIsNewChatOpen(true)}
+            style={[styles.newMsgBtn, { backgroundColor: colors.primary }]}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Feather name="edit-3" size={15} color={colors.primaryForeground} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => fetchConversations(true)}
+            style={styles.refreshBtn}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Feather name="refresh-cw" size={16} color={colors.textMuted} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Dual Inbox Tab Switcher */}
@@ -245,6 +366,16 @@ export function MessagesScreen({ navigation, route }: any) {
               ? "When you or someone responds to a Whisper Wall post via DM, the secret thread will appear here."
               : "Direct student chats and Express Print Station delivery updates will appear here."}
           </Text>
+          {activeTab === "direct" && (
+            <Button
+              title="Message a Classmate"
+              variant="default"
+              size="sm"
+              onPress={() => setIsNewChatOpen(true)}
+              leftIcon={<Feather name="plus" size={14} color={colors.primaryForeground} />}
+              style={{ marginTop: 12 }}
+            />
+          )}
         </View>
       ) : (
         <FlatList
@@ -312,22 +443,24 @@ export function MessagesScreen({ navigation, route }: any) {
                 <View style={styles.convDetails}>
                   <View style={styles.convTitleRow}>
                     <Text
-                      style={[styles.participantName, { color: colors.text }]}
+                      style={[
+                        styles.participantName,
+                        { color: colors.text, fontWeight: "700" },
+                      ]}
                       numberOfLines={1}
                     >
                       {participantTitle}
                     </Text>
-                    {isPrintBot && (
-                      <Badge variant="default" size="sm">
-                        Verified Desk
-                      </Badge>
-                    )}
-                    {item.isAnonymousChat && (
-                      <Badge variant="outline" size="sm">
-                        Secret
-                      </Badge>
-                    )}
+                    <Text style={[styles.convTime, { color: colors.textMuted }]}>
+                      {item.updatedAt
+                        ? new Date(item.updatedAt).toLocaleTimeString([], {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })
+                        : ""}
+                    </Text>
                   </View>
+
                   <Text
                     style={[styles.lastMsgText, { color: colors.textMuted }]}
                     numberOfLines={1}
@@ -343,6 +476,93 @@ export function MessagesScreen({ navigation, route }: any) {
         />
       )}
 
+      {/* Classmate Search & New Chat Modal */}
+      <Modal
+        visible={isNewChatOpen}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setIsNewChatOpen(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.newChatModalContent, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <View style={styles.modalHeader}>
+              <View>
+                <Text style={[styles.modalTitle, { color: colors.text }]}>New Direct Message</Text>
+                <Text style={[styles.modalSubtitle, { color: colors.textMuted }]}>
+                  Find students on your campus by name
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => setIsNewChatOpen(false)}>
+                <Ionicons name="close" size={22} color={colors.textMuted} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={[styles.searchBar, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
+              <Feather name="search" size={16} color={colors.textMuted} />
+              <TextInput
+                style={[styles.searchInput, { color: colors.text }]}
+                placeholder="Search classmate name or email..."
+                placeholderTextColor={colors.textMuted}
+                value={searchQuery}
+                onChangeText={searchClassmates}
+                autoFocus
+              />
+              {searchQuery.length > 0 && (
+                <TouchableOpacity onPress={() => searchClassmates("")}>
+                  <Ionicons name="close-circle" size={16} color={colors.textMuted} />
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {isSearchingUsers ? (
+              <View style={styles.searchLoading}>
+                <ActivityIndicator size="small" color={colors.primary} />
+                <Text style={[styles.searchLoadingText, { color: colors.textMuted }]}>Searching campus directory...</Text>
+              </View>
+            ) : searchResults.length > 0 ? (
+              <FlatList
+                data={searchResults}
+                keyExtractor={(item) => item.id}
+                style={{ maxHeight: 320 }}
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    style={[styles.classmateRow, { borderBottomColor: colors.border }]}
+                    onPress={() => handleStartClassmateChat(item)}
+                    disabled={isStartingChat}
+                  >
+                    <View style={[styles.classmateAvatar, { backgroundColor: colors.primary + "20" }]}>
+                      <Text style={[styles.classmateAvatarText, { color: colors.primary }]}>
+                        {item.name ? item.name.charAt(0).toUpperCase() : "U"}
+                      </Text>
+                    </View>
+                    <View style={{ flex: 1, marginLeft: 12 }}>
+                      <Text style={[styles.classmateName, { color: colors.text }]}>{item.name}</Text>
+                      <Text style={[styles.classmateCollege, { color: colors.textMuted }]} numberOfLines={1}>
+                        {item.college?.name || item.email || "Campus Student"}
+                      </Text>
+                    </View>
+                    <Ionicons name="paper-plane-outline" size={18} color={colors.primary} />
+                  </TouchableOpacity>
+                )}
+              />
+            ) : searchQuery.trim().length > 0 ? (
+              <View style={styles.noSearchResults}>
+                <Text style={[styles.noSearchResultsText, { color: colors.textMuted }]}>
+                  No students found matching "{searchQuery}"
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.searchPrompt}>
+                <Feather name="users" size={28} color={colors.textMuted} />
+                <Text style={[styles.searchPromptText, { color: colors.textMuted }]}>
+                  Type a student name to message them directly
+                </Text>
+              </View>
+            )}
+          </View>
+        </View>
+      </Modal>
+
       {/* Full-Screen Chat View Modal */}
       <Modal
         visible={!!activeConv}
@@ -351,7 +571,8 @@ export function MessagesScreen({ navigation, route }: any) {
       >
         <KeyboardAvoidingView
           style={[styles.chatModalContainer, { backgroundColor: colors.background }]}
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 12 : 0}
         >
           {/* Chat Header */}
           <View style={[styles.chatHeader, { borderBottomColor: colors.border }]}>
@@ -411,6 +632,9 @@ export function MessagesScreen({ navigation, route }: any) {
               ref={flatListRef}
               data={threadMessages}
               keyExtractor={(item) => item.id}
+              keyboardShouldPersistTaps="handled"
+              onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
+              onLayout={() => flatListRef.current?.scrollToEnd({ animated: true })}
               contentContainerStyle={styles.threadContent}
               renderItem={({ item }) => {
                 const isMine = item.isMine;
@@ -485,6 +709,7 @@ export function MessagesScreen({ navigation, route }: any) {
               placeholderTextColor={colors.textMuted}
               value={inputMessage}
               onChangeText={setInputMessage}
+              onFocus={() => setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 150)}
               multiline={false}
               returnKeyType="send"
               onSubmitEditing={handleSendMessage}
@@ -593,12 +818,16 @@ const styles = StyleSheet.create({
   convTitleRow: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "space-between",
     gap: 6,
   },
   participantName: {
     fontSize: 13,
     fontWeight: "700",
     flexShrink: 1,
+  },
+  convTime: {
+    fontSize: 10,
   },
   lastMsgText: {
     fontSize: 12,
@@ -727,5 +956,103 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
+  },
+  newMsgBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    justifyContent: "flex-end",
+  },
+  newChatModalContent: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    borderTopWidth: 1,
+    padding: 20,
+    paddingBottom: 36,
+    maxHeight: "85%",
+    gap: 12,
+  },
+  modalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  modalTitle: {
+    fontSize: 17,
+    fontWeight: "800",
+  },
+  modalSubtitle: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  searchBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    height: 44,
+    gap: 8,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 13,
+  },
+  searchLoading: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 24,
+    gap: 8,
+  },
+  searchLoadingText: {
+    fontSize: 12,
+  },
+  classmateRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  classmateAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  classmateAvatarText: {
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  classmateName: {
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  classmateCollege: {
+    fontSize: 11,
+    marginTop: 2,
+  },
+  noSearchResults: {
+    paddingVertical: 24,
+    alignItems: "center",
+  },
+  noSearchResultsText: {
+    fontSize: 12,
+  },
+  searchPrompt: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 32,
+    gap: 8,
+  },
+  searchPromptText: {
+    fontSize: 12,
   },
 });

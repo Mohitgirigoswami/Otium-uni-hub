@@ -40,8 +40,8 @@ export const API_BASE_URL = getApiBaseUrl();
 export const APP_CONSTANTS = {
   APP_NAME: "Otium Uni Hub",
   VERSION: "1.0.0",
-  DEFAULT_CAMPUS_ID: "dtu-delhi",
-  DEFAULT_CAMPUS_NAME: "DTU Campus",
+  DEFAULT_CAMPUS_ID: "jcbose-ust-ymca",
+  DEFAULT_CAMPUS_NAME: "JCBOSEUST, YMCA",
   MINIMUM_ORDER_FLOOR_RUPEES: 5.0,
   SUPPORT_EMAIL: "support@otiumhub.in",
   DELIVERY_WINDOWS: [

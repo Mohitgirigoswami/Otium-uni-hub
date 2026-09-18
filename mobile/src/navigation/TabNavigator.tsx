@@ -1,5 +1,5 @@
 import React from "react";
-import { StyleSheet, View } from "react-native";
+import { StyleSheet, View, Platform } from "react-native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons, Feather, MaterialCommunityIcons } from "@expo/vector-icons";
@@ -12,15 +12,23 @@ import { WhisperWallScreen } from "../screens/WhisperWallScreen";
 import { CgpaPredictorScreen } from "../screens/CgpaPredictorScreen";
 import { ProfileScreen } from "../screens/ProfileScreen";
 import { MessagesScreen } from "../screens/MessagesScreen";
+import { RideShareScreen } from "../screens/RideShareScreen";
+import { LostAndFoundScreen } from "../screens/LostAndFoundScreen";
+import { MarketplaceScreen } from "../screens/MarketplaceScreen";
+import { GigsScreen } from "../screens/GigsScreen";
 
 export type RootTabParamList = {
   Dashboard: undefined;
   Attendance: undefined;
   Print: undefined;
   Whispers: undefined;
-  CGPA: undefined;
   Profile: undefined;
+  CGPA: undefined;
   Messages: { conversationId?: string; initialTab?: "direct" | "whisper" } | undefined;
+  RideShare: undefined;
+  LostAndFound: undefined;
+  Marketplace: undefined;
+  Gigs: undefined;
 };
 
 const Tab = createBottomTabNavigator<RootTabParamList>();
@@ -28,6 +36,8 @@ const Tab = createBottomTabNavigator<RootTabParamList>();
 export function TabNavigator() {
   const insets = useSafeAreaInsets();
   const { colors } = useTheme();
+
+  const bottomInset = Math.max(insets.bottom, Platform.OS === "android" ? 14 : 16);
 
   return (
     <Tab.Navigator
@@ -39,8 +49,9 @@ export function TabNavigator() {
           {
             backgroundColor: colors.background,
             borderTopColor: colors.border,
-            height: 56 + Math.min(insets.bottom, 16),
-            paddingBottom: Math.min(insets.bottom, 12) + 4,
+            height: 60 + bottomInset,
+            paddingBottom: bottomInset + 2,
+            paddingTop: 6,
           },
         ],
         tabBarActiveTintColor: colors.primary,
@@ -114,23 +125,6 @@ export function TabNavigator() {
       />
 
       <Tab.Screen
-        name="CGPA"
-        component={CgpaPredictorScreen}
-        options={{
-          tabBarLabel: "CGPA",
-          tabBarIcon: ({ color, focused }: { color: string; focused: boolean }) => (
-            <View style={[styles.iconContainer, focused && styles.iconContainerActive]}>
-              <MaterialCommunityIcons
-                name={focused ? "calculator-variant" : "calculator-variant-outline"}
-                size={20}
-                color={color}
-              />
-            </View>
-          ),
-        }}
-      />
-
-      <Tab.Screen
         name="Profile"
         component={ProfileScreen}
         options={{
@@ -147,13 +141,41 @@ export function TabNavigator() {
         }}
       />
 
-      {/* Messages Screen (Navigated via header icons, print station links, and whisper walls) */}
+      {/* Hidden Navigation Portals */}
+      <Tab.Screen
+        name="CGPA"
+        component={CgpaPredictorScreen}
+        options={{ tabBarButton: () => null }}
+      />
+
       <Tab.Screen
         name="Messages"
         component={MessagesScreen}
-        options={{
-          tabBarButton: () => null,
-        }}
+        options={{ tabBarButton: () => null }}
+      />
+
+      <Tab.Screen
+        name="RideShare"
+        component={RideShareScreen}
+        options={{ tabBarButton: () => null }}
+      />
+
+      <Tab.Screen
+        name="LostAndFound"
+        component={LostAndFoundScreen}
+        options={{ tabBarButton: () => null }}
+      />
+
+      <Tab.Screen
+        name="Marketplace"
+        component={MarketplaceScreen}
+        options={{ tabBarButton: () => null }}
+      />
+
+      <Tab.Screen
+        name="Gigs"
+        component={GigsScreen}
+        options={{ tabBarButton: () => null }}
       />
     </Tab.Navigator>
   );

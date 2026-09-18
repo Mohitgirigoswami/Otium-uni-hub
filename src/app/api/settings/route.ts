@@ -15,7 +15,7 @@ export async function GET() {
       {
         success: true,
         data: {
-          upiId: "otium.escrow@okhdfcbank",
+          upiId: "8307798816@upi",
           buyerDiscountPct: 5,
         },
       },

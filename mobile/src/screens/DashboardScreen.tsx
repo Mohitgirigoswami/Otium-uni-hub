@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   RefreshControl,
   Image,
+  Platform,
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { Ionicons, Feather, MaterialCommunityIcons } from "@expo/vector-icons";
@@ -21,10 +22,10 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 export function DashboardScreen() {
   const navigation = useNavigation<any>();
   const { user, refreshUser } = useUser();
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // Quick live metrics
+  // Live Metrics
   const [attendanceData, setAttendanceData] = useState<{
     percentage: number;
     attended: number;
@@ -32,10 +33,31 @@ export function DashboardScreen() {
     criticalCount: number;
   }>({ percentage: 0, attended: 0, total: 0, criticalCount: 0 });
 
+  const [activePrintsCount, setActivePrintsCount] = useState<number>(0);
+  const [openTasksCount, setOpenTasksCount] = useState<number>(0);
+  const [activeListingsCount, setActiveListingsCount] = useState<number>(0);
   const [recentWhisper, setRecentWhisper] = useState<any | null>(null);
 
+  const STORAGE_KEY_DASHBOARD_SNAPSHOT = "@otium_cached_dashboard_snapshot";
+
   const loadDashboardData = async () => {
-    // 1. Try loading cached attendance
+    // 0. Load cached dashboard snapshot for immediate offline render
+    try {
+      const snapRaw = await AsyncStorage.getItem(STORAGE_KEY_DASHBOARD_SNAPSHOT);
+      if (snapRaw) {
+        const snap = JSON.parse(snapRaw);
+        if (snap) {
+          if (snap.attendanceData) setAttendanceData(snap.attendanceData);
+          if (typeof snap.activePrintsCount === "number") setActivePrintsCount(snap.activePrintsCount);
+          if (typeof snap.openTasksCount === "number") setOpenTasksCount(snap.openTasksCount);
+          if (typeof snap.activeListingsCount === "number") setActiveListingsCount(snap.activeListingsCount);
+          if (snap.recentWhisper) setRecentWhisper(snap.recentWhisper);
+        }
+      }
+    } catch {}
+
+    // 1. Attendance cached & live fetch
+    let latestAttendance = attendanceData;
     try {
       const cached = await AsyncStorage.getItem("@otium_attendance_subjects");
       if (cached) {
@@ -45,12 +67,13 @@ export function DashboardScreen() {
           const att = subjects.reduce((sum: number, s: any) => sum + (s.attended || 0), 0);
           const pct = tot > 0 ? (att / tot) * 100 : 100;
           const crit = subjects.filter((s: any) => (s.total > 0 ? (s.attended / s.total) * 100 < 75 : false)).length;
-          setAttendanceData({ percentage: pct, attended: att, total: tot, criticalCount: crit });
+          latestAttendance = { percentage: pct, attended: att, total: tot, criticalCount: crit };
+          setAttendanceData(latestAttendance);
         }
       }
     } catch {}
 
-    // 2. Fetch fresh attendance from backend
+    // 2. Fetch fresh attendance
     try {
       let syncPayload: any[] = [];
       const cached = await AsyncStorage.getItem("@otium_attendance_subjects");
@@ -71,16 +94,64 @@ export function DashboardScreen() {
         const att = subjects.reduce((sum: number, s: any) => sum + (s.attendedClasses || 0), 0);
         const pct = tot > 0 ? (att / tot) * 100 : 100;
         const crit = subjects.filter((s: any) => (s.totalClasses > 0 ? (s.attendedClasses / s.totalClasses) * 100 < 75 : false)).length;
-        setAttendanceData({ percentage: pct, attended: att, total: tot, criticalCount: crit });
+        latestAttendance = { percentage: pct, attended: att, total: tot, criticalCount: crit };
+        setAttendanceData(latestAttendance);
       }
     } catch {}
 
-    // 3. Fetch latest whisper
+    // 3. Print orders count (using correct singular endpoint /print/order)
+    let printsCount = activePrintsCount;
+    try {
+      const printUrl = user?.id ? `/print/order?userId=${encodeURIComponent(user.id)}` : "/print/order";
+      const printRes = await apiClient.get(printUrl);
+      if (printRes.success && Array.isArray(printRes.data)) {
+        printsCount = printRes.data.filter((o: any) => o.status !== "DELIVERED" && o.status !== "REJECTED" && o.status !== "CANCELLED").length;
+        setActivePrintsCount(printsCount);
+      }
+    } catch {}
+
+    // 4. Open gigs count
+    let gigsCount = openTasksCount;
+    try {
+      const gigsRes = await apiClient.get("/gigs?status=OPEN");
+      if (gigsRes.success && Array.isArray(gigsRes.data)) {
+        gigsCount = gigsRes.data.length;
+        setOpenTasksCount(gigsCount);
+      }
+    } catch {}
+
+    // 5. Active marketplace count
+    let marketCount = activeListingsCount;
+    try {
+      const marketRes = await apiClient.get("/marketplace?status=AVAILABLE");
+      if (marketRes.success && Array.isArray(marketRes.data)) {
+        marketCount = marketRes.data.length;
+        setActiveListingsCount(marketCount);
+      }
+    } catch {}
+
+    // 6. Recent whisper
+    let latestWhisper = recentWhisper;
     try {
       const whisperRes = await apiClient.get("/incognito?limit=1");
       if (whisperRes.success && Array.isArray(whisperRes.data) && whisperRes.data.length > 0) {
-        setRecentWhisper(whisperRes.data[0]);
+        latestWhisper = whisperRes.data[0];
+        setRecentWhisper(latestWhisper);
       }
+    } catch {}
+
+    // Save full snapshot for offline instant load
+    try {
+      await AsyncStorage.setItem(
+        STORAGE_KEY_DASHBOARD_SNAPSHOT,
+        JSON.stringify({
+          attendanceData: latestAttendance,
+          activePrintsCount: printsCount,
+          openTasksCount: gigsCount,
+          activeListingsCount: marketCount,
+          recentWhisper: latestWhisper,
+        })
+      );
     } catch {}
   };
 
@@ -95,13 +166,14 @@ export function DashboardScreen() {
   };
 
   const displayName = user?.name ? user.name.split(" ")[0] : "Student";
-  const campusName = user?.college?.name || "DTU Campus";
+  const campusName = user?.college?.name || "JCBOSEUST, YMCA";
   const isSafeAttendance = attendanceData.percentage >= 75;
 
   return (
     <ScrollView
       style={[styles.container, { backgroundColor: colors.background }]}
       contentContainerStyle={styles.contentContainer}
+      showsVerticalScrollIndicator={false}
       refreshControl={
         <RefreshControl
           refreshing={isRefreshing}
@@ -110,7 +182,7 @@ export function DashboardScreen() {
         />
       }
     >
-      {/* 1. Welcome Hero Greeting Card */}
+      {/* 1. Header Greeting Card */}
       <Card style={styles.heroCard}>
         <View style={styles.heroTopRow}>
           <View style={styles.heroBadge}>
@@ -132,7 +204,7 @@ export function DashboardScreen() {
               onPress={() => navigation.navigate("Messages")}
               style={[
                 styles.heroMsgBtn,
-                { backgroundColor: colors.card, borderColor: colors.border },
+                { backgroundColor: colors.secondary, borderColor: colors.border },
               ]}
             >
               <Feather name="message-square" size={15} color={colors.primary} />
@@ -141,163 +213,121 @@ export function DashboardScreen() {
         </View>
 
         <Text style={[styles.heroGreeting, { color: colors.text }]}>
-          Welcome back, {displayName}!
+          Welcome back, {displayName}
         </Text>
         <Text style={[styles.heroSubtitle, { color: colors.primary }]}>
           {user?.department ? `${user.department} • Year ${user.year || 1}` : "Campus Operations"}
         </Text>
         <Text style={[styles.heroDesc, { color: colors.textMuted }]}>
-          Your academic guardrails, print station orders, anonymous whisper wall, and grade calculators are synced live.
+          Your academic guardrails, print station orders, anonymous whisper wall, and campus utilities are synced live.
         </Text>
+
+        {/* Quick action buttons */}
+        <View style={styles.heroActionRow}>
+          <Button
+            title="New Print Job"
+            variant="default"
+            size="sm"
+            onPress={() => navigation.navigate("Print")}
+            style={{ flex: 1 }}
+          />
+          <Button
+            title="Check Attendance"
+            variant="outline"
+            size="sm"
+            onPress={() => navigation.navigate("Attendance")}
+            style={{ flex: 1 }}
+          />
+        </View>
       </Card>
 
-      {/* 2. Quick Launch Grid */}
-      <View style={styles.sectionHeader}>
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>
-          Campus Portals
-        </Text>
-      </View>
-
-      <View style={styles.quickGrid}>
-        {/* Attendance Tile */}
-        <TouchableOpacity
-          activeOpacity={0.8}
-          onPress={() => navigation.navigate("Attendance")}
-          style={[
-            styles.quickTile,
-            { backgroundColor: colors.card, borderColor: colors.border },
-          ]}
-        >
-          <View style={[styles.tileIconWrap, { backgroundColor: colors.success + "20" }]}>
-            <Ionicons name="calendar" size={20} color={colors.success} />
+      {/* 2. Operational Metrics Overview (4 Web-like Stat Cards) */}
+      <View style={styles.metricsGrid}>
+        {/* Pending Prints */}
+        <Card style={styles.metricCard}>
+          <View style={styles.metricCardHeader}>
+            <Text style={[styles.metricLabel, { color: colors.textMuted }]}>Pending Prints</Text>
+            <Feather name="printer" size={14} color={colors.primary} />
           </View>
-          <Text style={[styles.tileTitle, { color: colors.text }]}>Attendance</Text>
-          <Text style={[styles.tileDesc, { color: colors.textMuted }]}>
-            Bunk calculator & rules
+          <Text style={[styles.metricValue, { color: colors.text }]}>
+            {activePrintsCount}
           </Text>
-          <View style={styles.tileBadgeRow}>
-            <Text
-              style={[
-                styles.tileMetric,
-                { color: isSafeAttendance ? colors.success : colors.destructive },
-              ]}
-            >
-              {attendanceData.percentage.toFixed(1)}%
-            </Text>
-          </View>
-        </TouchableOpacity>
+          <Text style={[styles.metricHint, { color: colors.textMuted }]}>Active queue</Text>
+        </Card>
 
-        {/* Print Station Tile */}
-        <TouchableOpacity
-          activeOpacity={0.8}
-          onPress={() => navigation.navigate("Print")}
-          style={[
-            styles.quickTile,
-            { backgroundColor: colors.card, borderColor: colors.border },
-          ]}
-        >
-          <View style={[styles.tileIconWrap, { backgroundColor: colors.primary + "20" }]}>
-            <Feather name="printer" size={20} color={colors.primary} />
-          </View>
-          <Text style={[styles.tileTitle, { color: colors.text }]}>Print Station</Text>
-          <Text style={[styles.tileDesc, { color: colors.textMuted }]}>
-            Hostel drop-off orders
-          </Text>
-          <View style={styles.tileBadgeRow}>
-            <Text style={[styles.tileMetric, { color: colors.primary }]}>Active</Text>
-          </View>
-        </TouchableOpacity>
-
-        {/* Whisper Wall Tile */}
-        <TouchableOpacity
-          activeOpacity={0.8}
-          onPress={() => navigation.navigate("Whispers")}
-          style={[
-            styles.quickTile,
-            { backgroundColor: colors.card, borderColor: colors.border },
-          ]}
-        >
-          <View style={[styles.tileIconWrap, { backgroundColor: colors.accent + "30" }]}>
-            <Ionicons name="eye-off" size={20} color={colors.accent} />
-          </View>
-          <Text style={[styles.tileTitle, { color: colors.text }]}>Whisper Wall</Text>
-          <Text style={[styles.tileDesc, { color: colors.textMuted }]}>
-            Anonymous student board
-          </Text>
-          <View style={styles.tileBadgeRow}>
-            <Text style={[styles.tileMetric, { color: colors.textSecondary }]}>Live Feed</Text>
-          </View>
-        </TouchableOpacity>
-
-        {/* CGPA Tile */}
-        <TouchableOpacity
-          activeOpacity={0.8}
-          onPress={() => navigation.navigate("CGPA")}
-          style={[
-            styles.quickTile,
-            { backgroundColor: colors.card, borderColor: colors.border },
-          ]}
-        >
-          <View style={[styles.tileIconWrap, { backgroundColor: colors.warning + "20" }]}>
-            <MaterialCommunityIcons name="calculator-variant" size={20} color={colors.warning} />
-          </View>
-          <Text style={[styles.tileTitle, { color: colors.text }]}>CGPA Forecaster</Text>
-          <Text style={[styles.tileDesc, { color: colors.textMuted }]}>
-            Semester transcript & SGPA
-          </Text>
-          <View style={styles.tileBadgeRow}>
-            <Text style={[styles.tileMetric, { color: colors.warning }]}>Forecaster</Text>
-          </View>
-        </TouchableOpacity>
-
-        {/* Messages & DMs Tile */}
-        <TouchableOpacity
-          activeOpacity={0.8}
-          onPress={() => navigation.navigate("Messages")}
-          style={[
-            styles.quickTile,
-            { backgroundColor: colors.card, borderColor: colors.border },
-          ]}
-        >
-          <View style={[styles.tileIconWrap, { backgroundColor: colors.primary + "20" }]}>
-            <Feather name="message-circle" size={20} color={colors.primary} />
-          </View>
-          <Text style={[styles.tileTitle, { color: colors.text }]}>Messages & DMs</Text>
-          <Text style={[styles.tileDesc, { color: colors.textMuted }]}>
-            Direct chat & print updates
-          </Text>
-          <View style={styles.tileBadgeRow}>
-            <Text style={[styles.tileMetric, { color: colors.primary }]}>Dual Inbox</Text>
-          </View>
-        </TouchableOpacity>
-      </View>
-
-      {/* 3. Live Academic Guardrail Status Card */}
-      <Card style={styles.statusCard}>
-        <View style={styles.statusCardHeader}>
-          <View style={styles.statusIconWrap}>
+        {/* Attendance Safety */}
+        <Card style={styles.metricCard}>
+          <View style={styles.metricCardHeader}>
+            <Text style={[styles.metricLabel, { color: colors.textMuted }]}>Attendance</Text>
             <Ionicons
               name={isSafeAttendance ? "shield-checkmark" : "warning"}
-              size={18}
+              size={14}
+              color={isSafeAttendance ? colors.success : colors.destructive}
+            />
+          </View>
+          <Text
+            style={[
+              styles.metricValue,
+              { color: isSafeAttendance ? colors.success : colors.destructive },
+            ]}
+          >
+            {attendanceData.percentage.toFixed(0)}%
+          </Text>
+          <Text style={[styles.metricHint, { color: colors.textMuted }]}>
+            {isSafeAttendance ? "Safe standing" : "Under quota"}
+          </Text>
+        </Card>
+
+        {/* Open Gigs */}
+        <Card style={styles.metricCard}>
+          <View style={styles.metricCardHeader}>
+            <Text style={[styles.metricLabel, { color: colors.textMuted }]}>Open Tasks</Text>
+            <MaterialCommunityIcons name="briefcase-outline" size={14} color={colors.primary} />
+          </View>
+          <Text style={[styles.metricValue, { color: colors.text }]}>
+            {openTasksCount}
+          </Text>
+          <Text style={[styles.metricHint, { color: colors.textMuted }]}>Campus bounties</Text>
+        </Card>
+
+        {/* Campus Listings */}
+        <Card style={styles.metricCard}>
+          <View style={styles.metricCardHeader}>
+            <Text style={[styles.metricLabel, { color: colors.textMuted }]}>Classifieds</Text>
+            <Feather name="shopping-bag" size={14} color={colors.primary} />
+          </View>
+          <Text style={[styles.metricValue, { color: colors.text }]}>
+            {activeListingsCount}
+          </Text>
+          <Text style={[styles.metricHint, { color: colors.textMuted }]}>Student items</Text>
+        </Card>
+      </View>
+
+      {/* 3. Live Academic Guardrail Progress Card */}
+      <Card style={styles.guardrailCard}>
+        <View style={styles.guardrailHeader}>
+          <View style={[styles.guardrailIconWrap, { backgroundColor: (isSafeAttendance ? colors.success : colors.destructive) + "18" }]}>
+            <Ionicons
+              name={isSafeAttendance ? "shield-checkmark" : "warning"}
+              size={16}
               color={isSafeAttendance ? colors.success : colors.destructive}
             />
           </View>
           <View style={{ flex: 1, marginLeft: 10 }}>
-            <Text style={[styles.statusCardTitle, { color: colors.text }]}>
+            <Text style={[styles.guardrailTitle, { color: colors.text }]}>
               {isSafeAttendance ? "Attendance Status Safe" : "Attendance Under Target"}
             </Text>
-            <Text style={[styles.statusCardSubtitle, { color: colors.textMuted }]}>
+            <Text style={[styles.guardrailSubtitle, { color: colors.textMuted }]}>
               {attendanceData.criticalCount > 0
                 ? `${attendanceData.criticalCount} course(s) require recovery lectures`
                 : "All tracked courses meet minimum safety guidelines"}
             </Text>
           </View>
           <Badge variant={isSafeAttendance ? "success" : "destructive"} size="sm">
-            {attendanceData.percentage.toFixed(0)}%
+            {attendanceData.percentage.toFixed(1)}%
           </Badge>
         </View>
 
-        {/* Progress Bar */}
         <View style={[styles.progressTrack, { backgroundColor: colors.secondary }]}>
           <View
             style={[
@@ -310,6 +340,197 @@ export function DashboardScreen() {
           />
         </View>
       </Card>
+
+      {/* 4. Campus Portals Launcher Grid */}
+      <View style={styles.sectionHeader}>
+        <Text style={[styles.sectionTitle, { color: colors.text }]}>Campus Portals</Text>
+        <Text style={[styles.sectionSubtitle, { color: colors.textMuted }]}>All student utilities</Text>
+      </View>
+
+      <View style={styles.quickGrid}>
+        {/* Attendance */}
+        <TouchableOpacity
+          activeOpacity={0.8}
+          onPress={() => navigation.navigate("Attendance")}
+          style={[styles.quickTile, { backgroundColor: colors.card, borderColor: colors.border }]}
+        >
+          <View style={[styles.tileIconWrap, { backgroundColor: colors.primary + "14" }]}>
+            <Ionicons name="calendar" size={18} color={colors.primary} />
+          </View>
+          <Text style={[styles.tileTitle, { color: colors.text }]}>Attendance</Text>
+          <Text style={[styles.tileDesc, { color: colors.textMuted }]}>Bunk rules & offline sync</Text>
+          <View style={styles.tileFooter}>
+            <Text style={[styles.tileTag, { color: isSafeAttendance ? colors.success : colors.destructive }]}>
+              {attendanceData.percentage.toFixed(0)}%
+            </Text>
+            <Feather name="chevron-right" size={14} color={colors.textMuted} />
+          </View>
+        </TouchableOpacity>
+
+        {/* Express Print Station */}
+        <TouchableOpacity
+          activeOpacity={0.8}
+          onPress={() => navigation.navigate("Print")}
+          style={[styles.quickTile, { backgroundColor: colors.card, borderColor: colors.border }]}
+        >
+          <View style={[styles.tileIconWrap, { backgroundColor: colors.primary + "14" }]}>
+            <Feather name="printer" size={18} color={colors.primary} />
+          </View>
+          <Text style={[styles.tileTitle, { color: colors.text }]}>Print Station</Text>
+          <Text style={[styles.tileDesc, { color: colors.textMuted }]}>Hostel delivery & tracking</Text>
+          <View style={styles.tileFooter}>
+            <Text style={[styles.tileTag, { color: colors.primary }]}>Express</Text>
+            <Feather name="chevron-right" size={14} color={colors.textMuted} />
+          </View>
+        </TouchableOpacity>
+
+        {/* Whisper Wall */}
+        <TouchableOpacity
+          activeOpacity={0.8}
+          onPress={() => navigation.navigate("Whispers")}
+          style={[styles.quickTile, { backgroundColor: colors.card, borderColor: colors.border }]}
+        >
+          <View style={[styles.tileIconWrap, { backgroundColor: colors.primary + "14" }]}>
+            <Ionicons name="eye-off" size={18} color={colors.primary} />
+          </View>
+          <Text style={[styles.tileTitle, { color: colors.text }]}>Whisper Wall</Text>
+          <Text style={[styles.tileDesc, { color: colors.textMuted }]}>Anonymous campus board</Text>
+          <View style={styles.tileFooter}>
+            <Text style={[styles.tileTag, { color: colors.primary }]}>Live Feed</Text>
+            <Feather name="chevron-right" size={14} color={colors.textMuted} />
+          </View>
+        </TouchableOpacity>
+
+        {/* Cab Split & RideShare */}
+        <TouchableOpacity
+          activeOpacity={0.8}
+          onPress={() => navigation.navigate("RideShare")}
+          style={[styles.quickTile, { backgroundColor: colors.card, borderColor: colors.border }]}
+        >
+          <View style={[styles.tileIconWrap, { backgroundColor: colors.primary + "14" }]}>
+            <Ionicons name="car-sport" size={18} color={colors.primary} />
+          </View>
+          <Text style={[styles.tileTitle, { color: colors.text }]}>Cab Split</Text>
+          <Text style={[styles.tileDesc, { color: colors.textMuted }]}>Transit & airport splits</Text>
+          <View style={styles.tileFooter}>
+            <Text style={[styles.tileTag, { color: colors.primary }]}>Split Fare</Text>
+            <Feather name="chevron-right" size={14} color={colors.textMuted} />
+          </View>
+        </TouchableOpacity>
+
+        {/* Campus Lost & Found */}
+        <TouchableOpacity
+          activeOpacity={0.8}
+          onPress={() => navigation.navigate("LostAndFound")}
+          style={[styles.quickTile, { backgroundColor: colors.card, borderColor: colors.border }]}
+        >
+          <View style={[styles.tileIconWrap, { backgroundColor: colors.primary + "14" }]}>
+            <Ionicons name="search" size={18} color={colors.primary} />
+          </View>
+          <Text style={[styles.tileTitle, { color: colors.text }]}>Lost & Found</Text>
+          <Text style={[styles.tileDesc, { color: colors.textMuted }]}>Campus recovery registry</Text>
+          <View style={styles.tileFooter}>
+            <Text style={[styles.tileTag, { color: colors.primary }]}>Registry</Text>
+            <Feather name="chevron-right" size={14} color={colors.textMuted} />
+          </View>
+        </TouchableOpacity>
+
+        {/* Student Marketplace */}
+        <TouchableOpacity
+          activeOpacity={0.8}
+          onPress={() => navigation.navigate("Marketplace")}
+          style={[styles.quickTile, { backgroundColor: colors.card, borderColor: colors.border }]}
+        >
+          <View style={[styles.tileIconWrap, { backgroundColor: colors.primary + "14" }]}>
+            <Feather name="shopping-bag" size={18} color={colors.primary} />
+          </View>
+          <Text style={[styles.tileTitle, { color: colors.text }]}>Marketplace</Text>
+          <Text style={[styles.tileDesc, { color: colors.textMuted }]}>Classifieds & books</Text>
+          <View style={styles.tileFooter}>
+            <Text style={[styles.tileTag, { color: colors.primary }]}>Peer-to-Peer</Text>
+            <Feather name="chevron-right" size={14} color={colors.textMuted} />
+          </View>
+        </TouchableOpacity>
+
+        {/* Campus Task Gigs */}
+        <TouchableOpacity
+          activeOpacity={0.8}
+          onPress={() => navigation.navigate("Gigs")}
+          style={[styles.quickTile, { backgroundColor: colors.card, borderColor: colors.border }]}
+        >
+          <View style={[styles.tileIconWrap, { backgroundColor: colors.primary + "14" }]}>
+            <MaterialCommunityIcons name="briefcase-check" size={18} color={colors.primary} />
+          </View>
+          <Text style={[styles.tileTitle, { color: colors.text }]}>Campus Gigs</Text>
+          <Text style={[styles.tileDesc, { color: colors.textMuted }]}>Tasks & escrow bounties</Text>
+          <View style={styles.tileFooter}>
+            <Text style={[styles.tileTag, { color: colors.primary }]}>Escrow Safe</Text>
+            <Feather name="chevron-right" size={14} color={colors.textMuted} />
+          </View>
+        </TouchableOpacity>
+
+        {/* CGPA Forecaster */}
+        <TouchableOpacity
+          activeOpacity={0.8}
+          onPress={() => navigation.navigate("CGPA")}
+          style={[styles.quickTile, { backgroundColor: colors.card, borderColor: colors.border }]}
+        >
+          <View style={[styles.tileIconWrap, { backgroundColor: colors.primary + "14" }]}>
+            <MaterialCommunityIcons name="calculator-variant" size={18} color={colors.primary} />
+          </View>
+          <Text style={[styles.tileTitle, { color: colors.text }]}>CGPA Simulator</Text>
+          <Text style={[styles.tileDesc, { color: colors.textMuted }]}>270° radial forecast gauge</Text>
+          <View style={styles.tileFooter}>
+            <Text style={[styles.tileTag, { color: colors.primary }]}>Simulator</Text>
+            <Feather name="chevron-right" size={14} color={colors.textMuted} />
+          </View>
+        </TouchableOpacity>
+
+        {/* Messages & DMs Portal */}
+        <TouchableOpacity
+          activeOpacity={0.8}
+          onPress={() => navigation.navigate("Messages")}
+          style={[styles.quickTile, { backgroundColor: colors.card, borderColor: colors.border }]}
+        >
+          <View style={[styles.tileIconWrap, { backgroundColor: colors.primary + "14" }]}>
+            <Ionicons name="chatbubbles" size={18} color={colors.primary} />
+          </View>
+          <Text style={[styles.tileTitle, { color: colors.text }]}>Messages & DMs</Text>
+          <Text style={[styles.tileDesc, { color: colors.textMuted }]}>Classmates & whisper chat</Text>
+          <View style={styles.tileFooter}>
+            <Text style={[styles.tileTag, { color: colors.primary }]}>Direct Chat</Text>
+            <Feather name="chevron-right" size={14} color={colors.textMuted} />
+          </View>
+        </TouchableOpacity>
+      </View>
+
+      {/* 5. Trending Whisper Card */}
+      {recentWhisper && (
+        <Card style={styles.whisperPreviewCard}>
+          <View style={styles.whisperPreviewHeader}>
+            <View style={styles.whisperUserRow}>
+              <View style={[styles.whisperDot, { backgroundColor: colors.accent }]} />
+              <Text style={[styles.whisperAlias, { color: colors.textSecondary }]}>
+                {recentWhisper.authorAlias || "Anonymous Student"}
+              </Text>
+            </View>
+            <Badge variant="outline" size="sm">
+              Trending Whisper
+            </Badge>
+          </View>
+          <Text style={[styles.whisperText, { color: colors.text }]} numberOfLines={2}>
+            {recentWhisper.content}
+          </Text>
+          <TouchableOpacity
+            style={styles.whisperLink}
+            onPress={() => navigation.navigate("Whispers")}
+          >
+            <Text style={[styles.whisperLinkText, { color: colors.primary }]}>
+              Join conversation on Whisper Wall →
+            </Text>
+          </TouchableOpacity>
+        </Card>
+      )}
     </ScrollView>
   );
 }
@@ -320,17 +541,18 @@ const styles = StyleSheet.create({
   },
   contentContainer: {
     padding: 16,
-    paddingBottom: 32,
+    paddingBottom: 36,
     gap: 16,
   },
   heroCard: {
     padding: 18,
+    gap: 8,
   },
   heroTopRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 10,
+    marginBottom: 4,
   },
   heroBadge: {
     flexDirection: "row",
@@ -363,85 +585,66 @@ const styles = StyleSheet.create({
   heroSubtitle: {
     fontSize: 13,
     fontWeight: "700",
-    marginTop: 2,
-    marginBottom: 6,
   },
   heroDesc: {
     fontSize: 12,
     lineHeight: 18,
   },
-  sectionHeader: {
+  heroActionRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    marginTop: 4,
+    gap: 10,
+    marginTop: 6,
   },
-  sectionTitle: {
-    fontSize: 14,
-    fontWeight: "800",
-    letterSpacing: -0.2,
-    textTransform: "uppercase",
-  },
-  quickGrid: {
+  metricsGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 12,
+    gap: 10,
   },
-  quickTile: {
+  metricCard: {
     width: "48%",
     flexGrow: 1,
-    padding: 14,
-    borderRadius: 14,
-    borderWidth: 1,
+    padding: 12,
+    gap: 2,
   },
-  tileIconWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 10,
-  },
-  tileTitle: {
-    fontSize: 14,
-    fontWeight: "800",
-    letterSpacing: -0.2,
-  },
-  tileDesc: {
-    fontSize: 11,
-    marginTop: 2,
-    lineHeight: 14,
-  },
-  tileBadgeRow: {
-    marginTop: 10,
+  metricCardHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
-  tileMetric: {
-    fontSize: 12,
-    fontWeight: "700",
+  metricLabel: {
+    fontSize: 11,
+    fontWeight: "600",
   },
-  statusCard: {
-    padding: 16,
+  metricValue: {
+    fontSize: 22,
+    fontWeight: "900",
+    letterSpacing: -0.5,
+    marginTop: 2,
   },
-  statusCardHeader: {
+  metricHint: {
+    fontSize: 10,
+  },
+  guardrailCard: {
+    padding: 14,
+    gap: 10,
+  },
+  guardrailHeader: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 12,
   },
-  statusIconWrap: {
-    width: 32,
-    height: 32,
+  guardrailIconWrap: {
+    width: 30,
+    height: 30,
     borderRadius: 8,
     alignItems: "center",
     justifyContent: "center",
   },
-  statusCardTitle: {
+  guardrailTitle: {
     fontSize: 13,
     fontWeight: "700",
   },
-  statusCardSubtitle: {
+  guardrailSubtitle: {
     fontSize: 11,
     marginTop: 1,
   },
@@ -454,5 +657,93 @@ const styles = StyleSheet.create({
   progressBar: {
     height: "100%",
     borderRadius: 3,
+  },
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 2,
+  },
+  sectionTitle: {
+    fontSize: 15,
+    fontWeight: "800",
+    letterSpacing: -0.2,
+  },
+  sectionSubtitle: {
+    fontSize: 11,
+  },
+  quickGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+  },
+  quickTile: {
+    width: "48%",
+    flexGrow: 1,
+    padding: 12,
+    borderRadius: 14,
+    borderWidth: 1,
+    gap: 3,
+  },
+  tileIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 4,
+  },
+  tileTitle: {
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  tileDesc: {
+    fontSize: 10,
+    lineHeight: 14,
+  },
+  tileFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 6,
+    paddingTop: 4,
+  },
+  tileTag: {
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  whisperPreviewCard: {
+    padding: 14,
+    gap: 6,
+  },
+  whisperPreviewHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  whisperUserRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  whisperDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  whisperAlias: {
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  whisperText: {
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  whisperLink: {
+    paddingTop: 4,
+  },
+  whisperLinkText: {
+    fontSize: 11,
+    fontWeight: "600",
   },
 });

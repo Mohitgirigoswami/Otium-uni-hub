@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -10,16 +10,20 @@ import {
   RefreshControl,
   KeyboardAvoidingView,
   Platform,
+  Animated,
+  PanResponder,
+  Vibration,
 } from "react-native";
 import { Ionicons, Feather } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useTheme } from "../context/ThemeContext";
+import { useUser } from "../context/UserContext";
 import { Card } from "../components/ui/Card";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { Input } from "../components/ui/Input";
-import { LiquidSlider } from "../components/ui/LiquidSlider";
 import { CircularProgress } from "../components/CircularProgress";
+import { ClientServiceGuard } from "../components/ClientServiceGuard";
 import { apiClient } from "../services/apiClient";
 
 const STORAGE_KEY_ATTENDANCE = "@otium_attendance_subjects";
@@ -35,14 +39,6 @@ export interface SubjectItem {
   periodWeight?: number; // 1 = standard class, 2 = 2-period lab, 3 = 3-period lab, 4 = workshop
 }
 
-const INITIAL_SUBJECTS: SubjectItem[] = [
-  { id: "1", name: "Data Structures & Algorithms", code: "CS201", attended: 24, total: 28, periodWeight: 1 },
-  { id: "2", name: "Operating Systems", code: "CS204", attended: 22, total: 30, periodWeight: 1 },
-  { id: "3", name: "Computer Networks Lab", code: "CS208L", attended: 24, total: 30, periodWeight: 2 },
-  { id: "4", name: "Database Engineering", code: "CS210", attended: 19, total: 28, periodWeight: 1 },
-  { id: "5", name: "Theory of Computation", code: "CS212", attended: 26, total: 30, periodWeight: 1 },
-];
-
 const SESSION_WEIGHT_OPTIONS = [
   { weight: 1, label: "1h Lecture", subtitle: "1 period weight (+1)", icon: "book-outline" },
   { weight: 2, label: "2h Tutorial", subtitle: "2 periods weight (+2)", icon: "flask-outline" },
@@ -50,13 +46,251 @@ const SESSION_WEIGHT_OPTIONS = [
   { weight: 4, label: "4h Workshop", subtitle: "4 periods weight (+4)", icon: "construct-outline" },
 ];
 
+function SwipeableSubjectCardItem({
+  sub,
+  advice,
+  isDanger,
+  weight,
+  isPunching,
+  punchType,
+  punchScale,
+  colors,
+  targetPercentage,
+  onLog,
+  onEdit,
+  onDelete,
+}: {
+  sub: SubjectItem;
+  advice: any;
+  isDanger: boolean;
+  weight: number;
+  isPunching: boolean;
+  punchType: "PRESENT" | "ABSENT" | null;
+  punchScale: Animated.Value;
+  colors: any;
+  targetPercentage: number;
+  onLog: (id: string, attended: boolean, weight: number) => void;
+  onEdit: (sub: SubjectItem) => void;
+  onDelete: (id: string, name: string) => void;
+}) {
+  const pan = useRef(new Animated.Value(0)).current;
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, gesture) =>
+        Math.abs(gesture.dx) > 15 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.5,
+      onPanResponderMove: (_, gesture) => {
+        pan.setValue(gesture.dx);
+      },
+      onPanResponderRelease: (_, gesture) => {
+        if (gesture.dx > 70) {
+          Vibration.vibrate(45);
+          onLog(sub.id, true, weight);
+          Animated.spring(pan, { toValue: 0, friction: 6, useNativeDriver: true }).start();
+        } else if (gesture.dx < -70) {
+          Vibration.vibrate(45);
+          onLog(sub.id, false, weight);
+          Animated.spring(pan, { toValue: 0, friction: 6, useNativeDriver: true }).start();
+        } else {
+          Animated.spring(pan, { toValue: 0, friction: 6, useNativeDriver: true }).start();
+        }
+      },
+      onPanResponderTerminate: () => {
+        Animated.spring(pan, { toValue: 0, friction: 6, useNativeDriver: true }).start();
+      },
+    })
+  ).current;
+
+  return (
+    <View style={styles.swipeCardContainer}>
+      {/* Background reveals on swipe */}
+      <View style={styles.swipeUnderlay}>
+        <View style={[styles.swipeActionLeft, { backgroundColor: colors.success + "20" }]}>
+          <Feather name="check-circle" size={20} color={colors.success} />
+          <Text style={[styles.swipeActionText, { color: colors.success }]}>+ Present</Text>
+        </View>
+        <View style={[styles.swipeActionRight, { backgroundColor: colors.destructive + "20" }]}>
+          <Text style={[styles.swipeActionText, { color: colors.destructive }]}>+ Absent</Text>
+          <Feather name="x-circle" size={20} color={colors.destructive} />
+        </View>
+      </View>
+
+      {/* Draggable Foreground Card */}
+      <Animated.View
+        {...panResponder.panHandlers}
+        style={{
+          transform: [
+            { translateX: pan },
+            { scale: isPunching ? punchScale : 1 },
+          ],
+        }}
+      >
+        <Card
+          style={[
+            styles.subjectCard,
+            isDanger && { borderColor: colors.destructive + "50" },
+            isPunching && {
+              borderColor: punchType === "PRESENT" ? colors.success : colors.destructive,
+            },
+          ]}
+        >
+          {/* Card Header: Subject name, code badge, weight badge, and edit/delete icons */}
+          <View style={styles.cardHeaderRow}>
+            <View style={{ flex: 1, marginRight: 8 }}>
+              <View style={styles.titleRow}>
+                <Text style={[styles.subName, { color: colors.text }]} numberOfLines={1}>
+                  {sub.name}
+                </Text>
+                <Badge variant="default" size="sm">
+                  {sub.code}
+                </Badge>
+                {weight > 1 && (
+                  <Badge variant="outline" size="sm">
+                    {weight}h Lab
+                  </Badge>
+                )}
+              </View>
+              <Text style={[styles.subStats, { color: colors.textMuted }]}>
+                {sub.attended} attended / {sub.total} held
+              </Text>
+            </View>
+
+            {/* Edit & Delete Actions */}
+            <View style={styles.cardActionIcons}>
+              <TouchableOpacity
+                onPress={() => onEdit(sub)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                style={styles.iconBtn}
+              >
+                <Feather name="edit-2" size={14} color={colors.textSecondary} />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => onDelete(sub.id, sub.name)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                style={styles.iconBtn}
+              >
+                <Feather name="trash-2" size={14} color={colors.destructive} />
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* Attendance Rate & Advice */}
+          <View style={styles.rateRow}>
+            <Text style={[styles.adviceText, { color: isDanger ? colors.destructive : colors.primary }]}>
+              {advice.text}
+            </Text>
+            <Text
+              style={[
+                styles.rateValue,
+                { color: isDanger ? colors.destructive : colors.primary },
+              ]}
+            >
+              {advice.percentage}%
+            </Text>
+          </View>
+
+          {/* Progress Line with Target Marker Pin */}
+          <View style={[styles.progressTrack, { backgroundColor: colors.secondary }]}>
+            <View
+              style={[
+                styles.progressBar,
+                {
+                  width: `${Math.min(100, parseFloat(advice.percentage))}%`,
+                  backgroundColor: isDanger ? colors.destructive : colors.primary,
+                },
+              ]}
+            />
+            {/* Target Marker Pin */}
+            <View
+              style={[
+                styles.thresholdPin,
+                {
+                  left: `${targetPercentage}%`,
+                  backgroundColor: colors.textSecondary,
+                },
+              ]}
+            />
+          </View>
+
+          {/* Optimistic Flash Feedback Indicator */}
+          {isPunching && (
+            <View
+              style={[
+                styles.punchFeedbackBadge,
+                {
+                  backgroundColor:
+                    punchType === "PRESENT" ? colors.success + "18" : colors.destructive + "18",
+                  borderColor:
+                    punchType === "PRESENT" ? colors.success : colors.destructive,
+                },
+              ]}
+            >
+              <Ionicons
+                name={punchType === "PRESENT" ? "checkmark-circle" : "close-circle"}
+                size={14}
+                color={punchType === "PRESENT" ? colors.success : colors.destructive}
+              />
+              <Text
+                style={[
+                  styles.punchFeedbackText,
+                  {
+                    color: punchType === "PRESENT" ? colors.success : colors.destructive,
+                  },
+                ]}
+              >
+                {punchType === "PRESENT"
+                  ? `+${weight} Period(s) Logged Present!`
+                  : `+${weight} Period(s) Logged Absent!`}
+              </Text>
+            </View>
+          )}
+
+          {/* Clean Log Attendance Action Buttons (Uncluttered: without (3h)) */}
+          <View style={styles.logButtonsRow}>
+            <Button
+              title="+ Present"
+              variant="outline"
+              size="sm"
+              onPress={() => onLog(sub.id, true, weight)}
+              leftIcon={<Feather name="check" size={13} color={colors.success} />}
+              style={{ flex: 1, borderColor: colors.success + "40" }}
+              textStyle={{ color: colors.success }}
+            />
+
+            <Button
+              title="+ Absent"
+              variant="outline"
+              size="sm"
+              onPress={() => onLog(sub.id, false, weight)}
+              leftIcon={<Feather name="x" size={13} color={colors.destructive} />}
+              style={{ flex: 1, borderColor: colors.destructive + "40" }}
+              textStyle={{ color: colors.destructive }}
+            />
+          </View>
+
+          <Text style={[styles.swipeHint, { color: colors.textMuted }]}>
+            👉 Swipe right to mark present • 👈 Swipe left to mark absent
+          </Text>
+        </Card>
+      </Animated.View>
+    </View>
+  );
+}
+
 export function AttendanceScreen() {
   const { colors, isDark } = useTheme();
-  const [subjects, setSubjects] = useState<SubjectItem[]>(INITIAL_SUBJECTS);
+  const { user } = useUser();
+  const [subjects, setSubjects] = useState<SubjectItem[]>([]);
   const [targetPercentage, setTargetPercentage] = useState<number>(75);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isOfflineMode, setIsOfflineMode] = useState(false);
+
+  // Tactile optimistic feedback animation states
+  const [punchId, setPunchId] = useState<string | null>(null);
+  const [punchType, setPunchType] = useState<"PRESENT" | "ABSENT" | null>(null);
+  const punchScale = useRef(new Animated.Value(1)).current;
 
   // Add Modal State
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -70,7 +304,7 @@ export function AttendanceScreen() {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingSub, setEditingSub] = useState<SubjectItem | null>(null);
 
-  // Flush offline pending queue
+  // Flush offline pending queue with fast timeout
   const flushOfflineSyncQueue = async () => {
     try {
       const queueRaw = await AsyncStorage.getItem(STORAGE_KEY_SYNC_QUEUE);
@@ -81,7 +315,7 @@ export function AttendanceScreen() {
       const remaining: any[] = [];
       for (const item of queue) {
         try {
-          await apiClient.post("/attendance", item);
+          await apiClient.post("/attendance", { ...item, userId: user?.id }, { timeoutMs: 2500 });
         } catch {
           remaining.push(item);
         }
@@ -103,11 +337,18 @@ export function AttendanceScreen() {
     await flushOfflineSyncQueue();
 
     const activeList = localSubs || subjects;
+    const activeUserId = user?.id;
+
     try {
-      const res = await apiClient.post("/attendance", {
-        action: "SYNC_OFFLINE",
-        subjects: activeList,
-      });
+      const res = await apiClient.post(
+        "/attendance",
+        {
+          action: "SYNC_OFFLINE",
+          userId: activeUserId,
+          subjects: activeList,
+        },
+        { timeoutMs: 3500 }
+      );
 
       if (res.success && Array.isArray(res.data) && res.data.length > 0) {
         const mapped: SubjectItem[] = res.data.map((s: any) => ({
@@ -121,8 +362,12 @@ export function AttendanceScreen() {
         setSubjects(mapped);
         setIsOfflineMode(false);
         await AsyncStorage.setItem(STORAGE_KEY_ATTENDANCE, JSON.stringify(mapped));
+        await AsyncStorage.removeItem(STORAGE_KEY_SYNC_QUEUE);
       } else {
-        const fallbackRes = await apiClient.get("/attendance");
+        const fallbackRes = await apiClient.get(
+          activeUserId ? `/attendance?userId=${activeUserId}` : "/attendance",
+          { timeoutMs: 3500 }
+        );
         if (fallbackRes.success && Array.isArray(fallbackRes.data) && fallbackRes.data.length > 0) {
           const mapped: SubjectItem[] = fallbackRes.data.map((s: any) => ({
             id: s.id,
@@ -174,6 +419,13 @@ export function AttendanceScreen() {
     }
     loadCache();
   }, []);
+
+  // Re-sync immediately once user auth token restores
+  useEffect(() => {
+    if (user?.id) {
+      syncWithBackend();
+    }
+  }, [user?.id]);
 
   const handleTargetChange = (val: number) => {
     setTargetPercentage(val);
@@ -301,11 +553,25 @@ export function AttendanceScreen() {
       return s;
     });
 
-    // 1. Immediately update local state & disk storage (0ms offline responsiveness!)
+    // 1. Trigger tactile punch micro-animation
+    setPunchId(id);
+    setPunchType(attended ? "PRESENT" : "ABSENT");
+    Animated.sequence([
+      Animated.timing(punchScale, { toValue: 0.94, duration: 70, useNativeDriver: true }),
+      Animated.spring(punchScale, { toValue: 1.04, friction: 3, tension: 140, useNativeDriver: true }),
+      Animated.timing(punchScale, { toValue: 1.0, duration: 80, useNativeDriver: true }),
+    ]).start(() => {
+      setTimeout(() => {
+        setPunchId((curr) => (curr === id ? null : curr));
+        setPunchType(null);
+      }, 1000);
+    });
+
+    // 2. Immediately update local state & disk storage (0ms offline responsiveness!)
     setSubjects(updated);
     AsyncStorage.setItem(STORAGE_KEY_ATTENDANCE, JSON.stringify(updated)).catch(() => {});
 
-    // 2. Queue or dispatch to server
+    // 3. Queue or dispatch to server
     const payload = {
       action: "LOG_SESSION",
       subjectId: id,
@@ -366,220 +632,235 @@ export function AttendanceScreen() {
   };
 
   return (
-    <ScrollView
-      style={[styles.container, { backgroundColor: colors.background }]}
-      contentContainerStyle={styles.contentContainer}
-      refreshControl={
-        <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} tintColor={colors.primary} />
-      }
-    >
-      {/* 1. Threshold Control Card with LiquidSlider */}
-      <Card style={styles.sliderCard}>
-        <View style={styles.sliderHeader}>
-          <View style={{ flex: 1 }}>
-            <View style={styles.badgeRow}>
-              <Badge variant="primary" size="sm">
-                Target: {targetPercentage}%
-              </Badge>
-              {isOfflineMode ? (
-                <Badge variant="warning" size="sm">
-                  ☁️ Offline Mode
+    <ClientServiceGuard serviceKey="ATTENDANCE">
+      <ScrollView
+        style={[styles.container, { backgroundColor: colors.background }]}
+        contentContainerStyle={styles.contentContainer}
+        refreshControl={
+          <RefreshControl refreshing={isRefreshing} onRefresh={onRefresh} tintColor={colors.primary} />
+        }
+      >
+        {/* 1. Threshold Control Card with Numeric Stepper & Presets */}
+        <Card style={styles.sliderCard}>
+          <View style={styles.sliderHeader}>
+            <View style={{ flex: 1 }}>
+              <View style={styles.badgeRow}>
+                <Badge variant="primary" size="sm">
+                  Target: {targetPercentage}%
                 </Badge>
-              ) : (
-                <Badge variant="success" size="sm">
-                  ⚡ Live Synced
-                </Badge>
-              )}
+                {isOfflineMode ? (
+                  <Badge variant="warning" size="sm">
+                    ☁️ Offline Mode
+                  </Badge>
+                ) : (
+                  <Badge variant="success" size="sm">
+                    ⚡ Live Synced
+                  </Badge>
+                )}
+              </View>
+              <Text style={[styles.sliderTitle, { color: colors.text }]}>
+                Attendance Guardrail
+              </Text>
+              <Text style={[styles.sliderSubtitle, { color: colors.textMuted }]}>
+                Set custom target threshold for your department or medical quota.
+              </Text>
             </View>
-            <Text style={[styles.sliderTitle, { color: colors.text }]}>
-              Attendance Guardrail
-            </Text>
-            <Text style={[styles.sliderSubtitle, { color: colors.textMuted }]}>
-              Set custom target threshold for your department or medical quota.
-            </Text>
-          </View>
-        </View>
-
-        <LiquidSlider
-          min={50}
-          max={95}
-          step={1}
-          value={targetPercentage}
-          onChange={handleTargetChange}
-          unit="%"
-          presets={[
-            { label: "65% Medical", value: 65 },
-            { label: "75% Standard", value: 75 },
-            { label: "80% Strict", value: 80 },
-            { label: "85% Honors", value: 85 },
-          ]}
-        />
-      </Card>
-
-      {/* 2. Aggregate Overall Status Card */}
-      <Card style={styles.aggregateCard}>
-        <View style={styles.aggregateRow}>
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.aggLabel, { color: colors.textSecondary }]}>
-              Semester Aggregate
-            </Text>
-            <Text
-              style={[
-                styles.aggPercentage,
-                {
-                  color: aggregatePercentage >= targetPercentage ? colors.success : colors.destructive,
-                },
-              ]}
-            >
-              {aggregatePercentage.toFixed(1)}%
-            </Text>
-            <Text style={[styles.aggHeld, { color: colors.textMuted }]}>
-              {totalAttended} attended of {totalHeld} total lectures
-            </Text>
           </View>
 
-          <Badge
-            variant={aggregatePercentage >= targetPercentage ? "success" : "destructive"}
-            size="md"
-          >
-            {aggregatePercentage >= targetPercentage ? "Safe Standing" : "Under Quota"}
-          </Badge>
-        </View>
-      </Card>
+          {/* Numeric Stepper [-] [ 75% ] [+] */}
+          <View style={styles.stepperContainer}>
+            <View style={styles.stepperRow}>
+              <TouchableOpacity
+                onPress={() => handleTargetChange(Math.max(50, targetPercentage - 5))}
+                style={[styles.stepBtn, { backgroundColor: colors.secondary, borderColor: colors.border }]}
+                activeOpacity={0.7}
+              >
+                <Feather name="minus" size={18} color={colors.text} />
+              </TouchableOpacity>
 
-      {/* 3. Enrolled Courses Section Header */}
-      <View style={styles.sectionHeader}>
-        <View>
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>
-            Enrolled Subjects
-          </Text>
-          <Text style={[styles.sectionSubtitle, { color: colors.textMuted }]}>
-            {subjects.length} course(s) being monitored
-          </Text>
-        </View>
+              <TouchableOpacity
+                onPress={() => {
+                  Alert.prompt
+                    ? Alert.prompt(
+                        "Custom Target %",
+                        "Enter required attendance target percentage (50-95%):",
+                        [
+                          { text: "Cancel", style: "cancel" },
+                          {
+                            text: "Apply",
+                            onPress: (val?: string) => {
+                              const num = parseInt(val || "75", 10);
+                              if (!isNaN(num) && num >= 50 && num <= 95) handleTargetChange(num);
+                            },
+                          },
+                        ],
+                        "plain-text",
+                        targetPercentage.toString()
+                      )
+                    : null;
+                }}
+                style={[
+                  styles.targetDisplay,
+                  { backgroundColor: colors.primary + "15", borderColor: colors.primary + "40" },
+                ]}
+                activeOpacity={0.8}
+              >
+                <Text style={[styles.targetValueText, { color: colors.primary }]}>
+                  {targetPercentage}%
+                </Text>
+                <Text style={[styles.targetSubtitle, { color: colors.textMuted }]}>
+                  Min Requirement
+                </Text>
+              </TouchableOpacity>
 
-        <Button
-          title="Add Subject"
-          size="sm"
-          onPress={() => setIsAddModalOpen(true)}
-          leftIcon={<Ionicons name="add" size={16} color={colors.primaryForeground} />}
-        />
-      </View>
+              <TouchableOpacity
+                onPress={() => handleTargetChange(Math.min(95, targetPercentage + 5))}
+                style={[styles.stepBtn, { backgroundColor: colors.secondary, borderColor: colors.border }]}
+                activeOpacity={0.7}
+              >
+                <Feather name="plus" size={18} color={colors.text} />
+              </TouchableOpacity>
+            </View>
 
-      {/* 4. Uncluttered Subject Cards */}
-      <View style={styles.subjectList}>
-        {subjects.map((sub) => {
-          const advice = calculateAdvice(sub.attended, sub.total);
-          const isDanger = !advice.isSafe;
-          const weight = sub.periodWeight || 1;
-
-          return (
-            <Card
-              key={sub.id}
-              style={[
-                styles.subjectCard,
-                isDanger && { borderColor: colors.destructive + "50" },
-              ]}
-            >
-              {/* Card Header: Subject name, code badge, duration badge, and edit/delete icons */}
-              <View style={styles.cardHeaderRow}>
-                <View style={{ flex: 1, marginRight: 8 }}>
-                  <View style={styles.titleRow}>
-                    <Text style={[styles.subName, { color: colors.text }]} numberOfLines={1}>
-                      {sub.name}
+            {/* Quick Preset Chips */}
+            <View style={styles.presetsRow}>
+              {[
+                { label: "65% Medical", val: 65 },
+                { label: "75% Standard", val: 75 },
+                { label: "80% Strict", val: 80 },
+                { label: "85% Honors", val: 85 },
+                { label: "90% Dean's List", val: 90 },
+              ].map((preset) => {
+                const isSelected = targetPercentage === preset.val;
+                return (
+                  <TouchableOpacity
+                    key={preset.val}
+                    onPress={() => handleTargetChange(preset.val)}
+                    style={[
+                      styles.presetChip,
+                      {
+                        backgroundColor: isSelected ? colors.primary : colors.secondary,
+                        borderColor: isSelected ? colors.primary : colors.border,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.presetChipText,
+                        {
+                          color: isSelected ? colors.primaryForeground : colors.textMuted,
+                          fontWeight: isSelected ? "700" : "500",
+                        },
+                      ]}
+                    >
+                      {preset.label}
                     </Text>
-                    <Badge variant="default" size="sm">
-                      {sub.code}
-                    </Badge>
-                    {/* Clean duration badge */}
-                    {weight > 1 && (
-                      <Badge variant="outline" size="sm">
-                        {weight}h Lab
-                      </Badge>
-                    )}
-                  </View>
-                  <Text style={[styles.subStats, { color: colors.textMuted }]}>
-                    {sub.attended} attended / {sub.total} held
-                  </Text>
-                </View>
-
-                {/* Edit & Delete Actions */}
-                <View style={styles.cardActionIcons}>
-                  <TouchableOpacity
-                    onPress={() => {
-                      setEditingSub({ ...sub });
-                      setIsEditModalOpen(true);
-                    }}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    style={styles.iconBtn}
-                  >
-                    <Feather name="edit-2" size={14} color={colors.textSecondary} />
                   </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+        </Card>
 
-                  <TouchableOpacity
-                    onPress={() => handleDeleteSubject(sub.id, sub.name)}
-                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    style={styles.iconBtn}
-                  >
-                    <Feather name="trash-2" size={14} color={colors.destructive} />
-                  </TouchableOpacity>
-                </View>
-              </View>
+        {/* 2. Aggregate Overall Status Card */}
+        <Card style={styles.aggregateCard}>
+          <View style={styles.aggregateRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.aggLabel, { color: colors.textSecondary }]}>
+                Semester Aggregate
+              </Text>
+              <Text
+                style={[
+                  styles.aggPercentage,
+                  {
+                    color: aggregatePercentage >= targetPercentage ? colors.primary : colors.destructive,
+                  },
+                ]}
+              >
+                {aggregatePercentage.toFixed(1)}%
+              </Text>
+              <Text style={[styles.aggHeld, { color: colors.textMuted }]}>
+                {totalAttended} attended of {totalHeld} total lectures
+              </Text>
+            </View>
 
-              {/* Attendance Rate & Advice */}
-              <View style={styles.rateRow}>
-                <Text style={[styles.adviceText, { color: isDanger ? colors.destructive : colors.success }]}>
-                  {advice.text}
-                </Text>
-                <Text
-                  style={[
-                    styles.rateValue,
-                    { color: isDanger ? colors.destructive : colors.success },
-                  ]}
-                >
-                  {advice.percentage}%
-                </Text>
-              </View>
+            <Badge
+              variant={aggregatePercentage >= targetPercentage ? "primary" : "destructive"}
+              size="md"
+            >
+              {aggregatePercentage >= targetPercentage ? "Safe Standing" : "Under Quota"}
+            </Badge>
+          </View>
+        </Card>
 
-              {/* Progress Line */}
-              <View style={[styles.progressTrack, { backgroundColor: colors.secondary }]}>
-                <View
-                  style={[
-                    styles.progressBar,
-                    {
-                      width: `${Math.min(100, parseFloat(advice.percentage))}%`,
-                      backgroundColor: isDanger ? colors.destructive : colors.success,
-                    },
-                  ]}
+        {/* 3. Enrolled Courses Section Header */}
+        <View style={styles.sectionHeader}>
+          <View>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>
+              Enrolled Subjects
+            </Text>
+            <Text style={[styles.sectionSubtitle, { color: colors.textMuted }]}>
+              {subjects.length} course(s) being monitored
+            </Text>
+          </View>
+
+          <Button
+            title="Add Subject"
+            size="sm"
+            onPress={() => setIsAddModalOpen(true)}
+            leftIcon={<Ionicons name="add" size={16} color={colors.primaryForeground} />}
+          />
+        </View>
+
+        {/* 4. Subject Cards List with Swipe Gestures */}
+        {subjects.length === 0 ? (
+          <Card style={styles.emptyCard}>
+            <View style={[styles.emptyIconWrap, { backgroundColor: colors.primary + "15" }]}>
+              <Ionicons name="calendar-outline" size={36} color={colors.primary} />
+            </View>
+            <Text style={[styles.emptyTitle, { color: colors.text }]}>No Subjects Monitored Yet</Text>
+            <Text style={[styles.emptySubtitle, { color: colors.textMuted }]}>
+              Add your enrolled courses to start tracking attendance, calculate safe bunk quotas, and receive smart lecture recovery alerts.
+            </Text>
+            <Button
+              title="Add Your First Subject"
+              size="md"
+              onPress={() => setIsAddModalOpen(true)}
+              leftIcon={<Ionicons name="add" size={18} color={colors.primaryForeground} />}
+              style={{ marginTop: 8 }}
+            />
+          </Card>
+        ) : (
+          <View style={styles.subjectList}>
+            {subjects.map((sub) => {
+              const advice = calculateAdvice(sub.attended, sub.total);
+              const isDanger = !advice.isSafe;
+              const weight = sub.periodWeight || 1;
+              const isPunching = punchId === sub.id;
+
+              return (
+                <SwipeableSubjectCardItem
+                  key={sub.id}
+                  sub={sub}
+                  advice={advice}
+                  isDanger={isDanger}
+                  weight={weight}
+                  isPunching={isPunching}
+                  punchType={punchType}
+                  punchScale={punchScale}
+                  colors={colors}
+                  targetPercentage={targetPercentage}
+                  onLog={handleLogAttendance}
+                  onEdit={(s) => {
+                    setEditingSub({ ...s });
+                    setIsEditModalOpen(true);
+                  }}
+                  onDelete={handleDeleteSubject}
                 />
-              </View>
-
-              {/* Clean Log Attendance Action Buttons (Uncluttered) */}
-              <View style={styles.logButtonsRow}>
-                <Button
-                  title={`+ Present (${weight}h)`}
-                  variant="outline"
-                  size="sm"
-                  onPress={() => handleLogAttendance(sub.id, true, weight)}
-                  leftIcon={<Feather name="check" size={13} color={colors.success} />}
-                  style={{ flex: 1, borderColor: colors.success + "40" }}
-                  textStyle={{ color: colors.success }}
-                />
-
-                <Button
-                  title={`+ Absent (${weight}h)`}
-                  variant="outline"
-                  size="sm"
-                  onPress={() => handleLogAttendance(sub.id, false, weight)}
-                  leftIcon={<Feather name="x" size={13} color={colors.destructive} />}
-                  style={{ flex: 1, borderColor: colors.destructive + "40" }}
-                  textStyle={{ color: colors.destructive }}
-                />
-              </View>
-            </Card>
-          );
-        })}
-      </View>
+              );
+            })}
+          </View>
+        )}
 
       {/* Add Subject Modal with Session Duration Selector */}
       <Modal visible={isAddModalOpen} transparent animationType="fade" onRequestClose={() => setIsAddModalOpen(false)}>
@@ -812,7 +1093,8 @@ export function AttendanceScreen() {
           </KeyboardAvoidingView>
         </Modal>
       )}
-    </ScrollView>
+      </ScrollView>
+    </ClientServiceGuard>
   );
 }
 
@@ -1008,5 +1290,148 @@ const styles = StyleSheet.create({
   modalButtonsRow: {
     flexDirection: "row",
     marginTop: 8,
+  },
+  emptyCard: {
+    padding: 32,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 16,
+    marginVertical: 12,
+  },
+  emptyIconWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 12,
+  },
+  emptyTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    marginBottom: 4,
+  },
+  emptySubtitle: {
+    fontSize: 12,
+    textAlign: "center",
+    lineHeight: 18,
+    marginBottom: 16,
+    maxWidth: 260,
+  },
+  punchFeedbackBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignSelf: "center",
+    marginBottom: 10,
+  },
+  punchFeedbackText: {
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  stepperContainer: {
+    marginTop: 8,
+    gap: 10,
+  },
+  stepperRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  stepBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  targetDisplay: {
+    flex: 1,
+    height: 44,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  targetValueText: {
+    fontSize: 18,
+    fontWeight: "800",
+    letterSpacing: -0.3,
+  },
+  targetSubtitle: {
+    fontSize: 9,
+    fontWeight: "600",
+    marginTop: -2,
+    textTransform: "uppercase",
+  },
+  presetsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    marginTop: 4,
+  },
+  presetChip: {
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: 7,
+    borderWidth: 1,
+  },
+  presetChipText: {
+    fontSize: 10,
+  },
+  swipeCardContainer: {
+    position: "relative",
+    borderRadius: 14,
+    overflow: "hidden",
+  },
+  swipeUnderlay: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    borderRadius: 14,
+  },
+  swipeActionLeft: {
+    flex: 1,
+    height: "100%",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingLeft: 18,
+  },
+  swipeActionRight: {
+    flex: 1,
+    height: "100%",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: 6,
+    paddingRight: 18,
+  },
+  swipeActionText: {
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  swipeHint: {
+    fontSize: 10,
+    textAlign: "center",
+    marginTop: 8,
+  },
+  thresholdPin: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    width: 2,
+    borderRadius: 1,
   },
 });

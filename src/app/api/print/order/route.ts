@@ -31,8 +31,8 @@ export async function POST(req: NextRequest) {
       printType = "BW_DOUBLE",
       deliveryLocation,
       deliverySlot,
-      phoneNumber,
-      utr,
+      phoneNumber = body.phone,
+      utr = body.utrNumber,
       collegeId = auth.user?.collegeId,
     } = body;
 
@@ -57,7 +57,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const cleanUtr = utr ? String(utr).trim().replace(/\D/g, "") : "";
+    const rawUtr = utr || body.utrNumber || "";
+    const cleanUtr = String(rawUtr).trim().replace(/\D/g, "");
     if (cleanUtr.length !== 12) {
       return NextResponse.json(
         { success: false, error: "Valid 12-digit numeric UPI UTR is required." },

@@ -14,7 +14,7 @@ interface HeaderProps {
 export function Header({
   title = "Otium",
   badge = "Campus Hub",
-  campusName = "DTU Campus",
+  campusName = "JCBOSEUST, YMCA",
   onNotificationPress,
 }: HeaderProps) {
   const { colors, isDark } = useTheme();

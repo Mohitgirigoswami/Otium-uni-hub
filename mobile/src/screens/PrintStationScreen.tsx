@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -10,16 +10,23 @@ import {
   Linking,
   Modal,
   TextInput,
+  Image,
+  Platform,
+  RefreshControl,
+  Animated,
+  Easing,
 } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
 import * as Clipboard from "expo-clipboard";
-import { Ionicons, Feather } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Ionicons, Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useTheme } from "../context/ThemeContext";
 import { Card } from "../components/ui/Card";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { Input } from "../components/ui/Input";
 import { PrintOrderTracker } from "../components/print/PrintOrderTracker";
+import { ClientServiceGuard } from "../components/ClientServiceGuard";
 import { useUser } from "../context/UserContext";
 import { apiClient } from "../services/apiClient";
 
@@ -34,31 +41,31 @@ interface PrintOption {
 const PRINT_FORMATS: PrintOption[] = [
   {
     id: "BW_DOUBLE",
-    name: "B&W Double-Sided (Recommended)",
-    desc: "Eco-friendly duplex printing on 75 GSM bright paper.",
+    name: "B&W Double-Sided",
+    desc: "Duplex printing on 75 GSM paper",
     rate: "₹2.00 / page",
     pricePerUnit: 2.0,
   },
   {
     id: "BW_SINGLE",
     name: "B&W Single-Sided",
-    desc: "Standard single page printing for official submissions.",
+    desc: "Single-sided for official forms",
     rate: "₹2.50 / page",
     pricePerUnit: 2.5,
   },
   {
-    id: "COLOR_SINGLE",
-    name: "Full Color Single-Sided",
-    desc: "High-resolution color graphs and presentation slides.",
-    rate: "₹10.00 / page",
-    pricePerUnit: 10.0,
-  },
-  {
     id: "COLOR_DOUBLE",
-    name: "Full Color Double-Sided",
-    desc: "Vibrant duplex color printing for project reports.",
+    name: "Color Double-Sided",
+    desc: "Vibrant duplex for reports",
     rate: "₹8.00 / page",
     pricePerUnit: 8.0,
+  },
+  {
+    id: "COLOR_SINGLE",
+    name: "Color Single-Sided",
+    desc: "High-res presentation slides",
+    rate: "₹10.00 / page",
+    pricePerUnit: 10.0,
   },
 ];
 
@@ -70,10 +77,15 @@ const DELIVERY_WINDOWS = [
 const QUICK_LOCATION_CHIPS = [
   "Hostel Block 1",
   "Hostel Block 2",
+  "Hostel Block 4",
   "Central Library Desk",
   "Academic Block C",
   "Student Cafeteria",
 ];
+
+const STORAGE_KEY_PRINT_ORDERS = "@otium_cached_print_orders";
+const STORAGE_KEY_PRINT_SYNC_QUEUE = "@otium_print_pending_sync";
+const STORAGE_KEY_UPI_ID = "@otium_cached_upi_id";
 
 export function PrintStationScreen({ navigation }: any) {
   const { colors, isDark } = useTheme();
@@ -90,17 +102,39 @@ export function PrintStationScreen({ navigation }: any) {
   const [selectedFormat, setSelectedFormat] = useState<string>("BW_DOUBLE");
   const [copies, setCopies] = useState<number>(1);
   const [deliveryWindow, setDeliveryWindow] = useState<string>("Morning Drop (8:30 AM - 9:00 AM)");
-  const [deliveryLocation, setDeliveryLocation] = useState<string>("Central Library Desk");
+  const [deliveryLocation, setDeliveryLocation] = useState<string>("");
+  const [upiId, setUpiId] = useState<string>("8307798816@upi");
 
-  // Phone number state with explicit backend save
   const [phone, setPhone] = useState<string>(user?.phone || "");
   const [isPhoneSaved, setIsPhoneSaved] = useState<boolean>(!!user?.phone);
   const [isSavingPhone, setIsSavingPhone] = useState<boolean>(false);
 
+  // Dedicated Checkout Modal State
+  const [isCheckoutModalOpen, setIsCheckoutModalOpen] = useState(false);
   const [utrNumber, setUtrNumber] = useState<string>("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [cooldownSeconds, setCooldownSeconds] = useState<number>(0);
   const [recentOrders, setRecentOrders] = useState<any[]>([]);
+  const [isRefreshingOrders, setIsRefreshingOrders] = useState(false);
+  const [copiedUpi, setCopiedUpi] = useState(false);
+
+  // Animated spin for refresh button
+  const spinAnim = useRef(new Animated.Value(0)).current;
+
+  const triggerSpinAnimation = () => {
+    spinAnim.setValue(0);
+    Animated.timing(spinAnim, {
+      toValue: 1,
+      duration: 800,
+      easing: Easing.bezier(0.4, 0, 0.2, 1),
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const spin = spinAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["0deg", "360deg"],
+  });
 
   // Issue Reporting states
   const [reportingOrder, setReportingOrder] = useState<any | null>(null);
@@ -143,618 +177,1016 @@ export function PrintStationScreen({ navigation }: any) {
     }
   }, [user?.phone]);
 
-  const fetchOrders = async () => {
+  const flushOfflinePrintQueue = async () => {
     try {
-      const res = await apiClient.get("/print/order");
-      if (res.success && Array.isArray(res.data)) {
-        setRecentOrders(res.data);
+      const queueRaw = await AsyncStorage.getItem(STORAGE_KEY_PRINT_SYNC_QUEUE);
+      if (!queueRaw) return;
+      const queue = JSON.parse(queueRaw);
+      if (!Array.isArray(queue) || queue.length === 0) return;
+
+      const remaining: any[] = [];
+      for (const orderPayload of queue) {
+        try {
+          const res = await apiClient.post("/print/order", orderPayload);
+          if (!res.success) {
+            remaining.push(orderPayload);
+          }
+        } catch {
+          remaining.push(orderPayload);
+        }
       }
-    } catch (e) {}
+
+      if (remaining.length > 0) {
+        await AsyncStorage.setItem(STORAGE_KEY_PRINT_SYNC_QUEUE, JSON.stringify(remaining));
+      } else {
+        await AsyncStorage.removeItem(STORAGE_KEY_PRINT_SYNC_QUEUE);
+      }
+    } catch {}
   };
 
+  const fetchOrders = async (isManualPull = false) => {
+    if (isManualPull) {
+      setIsRefreshingOrders(true);
+      triggerSpinAnimation();
+    }
+
+    // 1. Load cached orders
+    try {
+      const cached = await AsyncStorage.getItem(STORAGE_KEY_PRINT_ORDERS);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setRecentOrders(parsed);
+        }
+      }
+    } catch {}
+
+    await flushOfflinePrintQueue();
+
+    // 2. Fetch live orders from server with userId query parameter
+    try {
+      const effectiveUserId = user?.id || "";
+      const url = effectiveUserId
+        ? `/print/order?userId=${encodeURIComponent(effectiveUserId)}`
+        : "/print/order";
+
+      const res = await apiClient.get(url);
+      if (res.success && Array.isArray(res.data)) {
+        setRecentOrders(res.data);
+        AsyncStorage.setItem(STORAGE_KEY_PRINT_ORDERS, JSON.stringify(res.data)).catch(() => {});
+      }
+    } catch {
+      console.log("[Fetch Orders Note]: Operating in offline cached mode");
+    } finally {
+      if (isManualPull) {
+        setIsRefreshingOrders(false);
+      }
+    }
+  };
+
+  const fetchSettings = async () => {
+    // 1. Read cached UPI
+    try {
+      const cachedUpi = await AsyncStorage.getItem(STORAGE_KEY_UPI_ID);
+      if (cachedUpi) {
+        setUpiId(cachedUpi);
+      }
+    } catch {}
+
+    // 2. Fetch latest from server
+    try {
+      const res = await apiClient.get("/settings");
+      if (res.success && res.data?.upiId) {
+        const freshUpi = res.data.upiId;
+        setUpiId(freshUpi);
+        AsyncStorage.setItem(STORAGE_KEY_UPI_ID, freshUpi).catch(() => {});
+      }
+    } catch {
+      // Keep state default 8307798816@upi
+    }
+  };
+
+  // Trigger on user change or boot
   useEffect(() => {
     fetchOrders();
-  }, []);
+    fetchSettings();
+  }, [user?.id]);
 
   const handlePickDocument = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
-        type: "application/pdf",
+        type: ["application/pdf"],
         copyToCacheDirectory: true,
       });
 
-      if (!result.canceled && result.assets && result.assets.length > 0) {
-        const file = result.assets[0];
-        setIsUploadingFile(true);
+      if (result.canceled || !result.assets || result.assets.length === 0) return;
 
-        const formData = new FormData();
-        formData.append("file", {
-          uri: file.uri,
-          name: file.name,
-          type: "application/pdf",
-        } as any);
+      const asset = result.assets[0];
+      setIsUploadingFile(true);
 
-        const uploadRes = await apiClient.postFormData("/print/upload", formData);
+      const fileSizeMb = asset.size ? (asset.size / (1024 * 1024)).toFixed(2) : "0.5";
 
-        if (uploadRes.success && uploadRes.data) {
-          setSelectedFile({
-            name: file.name,
-            pages: uploadRes.data.pageCount || 1,
-            size: `${((file.size || 1024) / 1024).toFixed(1)} KB`,
-            fileUrl: uploadRes.data.fileUrl,
-          });
-        } else {
-          // Fallback
-          setSelectedFile({
-            name: file.name,
-            pages: 1,
-            size: `${((file.size || 1024) / 1024).toFixed(1)} KB`,
+      let pageCount = 1;
+      try {
+        if (asset.uri) {
+          const fileResp = await fetch(asset.uri);
+          const blob = await fileResp.blob();
+          const reader = new FileReader();
+          pageCount = await new Promise((resolve) => {
+            reader.onload = (e) => {
+              try {
+                const text = (e.target?.result as string) || "";
+                // 1. Match /Type /Page objects in PDF stream
+                const pageMatches = text.match(/\/Type\s*\/Page[^s]/g);
+                if (pageMatches && pageMatches.length > 0) {
+                  return resolve(pageMatches.length);
+                }
+                // 2. Match root page catalog /Count N
+                const countMatches = text.match(/\/Count\s+(\d+)/);
+                if (countMatches && countMatches[1]) {
+                  const num = parseInt(countMatches[1], 10);
+                  if (!isNaN(num) && num > 0) {
+                    return resolve(num);
+                  }
+                }
+                resolve(1);
+              } catch {
+                resolve(1);
+              }
+            };
+            reader.onerror = () => resolve(1);
+            reader.readAsText(blob);
           });
         }
-        setIsUploadingFile(false);
+      } catch {
+        pageCount = 1;
       }
-    } catch (err) {
+
+      setSelectedFile({
+        name: asset.name,
+        pages: Math.max(1, pageCount),
+        size: `${fileSizeMb} MB`,
+        fileUrl: asset.uri,
+      });
+    } catch {
+      Alert.alert("Document Error", "Could not read the selected PDF file.");
+    } finally {
       setIsUploadingFile(false);
-      Alert.alert("File Selection Failed", "Please pick a valid PDF document.");
     }
   };
 
+  const handleUpdatePageCount = (delta: number) => {
+    setSelectedFile((prev) => {
+      if (!prev) return null;
+      return { ...prev, pages: Math.max(1, prev.pages + delta) };
+    });
+  };
+
   const handleSavePhone = async () => {
-    const cleaned = phone.trim().replace(/\D/g, "");
-    if (cleaned.length < 10) {
+    const cleanPhone = phone.replace(/\D/g, "");
+    if (cleanPhone.length !== 10) {
       Alert.alert("Invalid Phone", "Please enter a valid 10-digit mobile number.");
       return;
     }
 
     setIsSavingPhone(true);
     try {
-      const res = await apiClient.post("/profile", { phone: cleaned });
+      const res = await apiClient.post("/user/profile", { phone: cleanPhone });
       if (res.success) {
         setIsPhoneSaved(true);
-        setUser((prev: any) => ({ ...prev, phone: cleaned }));
-        Alert.alert("Phone Verified", "Your contact number has been updated and verified on your account.");
+        if (setUser) setUser((prev: any) => ({ ...prev, phone: cleanPhone }));
+        Alert.alert("Saved", "Phone number synced for SMS delivery alerts.");
       } else {
-        Alert.alert("Error", res.error || "Failed to save phone number.");
+        Alert.alert("Error", res.error || "Failed to update phone number.");
       }
-    } catch (e) {
-      setIsPhoneSaved(true); // optimistic
-      Alert.alert("Saved Locally", "Contact phone number saved for this order.");
+    } catch (err: any) {
+      Alert.alert("Error", err.message || "Failed to save phone number.");
     } finally {
       setIsSavingPhone(false);
     }
   };
 
-  const handleQuickChipSelect = (chip: string) => {
-    setDeliveryLocation(chip);
+  // Pricing calculations with ₹5.00 Minimum Campus Order Floor
+  const activeFormatObj = PRINT_FORMATS.find((f) => f.id === selectedFormat) || PRINT_FORMATS[0];
+  const pages = selectedFile?.pages || 1;
+  const rawCost = pages * copies * activeFormatObj.pricePerUnit;
+  const isFloorApplied = rawCost < 5.0;
+  const minFloorAdjustment = isFloorApplied ? 5.0 - rawCost : 0;
+  const finalCost = Math.max(5.0, rawCost).toFixed(2);
+
+  const handleCopyUpi = async () => {
+    await Clipboard.setStringAsync(upiId);
+    setCopiedUpi(true);
+    setTimeout(() => setCopiedUpi(false), 3000);
+    Alert.alert("Copied! 📋", `UPI ID "${upiId}" copied to clipboard.`);
   };
 
-  const pageCount = selectedFile?.pages || 1;
-  const currentFmt = PRINT_FORMATS.find((f) => f.id === selectedFormat) || PRINT_FORMATS[0];
-  const rawCost = pageCount * currentFmt.pricePerUnit * copies;
-  const finalPayable = Math.max(5.0, rawCost);
-  const isFloorApplied = rawCost < 5.0;
+  const handleOpenUpiApp = () => {
+    const uri = `upi://pay?pa=${encodeURIComponent(upiId)}&pn=OtiumUniHub&am=${finalCost}&cu=INR&tn=PrintOrder_${encodeURIComponent(selectedFile?.name?.slice(0, 12) || "doc")}`;
+    Linking.openURL(uri).catch(() => {
+      Alert.alert("Notice", "No default UPI app detected. Please manually transfer to UPI ID: " + upiId);
+    });
+  };
 
-  const handlePlaceOrder = async () => {
+  const handleOpenCheckoutModal = () => {
     if (!selectedFile) {
-      Alert.alert("Missing File", "Please upload a document PDF first.");
+      Alert.alert("Missing PDF", "Please upload a document to proceed.");
       return;
     }
     if (!deliveryLocation.trim()) {
-      Alert.alert("Missing Drop Location", "Please enter your campus drop location.");
+      Alert.alert("Missing Location", "Please select or type your campus drop location.");
       return;
     }
-    if (!phone.trim()) {
-      Alert.alert("Missing Phone", "Please enter and save your contact phone number.");
+    setIsCheckoutModalOpen(true);
+  };
+
+  const handleSubmitOrder = async () => {
+    if (!selectedFile) {
+      Alert.alert("Missing PDF", "Please upload a document to proceed.");
+      return;
+    }
+
+    if (!deliveryLocation.trim()) {
+      Alert.alert("Missing Location", "Please select or type your campus drop location.");
+      return;
+    }
+
+    const cleanUtr = utrNumber.trim();
+    if (!cleanUtr || cleanUtr.length < 6) {
+      Alert.alert("Missing UTR", "Please enter the 12-digit transaction UTR number from your payment receipt.");
       return;
     }
 
     setIsSubmitting(true);
+    const orderPayload = {
+      userId: user?.id,
+      fileName: selectedFile.name,
+      pageCount: selectedFile.pages,
+      copies,
+      printType: selectedFormat,
+      deliveryLocation: deliveryLocation.trim(),
+      deliverySlot: deliveryWindow,
+      phoneNumber: phone ? phone.replace(/\D/g, "") : undefined,
+      utr: cleanUtr,
+      utrNumber: cleanUtr,
+      fileUrl: selectedFile.fileUrl || "https://otiumhub.in/placeholder-doc.pdf",
+    };
+
+    const triggerCooldown = () => {
+      setCooldownSeconds(4);
+      const timer = setInterval(() => {
+        setCooldownSeconds((prev) => {
+          if (prev <= 1) {
+            clearInterval(timer);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    };
+
     try {
-      const orderPayload = {
+      const res = await apiClient.post("/print/order", orderPayload);
+
+      if (res.success) {
+        Alert.alert("Order Placed! 🚀", "Your print job is queued. Live status updates will appear in your tracking section.");
+        setIsCheckoutModalOpen(false);
+        setSelectedFile(null);
+        setUtrNumber("");
+        triggerCooldown();
+        fetchOrders(true);
+      } else {
+        throw new Error(res.error || "Failed to submit print order.");
+      }
+    } catch (err: any) {
+      // Offline fallback: Queue order on device and show optimistic feedback
+      const localPendingOrder = {
+        id: `offline-${Date.now()}`,
         fileName: selectedFile.name,
-        fileUrl: selectedFile.fileUrl || "https://example.com/demo.pdf",
-        pageCount,
+        pageCount: selectedFile.pages,
         copies,
         printType: selectedFormat,
         deliveryLocation: deliveryLocation.trim(),
-        deliveryWindow,
-        contactPhone: phone.trim(),
-        totalCostPaise: Math.round(finalPayable * 100),
-        utrNumber: utrNumber.trim() || undefined,
+        deliverySlot: deliveryWindow,
+        utr: cleanUtr,
+        status: "QUEUED",
+        createdAt: new Date().toISOString(),
+        isOfflinePending: true,
       };
 
-      const res = await apiClient.post("/print/order", orderPayload);
-      if (res.success) {
-        Alert.alert("Order Placed!", "Your print job has been queued for campus dispatch.");
-        setSelectedFile(null);
-        setUtrNumber("");
-        fetchOrders();
+      const updatedRecent = [localPendingOrder, ...recentOrders];
+      setRecentOrders(updatedRecent);
+      AsyncStorage.setItem(STORAGE_KEY_PRINT_ORDERS, JSON.stringify(updatedRecent)).catch(() => {});
 
-        setCooldownSeconds(4);
-        const timer = setInterval(() => {
-          setCooldownSeconds((prev) => {
-            if (prev <= 1) {
-              clearInterval(timer);
-              return 0;
-            }
-            return prev - 1;
-          });
-        }, 1000);
-      } else {
-        Alert.alert("Submission Failed", res.error || "Could not place order.");
-      }
-    } catch (e) {
-      Alert.alert("Error", "Network fault while placing print order.");
+      try {
+        const queueRaw = await AsyncStorage.getItem(STORAGE_KEY_PRINT_SYNC_QUEUE);
+        const queue = queueRaw ? JSON.parse(queueRaw) : [];
+        queue.push(orderPayload);
+        await AsyncStorage.setItem(STORAGE_KEY_PRINT_SYNC_QUEUE, JSON.stringify(queue));
+      } catch {}
+
+      Alert.alert(
+        "Saved Locally ☁️",
+        "Network connection is intermittent. Your print job has been queued locally and will automatically synchronize when connection resumes."
+      );
+      setIsCheckoutModalOpen(false);
+      setSelectedFile(null);
+      setUtrNumber("");
+      triggerCooldown();
     } finally {
       setIsSubmitting(false);
     }
   };
 
   return (
-    <ScrollView
-      style={[styles.container, { backgroundColor: colors.background }]}
-      contentContainerStyle={styles.contentContainer}
-    >
-      {/* Hero Banner */}
-      <Card style={styles.heroBanner}>
-        <View style={styles.badgeRow}>
-          <Badge variant="primary" size="sm">
-            Express Print Station
-          </Badge>
-        </View>
-        <Text style={[styles.heroTitle, { color: colors.text }]}>
-          Express Campus Document Dispatch
-        </Text>
-        <Text style={[styles.heroSubtitle, { color: colors.textMuted }]}>
-          Upload PDF, select duplex or color, and pick up your documents anywhere on campus.
-        </Text>
-      </Card>
-
-      {/* Step 1: Document Upload */}
-      <Card style={styles.sectionCard}>
-        <View style={styles.sectionHeaderRow}>
-          <Feather name="upload-cloud" size={16} color={colors.primary} />
-          <Text style={[styles.sectionTitle, { color: colors.text }]}>
-            Step 1: Upload Document PDF
-          </Text>
-        </View>
-
-        {isUploadingFile ? (
-          <View style={[styles.dropzone, { borderColor: colors.primary }]}>
-            <ActivityIndicator size="large" color={colors.primary} />
-            <Text style={[styles.dropzoneTitle, { color: colors.text, marginTop: 12 }]}>
-              Uploading & Verifying PDF...
-            </Text>
-          </View>
-        ) : selectedFile ? (
-          <View style={[styles.filePreviewBox, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
-            <View style={[styles.fileIconBox, { backgroundColor: colors.primary + "20" }]}>
-              <Ionicons name="document-text" size={20} color={colors.primary} />
-            </View>
-            <View style={{ flex: 1, marginLeft: 10 }}>
-              <Text style={[styles.fileNameText, { color: colors.text }]} numberOfLines={1}>
-                {selectedFile.name}
-              </Text>
-              <Text style={[styles.fileMetaText, { color: colors.textMuted }]}>
-                {selectedFile.size} • {selectedFile.pages} Pages Auto-Detected
+    <ClientServiceGuard serviceKey="PRINT_STATION" navigation={navigation}>
+      <ScrollView
+        style={[styles.container, { backgroundColor: colors.background }]}
+        contentContainerStyle={styles.contentContainer}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefreshingOrders}
+            onRefresh={() => fetchOrders(true)}
+            tintColor={colors.primary}
+          />
+        }
+      >
+        {/* 1. Header Banner */}
+        <Card style={styles.headerCard}>
+          <View style={styles.headerTopRow}>
+            <View style={styles.headerBadge}>
+              <Feather name="printer" size={15} color={colors.primary} />
+              <Text style={[styles.headerBadgeText, { color: colors.textSecondary }]}>
+                Hostel Express Service
               </Text>
             </View>
-            <TouchableOpacity onPress={() => setSelectedFile(null)}>
-              <Ionicons name="close-circle" size={20} color={colors.textMuted} />
-            </TouchableOpacity>
-          </View>
-        ) : (
-          <TouchableOpacity
-            activeOpacity={0.75}
-            onPress={handlePickDocument}
-            style={[styles.dropzone, { borderColor: colors.border }]}
-          >
-            <Feather name="upload-cloud" size={28} color={colors.primary} />
-            <Text style={[styles.dropzoneTitle, { color: colors.text }]}>
-              Tap to select or upload PDF
-            </Text>
-            <Text style={[styles.dropzoneSubtitle, { color: colors.textMuted }]}>
-              Auto-calculates page count on server
-            </Text>
-          </TouchableOpacity>
-        )}
-      </Card>
-
-      {/* Step 2: Print Formats */}
-      <Card style={styles.sectionCard}>
-        <Text style={[styles.sectionTitle, { color: colors.text, marginBottom: 12 }]}>
-          Step 2: Print Format & Paper Type
-        </Text>
-        <View style={styles.formatGrid}>
-          {PRINT_FORMATS.map((fmt) => {
-            const isSelected = selectedFormat === fmt.id;
-            return (
-              <TouchableOpacity
-                key={fmt.id}
-                onPress={() => setSelectedFormat(fmt.id)}
-                activeOpacity={0.75}
-                style={[
-                  styles.formatCard,
-                  {
-                    backgroundColor: isSelected ? colors.primary + "12" : colors.secondary,
-                    borderColor: isSelected ? colors.primary : colors.border,
-                  },
-                ]}
-              >
-                <View style={styles.formatHeader}>
-                  <Text
-                    style={[
-                      styles.formatName,
-                      { color: isSelected ? colors.primary : colors.text, fontWeight: isSelected ? "700" : "600" },
-                    ]}
-                  >
-                    {fmt.name}
-                  </Text>
-                  <Text style={[styles.formatRate, { color: colors.primary }]}>{fmt.rate}</Text>
-                </View>
-                <Text style={[styles.formatDesc, { color: colors.textMuted }]}>{fmt.desc}</Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-      </Card>
-
-      {/* Step 3: Copies */}
-      <Card style={styles.sectionCard}>
-        <Text style={[styles.sectionTitle, { color: colors.text, marginBottom: 10 }]}>
-          Step 3: Number of Copies
-        </Text>
-        <View style={styles.copiesRow}>
-          {[1, 2, 3, 5, 10].map((num) => {
-            const isSelected = copies === num;
-            return (
-              <TouchableOpacity
-                key={num}
-                onPress={() => setCopies(num)}
-                style={[
-                  styles.copyBtn,
-                  {
-                    backgroundColor: isSelected ? colors.primary : colors.secondary,
-                    borderColor: isSelected ? colors.primary : colors.border,
-                  },
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.copyBtnText,
-                    { color: isSelected ? colors.primaryForeground : colors.text },
-                  ]}
-                >
-                  {num}x
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-      </Card>
-
-      {/* Step 4: Drop Location with Quick Chips */}
-      <Card style={styles.sectionCard}>
-        <Text style={[styles.sectionTitle, { color: colors.text }]}>
-          Step 4: Campus Drop Location *
-        </Text>
-        <Input
-          value={deliveryLocation}
-          onChangeText={setDeliveryLocation}
-          placeholder="e.g. Hostel Block 2, Room 412 or Library 1st Floor"
-          containerStyle={{ marginTop: 8 }}
-          leftIcon={<Ionicons name="location-outline" size={16} color={colors.textMuted} />}
-        />
-
-        {/* Quick Location Chips */}
-        <View style={styles.chipsRow}>
-          {QUICK_LOCATION_CHIPS.map((chip) => (
-            <TouchableOpacity
-              key={chip}
-              onPress={() => handleQuickChipSelect(chip)}
-              activeOpacity={0.7}
-              style={[
-                styles.locationChip,
-                {
-                  backgroundColor: deliveryLocation.includes(chip) ? colors.primary + "18" : colors.secondary,
-                  borderColor: deliveryLocation.includes(chip) ? colors.primary : colors.border,
-                },
-              ]}
-            >
-              <Text
-                style={[
-                  styles.chipText,
-                  {
-                    color: deliveryLocation.includes(chip) ? colors.primary : colors.textSecondary,
-                  },
-                ]}
-              >
-                + {chip}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </Card>
-
-      {/* Step 5: Contact Phone Number & Verification */}
-      <Card style={styles.sectionCard}>
-        <View style={styles.phoneHeaderRow}>
-          <Text style={[styles.sectionTitle, { color: colors.text, marginBottom: 0 }]}>
-            Step 5: Contact Phone *
-          </Text>
-          {isPhoneSaved && (
-            <Badge variant="success" size="sm">
-              ✓ Saved to Account
+            <Badge variant="primary" size="sm">
+              {user?.college?.name || "JCBOSEUST, YMCA"}
             </Badge>
-          )}
-        </View>
-
-        <View style={styles.phoneInputRow}>
-          <Input
-            value={phone}
-            onChangeText={(val) => {
-              setPhone(val);
-              setIsPhoneSaved(false);
-            }}
-            placeholder="10-digit mobile number"
-            keyboardType="phone-pad"
-            containerStyle={{ flex: 1, marginRight: 8 }}
-            leftIcon={<Feather name="phone" size={15} color={colors.textMuted} />}
-          />
-          <Button
-            title={isPhoneSaved ? "Saved" : "Save Phone"}
-            variant={isPhoneSaved ? "secondary" : "default"}
-            size="md"
-            isLoading={isSavingPhone}
-            onPress={handleSavePhone}
-            style={{ height: 44 }}
-          />
-        </View>
-      </Card>
-
-      {/* Step 6: Order Summary & Place Order */}
-      <Card style={styles.summaryCard}>
-        <View style={styles.summaryRow}>
-          <View>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-              <Text style={[styles.payableLabel, { color: colors.textSecondary }]}>
-                Total Order Payable
-              </Text>
-              {isFloorApplied && (
-                <Badge variant="warning" size="sm">
-                  Min ₹5 Floor
-                </Badge>
-              )}
-            </View>
-            <Text style={[styles.payableAmount, { color: colors.text }]}>
-              ₹{finalPayable.toFixed(2)}
-            </Text>
-            <Text style={[styles.payableBreakdown, { color: colors.textMuted }]}>
-              {pageCount} pages × {copies} {copies === 1 ? "copy" : "copies"}
-            </Text>
           </View>
-        </View>
 
-        <Button
-          title={
-            cooldownSeconds > 0
-              ? `✓ Order Queued — Wait (${cooldownSeconds}s)`
-              : `Place Print Order (₹${finalPayable.toFixed(2)})`
-          }
-          size="lg"
-          isLoading={isSubmitting}
-          disabled={isSubmitting || cooldownSeconds > 0 || !selectedFile}
-          onPress={handlePlaceOrder}
-          leftIcon={<Feather name="printer" size={18} color={colors.primaryForeground} />}
-          style={{ marginTop: 14 }}
-        />
-      </Card>
+          <Text style={[styles.headerTitle, { color: colors.text }]}>
+            Express Print Station
+          </Text>
+          <Text style={[styles.headerSub, { color: colors.textMuted }]}>
+            Upload documents, choose duplex formats, and receive fast delivery directly at your hostel room or library desk.
+          </Text>
 
-      {/* Recent Orders with PrintOrderTracker */}
-      {recentOrders.length > 0 && (
+          {/* Live rates chips */}
+          <View style={styles.ratePillsRow}>
+            <Badge variant="outline" size="sm">
+              B&W Duplex: ₹2.0/pg
+            </Badge>
+            <Badge variant="outline" size="sm">
+              B&W Single: ₹2.5/pg
+            </Badge>
+            <Badge variant="outline" size="sm">
+              Color Duplex: ₹8.0/pg
+            </Badge>
+          </View>
+        </Card>
+
+        {/* 2. Document Upload Card */}
         <Card style={styles.sectionCard}>
-          <View style={styles.sectionHeaderRow}>
-            <Ionicons name="time-outline" size={16} color={colors.primary} />
-            <Text style={[styles.sectionTitle, { color: colors.text }]}>
-              My Active Print Jobs
-            </Text>
-          </View>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>
+            1. Select PDF Document
+          </Text>
 
-          <View style={{ gap: 12, marginTop: 8 }}>
-            {recentOrders.map((ord: any) => (
-              <View
-                key={ord.id}
-                style={[
-                  styles.orderCard,
-                  {
-                    backgroundColor: colors.secondary,
-                    borderColor: colors.border,
-                  },
-                ]}
-              >
-                <View style={styles.orderTopRow}>
-                  <View style={{ flex: 1, marginRight: 8 }}>
-                    <Text style={[styles.orderFileName, { color: colors.text }]} numberOfLines={1}>
-                      {ord.fileName}
+          {selectedFile ? (
+            <View style={[styles.pickedFileBox, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
+              <View style={styles.pickedFileTopRow}>
+                <View style={styles.pickedFileLeft}>
+                  <View style={[styles.pdfIconWrap, { backgroundColor: colors.primary + "20" }]}>
+                    <Feather name="file-text" size={20} color={colors.primary} />
+                  </View>
+                  <View style={{ flex: 1, marginLeft: 10 }}>
+                    <Text style={[styles.fileName, { color: colors.text }]} numberOfLines={1}>
+                      {selectedFile.name}
                     </Text>
-                    <Text style={[styles.orderMeta, { color: colors.textMuted }]}>
-                      {ord.pageCount} pgs • {ord.copies}x • Drop: {ord.deliveryLocation}
+                    <Text style={[styles.fileMeta, { color: colors.textMuted }]}>
+                      {selectedFile.size} • {selectedFile.pages} Page(s) detected
                     </Text>
                   </View>
-                  <Badge
-                    variant={
-                      ord.status === "COMPLETED" || ord.status === "DELIVERED"
-                        ? "success"
-                        : ord.status === "ISSUE_REPORTED"
-                        ? "warning"
-                        : ord.status === "CANCELLED" || ord.status === "REJECTED"
-                        ? "destructive"
-                        : "warning"
-                    }
-                    size="sm"
+                </View>
+
+                <TouchableOpacity onPress={() => setSelectedFile(null)} style={styles.removeFileBtn}>
+                  <Ionicons name="close-circle" size={20} color={colors.textMuted} />
+                </TouchableOpacity>
+              </View>
+
+              {/* Interactive Page Count Stepper */}
+              <View style={[styles.pageStepperRow, { borderTopColor: colors.border }]}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.pageStepperLabel, { color: colors.text }]}>
+                    Total Pages to Print
+                  </Text>
+                  <Text style={[styles.pageStepperHint, { color: colors.textMuted }]}>
+                    Tap - / + to verify or adjust page count
+                  </Text>
+                </View>
+
+                <View style={styles.pageCounterWrap}>
+                  <TouchableOpacity
+                    onPress={() => handleUpdatePageCount(-1)}
+                    disabled={selectedFile.pages <= 1}
+                    style={[styles.counterBtn, { borderColor: colors.border, opacity: selectedFile.pages <= 1 ? 0.4 : 1 }]}
                   >
-                    {ord.status}
+                    <Feather name="minus" size={14} color={colors.text} />
+                  </TouchableOpacity>
+                  <Text style={[styles.counterValue, { color: colors.primary, minWidth: 36, textAlign: "center" }]}>
+                    {selectedFile.pages}
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => handleUpdatePageCount(1)}
+                    style={[styles.counterBtn, { borderColor: colors.border }]}
+                  >
+                    <Feather name="plus" size={14} color={colors.text} />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          ) : (
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={handlePickDocument}
+              disabled={isUploadingFile}
+              style={[
+                styles.uploadDropzone,
+                { borderColor: colors.border, backgroundColor: colors.secondary + "40" },
+              ]}
+            >
+              {isUploadingFile ? (
+                <ActivityIndicator size="small" color={colors.primary} />
+              ) : (
+                <>
+                  <View style={[styles.uploadIconCircle, { backgroundColor: colors.primary + "18" }]}>
+                    <Feather name="upload-cloud" size={24} color={colors.primary} />
+                  </View>
+                  <Text style={[styles.uploadPrompt, { color: colors.text }]}>
+                    Tap to upload PDF document
+                  </Text>
+                  <Text style={[styles.uploadHint, { color: colors.textMuted }]}>
+                    Automatic client-side page detection • Max 50 MB
+                  </Text>
+                </>
+              )}
+            </TouchableOpacity>
+          )}
+        </Card>
+
+        {/* 3. Print Type Selector */}
+        <Card style={styles.sectionCard}>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>
+            2. Select Print Format
+          </Text>
+
+          <View style={styles.formatGrid}>
+            {PRINT_FORMATS.map((opt) => {
+              const isSelected = selectedFormat === opt.id;
+              return (
+                <TouchableOpacity
+                  key={opt.id}
+                  activeOpacity={0.8}
+                  onPress={() => setSelectedFormat(opt.id)}
+                  style={[
+                    styles.formatTile,
+                    {
+                      backgroundColor: isSelected ? colors.primary + "12" : colors.card,
+                      borderColor: isSelected ? colors.primary : colors.border,
+                    },
+                  ]}
+                >
+                  <View style={styles.formatTileTop}>
+                    <View
+                      style={[
+                        styles.radioCircle,
+                        { borderColor: isSelected ? colors.primary : colors.textMuted },
+                      ]}
+                    >
+                      {isSelected && (
+                        <View style={[styles.radioDot, { backgroundColor: colors.primary }]} />
+                      )}
+                    </View>
+                    <Text style={[styles.formatRate, { color: colors.primary }]}>{opt.rate}</Text>
+                  </View>
+
+                  <Text style={[styles.formatName, { color: colors.text }]}>{opt.name}</Text>
+                  <Text style={[styles.formatDesc, { color: colors.textMuted }]}>{opt.desc}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          {/* Copies counter */}
+          <View style={[styles.copiesRow, { borderTopColor: colors.border }]}>
+            <Text style={[styles.copiesLabel, { color: colors.text }]}>Number of Copies</Text>
+            <View style={styles.counterWrap}>
+              <TouchableOpacity
+                onPress={() => setCopies(Math.max(1, copies - 1))}
+                style={[styles.counterBtn, { borderColor: colors.border }]}
+              >
+                <Feather name="minus" size={14} color={colors.text} />
+              </TouchableOpacity>
+              <Text style={[styles.counterValue, { color: colors.text }]}>{copies}</Text>
+              <TouchableOpacity
+                onPress={() => setCopies(copies + 1)}
+                style={[styles.counterBtn, { borderColor: colors.border }]}
+              >
+                <Feather name="plus" size={14} color={colors.text} />
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Card>
+
+        {/* 4. Delivery Location & Window */}
+        <Card style={styles.sectionCard}>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>
+            3. Campus Drop Location & Time
+          </Text>
+
+          <View style={styles.quickLocations}>
+            {QUICK_LOCATION_CHIPS.map((loc) => {
+              const isSelected = deliveryLocation === loc;
+              return (
+                <TouchableOpacity
+                  key={loc}
+                  onPress={() => setDeliveryLocation(loc)}
+                  style={[
+                    styles.locationChip,
+                    {
+                      backgroundColor: isSelected ? colors.primary : colors.secondary,
+                      borderColor: isSelected ? colors.primary : colors.border,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.locationChipText,
+                      {
+                        color: isSelected ? colors.primaryForeground : colors.textMuted,
+                        fontWeight: isSelected ? "700" : "500",
+                      },
+                    ]}
+                  >
+                    {loc}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          <Input
+            placeholder="e.g. Hostel 1 Room 204 or Library Desk..."
+            value={deliveryLocation}
+            onChangeText={setDeliveryLocation}
+            containerStyle={{ marginTop: 8 }}
+          />
+
+          {/* Drop time slots */}
+          <Text style={[styles.subLabel, { color: colors.text, marginTop: 12 }]}>
+            Delivery Window Slot
+          </Text>
+          <View style={styles.slotRow}>
+            {DELIVERY_WINDOWS.map((win) => {
+              const isSelected = deliveryWindow === win.label;
+              return (
+                <TouchableOpacity
+                  key={win.id}
+                  onPress={() => setDeliveryWindow(win.label)}
+                  style={[
+                    styles.slotTile,
+                    {
+                      backgroundColor: isSelected ? colors.primary + "15" : colors.secondary,
+                      borderColor: isSelected ? colors.primary : colors.border,
+                    },
+                  ]}
+                >
+                  <Feather
+                    name="clock"
+                    size={14}
+                    color={isSelected ? colors.primary : colors.textMuted}
+                  />
+                  <Text
+                    style={[
+                      styles.slotText,
+                      {
+                        color: isSelected ? colors.primary : colors.textMuted,
+                        fontWeight: isSelected ? "700" : "500",
+                      },
+                    ]}
+                  >
+                    {win.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          {/* Contact Phone for SMS */}
+          <Text style={[styles.subLabel, { color: colors.text, marginTop: 12 }]}>
+            Delivery Contact Mobile
+          </Text>
+          <View style={styles.phoneInputRow}>
+            <Input
+              placeholder="10-digit mobile number"
+              value={phone}
+              onChangeText={(text) => {
+                setPhone(text);
+                setIsPhoneSaved(false);
+              }}
+              keyboardType="phone-pad"
+              maxLength={10}
+              containerStyle={{ flex: 1 }}
+            />
+            <Button
+              title={isSavingPhone ? "Saving..." : isPhoneSaved ? "Saved" : "Save"}
+              variant={isPhoneSaved ? "secondary" : "outline"}
+              size="sm"
+              onPress={handleSavePhone}
+              disabled={isSavingPhone || isPhoneSaved}
+              style={{ marginLeft: 8 }}
+            />
+          </View>
+        </Card>
+
+        {/* 5. Cost Summary & Proceed to Checkout */}
+        <Card style={styles.sectionCard}>
+          <Text style={[styles.sectionTitle, { color: colors.text }]}>
+            4. Order Valuation & Checkout
+          </Text>
+
+          {/* Cost Summary Box */}
+          <View style={[styles.costSummaryBox, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
+            <View style={styles.summaryRow}>
+              <Text style={[styles.summaryLabel, { color: colors.textMuted }]}>Page Calculation</Text>
+              <Text style={[styles.summaryVal, { color: colors.text }]}>
+                {pages} page(s) × {copies} copy × ₹{activeFormatObj.pricePerUnit.toFixed(2)}
+              </Text>
+            </View>
+
+            <View style={styles.summaryRow}>
+              <Text style={[styles.summaryLabel, { color: colors.textMuted }]}>Base Document Subtotal</Text>
+              <Text style={[styles.summaryVal, { color: colors.text }]}>₹{rawCost.toFixed(2)}</Text>
+            </View>
+
+            {isFloorApplied && (
+              <View style={[styles.summaryRow, { marginTop: 4 }]}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                  <Feather name="shield" size={12} color={colors.primary} />
+                  <Text style={[styles.summaryLabel, { color: colors.primary, fontWeight: "600" }]}>
+                    Campus Minimum Order Floor
+                  </Text>
+                </View>
+                <Text style={[styles.summaryVal, { color: colors.primary }]}>
+                  +₹{minFloorAdjustment.toFixed(2)}
+                </Text>
+              </View>
+            )}
+
+            <View style={[styles.summaryRow, { marginTop: 6, paddingTop: 6, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }]}>
+              <Text style={[styles.totalLabel, { color: colors.text }]}>Total Payable</Text>
+              <Text style={[styles.totalPrice, { color: colors.primary }]}>₹{finalCost}</Text>
+            </View>
+          </View>
+
+          {isFloorApplied && (
+            <Text style={[styles.floorNotice, { color: colors.textMuted }]}>
+              ℹ️ A ₹5.00 minimum campus order threshold applies to all print requests to support hostel delivery courier expenses.
+            </Text>
+          )}
+
+          {/* Proceed to Checkout Button */}
+          <Button
+            title={
+              !selectedFile
+                ? "Upload a PDF to Proceed"
+                : `Proceed to Checkout • ₹${finalCost}`
+            }
+            variant="default"
+            size="md"
+            onPress={handleOpenCheckoutModal}
+            disabled={!selectedFile}
+            style={{ marginTop: 8 }}
+            leftIcon={<Feather name="shopping-bag" size={15} color={colors.primaryForeground} />}
+          />
+        </Card>
+
+        {/* 6. Active Print Orders & Tracking */}
+        <View style={styles.ordersHeader}>
+          <Text style={[styles.ordersTitle, { color: colors.text }]}>Your Print Station Orders</Text>
+          
+          <TouchableOpacity
+            onPress={() => fetchOrders(true)}
+            style={[styles.refreshBtnWrap, { backgroundColor: colors.secondary, borderColor: colors.border }]}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Animated.View style={{ transform: [{ rotate: spin }] }}>
+              <Feather name="refresh-cw" size={13} color={colors.primary} />
+            </Animated.View>
+            <Text style={[styles.refreshBtnText, { color: colors.primary }]}>Refresh</Text>
+          </TouchableOpacity>
+        </View>
+
+        {recentOrders.length === 0 ? (
+          <Card style={styles.emptyOrdersCard}>
+            <Feather name="printer" size={32} color={colors.textMuted} />
+            <Text style={[styles.emptyOrdersText, { color: colors.textMuted }]}>
+              No active print jobs found. Upload a document above to place your first order!
+            </Text>
+          </Card>
+        ) : (
+          recentOrders.map((order) => {
+            const isIssue = order.status === "ISSUE_REPORTED";
+            return (
+              <Card key={order.id} style={styles.orderCard}>
+                <View style={styles.orderCardTop}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.orderFileName, { color: colors.text }]} numberOfLines={1}>
+                      {order.fileName || "Document.pdf"}
+                    </Text>
+                    <Text style={[styles.orderMeta, { color: colors.textMuted }]}>
+                      {order.pageCount} pg(s) • {order.copies} copy • {new Date(order.createdAt).toLocaleDateString()}
+                    </Text>
+                  </View>
+                  <Badge variant={isIssue ? "warning" : "primary"} size="sm">
+                    {order.status}
                   </Badge>
                 </View>
 
-                {/* Animated Horizontal Stepper with Observable Issue Alert */}
-                <PrintOrderTracker
-                  status={ord.status}
-                  issueNote={
-                    ord.deliveryLocation?.includes("ISSUE")
-                      ? ord.deliveryLocation.split("ISSUE")[1]?.replace(/^[^:]*:\s*/, "")
-                      : undefined
-                  }
-                />
+                {/* Status Tracker Stepper */}
+                <View style={{ marginVertical: 8 }}>
+                  <PrintOrderTracker status={order.status} issueNote={order.issueReason} />
+                </View>
 
-                {/* In-app chat updates link & Problem report button */}
-                <View style={styles.orderActionRow}>
+                {/* Observable Issue Alert if reported */}
+                {isIssue && (
+                  <View style={[styles.issueAlertBox, { backgroundColor: colors.warning + "18", borderColor: colors.warning + "40" }]}>
+                    <Feather name="alert-triangle" size={14} color={colors.warning} />
+                    <Text style={[styles.issueAlertText, { color: colors.warning }]}>
+                      Issue Under Review: {order.issueReason || "Discrepancy reported"}
+                    </Text>
+                  </View>
+                )}
+
+                {/* Order Actions */}
+                <View style={[styles.orderFooter, { borderTopColor: colors.border }]}>
                   <TouchableOpacity
-                    style={styles.chatUpdateBtn}
+                    style={styles.chatBotLink}
                     onPress={() => navigation?.navigate("Messages")}
                   >
                     <Feather name="message-square" size={12} color={colors.primary} />
-                    <Text style={[styles.chatUpdateBtnText, { color: colors.primary }]}>
+                    <Text style={[styles.chatBotText, { color: colors.primary }]}>
                       Order Chat Updates
                     </Text>
                   </TouchableOpacity>
 
-                  {ord.status === "ISSUE_REPORTED" ? (
-                    <View style={styles.underReviewBadge}>
-                      <Ionicons name="warning" size={12} color="#f59e0b" />
-                      <Text style={{ fontSize: 11, fontWeight: "700", color: "#f59e0b" }}>
-                        Under Review
-                      </Text>
-                    </View>
-                  ) : ord.status !== "CANCELLED" && ord.status !== "REJECTED" ? (
-                    <TouchableOpacity
-                      style={styles.reportProblemBtn}
+                  {!isIssue && order.status !== "DELIVERED" && (
+                    <Button
+                      title="Report Problem"
+                      variant="outline"
+                      size="sm"
                       onPress={() => {
-                        setReportingOrder(ord);
+                        setReportingOrder(order);
                         setIssueReason("");
                       }}
-                    >
-                      <Ionicons name="alert-circle-outline" size={13} color={colors.textMuted} />
-                      <Text style={[styles.reportProblemBtnText, { color: colors.textMuted }]}>
-                        Report Problem
+                    />
+                  )}
+                </View>
+              </Card>
+            );
+          })
+        )}
+
+        {/* 7. Dedicated Full Checkout Modal */}
+        <Modal
+          visible={isCheckoutModalOpen}
+          animationType="slide"
+          transparent={true}
+          onRequestClose={() => setIsCheckoutModalOpen(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={[styles.checkoutModalContent, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <View style={styles.modalHeader}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.modalTitle, { color: colors.text }]}>Print Order Checkout</Text>
+                  <Text style={[styles.modalSubtitle, { color: colors.textMuted }]}>
+                    Review order specifications & verify UPI payment
+                  </Text>
+                </View>
+                <TouchableOpacity onPress={() => setIsCheckoutModalOpen(false)} style={{ padding: 4 }}>
+                  <Ionicons name="close" size={22} color={colors.textMuted} />
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 420 }}>
+                {/* Itemized Order Summary */}
+                <View style={[styles.checkoutSummaryCard, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
+                  <View style={styles.checkoutItemRow}>
+                    <Feather name="file-text" size={14} color={colors.primary} />
+                    <Text style={[styles.checkoutItemLabel, { color: colors.text }]} numberOfLines={1}>
+                      {selectedFile?.name}
+                    </Text>
+                  </View>
+
+                  <View style={styles.checkoutDetailGrid}>
+                    <View style={styles.detailCol}>
+                      <Text style={[styles.detailKey, { color: colors.textMuted }]}>Pages</Text>
+                      <Text style={[styles.detailVal, { color: colors.text }]}>{selectedFile?.pages} pages</Text>
+                    </View>
+                    <View style={styles.detailCol}>
+                      <Text style={[styles.detailKey, { color: colors.textMuted }]}>Format</Text>
+                      <Text style={[styles.detailVal, { color: colors.text }]}>{activeFormatObj.name}</Text>
+                    </View>
+                    <View style={styles.detailCol}>
+                      <Text style={[styles.detailKey, { color: colors.textMuted }]}>Copies</Text>
+                      <Text style={[styles.detailVal, { color: colors.text }]}>{copies} copy</Text>
+                    </View>
+                  </View>
+
+                  <View style={[styles.checkoutDropRow, { borderTopColor: colors.border }]}>
+                    <Feather name="map-pin" size={12} color={colors.primary} />
+                    <Text style={[styles.checkoutDropText, { color: colors.textMuted }]}>
+                      Drop: <Text style={{ color: colors.text, fontWeight: "600" }}>{deliveryLocation}</Text> ({deliveryWindow.split(" (")[0]})
+                    </Text>
+                  </View>
+
+                  {/* Pricing row in modal */}
+                  <View style={[styles.modalPricingRow, { borderTopColor: colors.border }]}>
+                    <View>
+                      <Text style={[styles.modalBaseCost, { color: colors.textMuted }]}>
+                        Base: ₹{rawCost.toFixed(2)} {isFloorApplied ? `+ ₹${minFloorAdjustment.toFixed(2)} (Min Floor)` : ""}
+                      </Text>
+                      <Text style={[styles.modalTotalDue, { color: colors.primary }]}>
+                        Total: ₹{finalCost}
+                      </Text>
+                    </View>
+                    <Badge variant="primary" size="md">
+                      ₹{finalCost}
+                    </Badge>
+                  </View>
+                </View>
+
+                {/* Campus UPI Section */}
+                <View style={[styles.checkoutUpiSection, { borderColor: colors.border }]}>
+                  <View style={styles.upiHeader}>
+                    <Ionicons name="qr-code-outline" size={16} color={colors.primary} />
+                    <Text style={[styles.upiTitle, { color: colors.text }]}>Pay via Campus UPI ID</Text>
+                  </View>
+
+                  <View style={[styles.upiIdRow, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
+                    <Text style={[styles.upiIdText, { color: colors.text }]} numberOfLines={1}>
+                      {upiId}
+                    </Text>
+                    <TouchableOpacity onPress={handleCopyUpi} style={styles.copyBtn}>
+                      <Feather name={copiedUpi ? "check" : "copy"} size={14} color={colors.primary} />
+                      <Text style={[styles.copyText, { color: colors.primary }]}>
+                        {copiedUpi ? "Copied" : "Copy"}
                       </Text>
                     </TouchableOpacity>
-                  ) : null}
+                  </View>
+
+                  <Button
+                    title={`Pay ₹${finalCost} with UPI App`}
+                    variant="outline"
+                    size="sm"
+                    onPress={handleOpenUpiApp}
+                    style={{ marginTop: 8 }}
+                    leftIcon={<Feather name="external-link" size={13} color={colors.primary} />}
+                  />
+                </View>
+
+                {/* 12-digit UTR Input */}
+                <View style={{ marginTop: 14 }}>
+                  <Text style={[styles.subLabel, { color: colors.text }]}>12-Digit Transaction UTR Number *</Text>
+                  <Text style={[styles.utrHint, { color: colors.textMuted }]}>
+                    Found on your Google Pay, PhonePe, or Paytm success screen
+                  </Text>
+                  <Input
+                    placeholder="e.g. 425619283741"
+                    value={utrNumber}
+                    onChangeText={setUtrNumber}
+                    keyboardType="numeric"
+                    maxLength={20}
+                    containerStyle={{ marginTop: 4 }}
+                  />
+                </View>
+              </ScrollView>
+
+              {/* Modal Confirmation Footer */}
+              <View style={styles.modalFooter}>
+                <Button
+                  title="Back"
+                  variant="outline"
+                  size="sm"
+                  onPress={() => setIsCheckoutModalOpen(false)}
+                />
+                <Button
+                  title={
+                    isSubmitting
+                      ? "Authorizing..."
+                      : cooldownSeconds > 0
+                      ? `✓ Placed (${cooldownSeconds}s)`
+                      : `Confirm & Submit (₹${finalCost})`
+                  }
+                  variant="default"
+                  size="sm"
+                  onPress={handleSubmitOrder}
+                  disabled={isSubmitting || cooldownSeconds > 0 || !utrNumber.trim()}
+                />
+              </View>
+            </View>
+          </View>
+        </Modal>
+
+        {/* 8. Report Problem Modal */}
+        <Modal
+          visible={!!reportingOrder}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setReportingOrder(null)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalContent, { backgroundColor: colors.card, borderColor: colors.border }]}>
+              <View style={styles.modalHeader}>
+                <View>
+                  <Text style={[styles.modalTitle, { color: colors.text }]}>Report Order Issue</Text>
+                  <Text style={[styles.modalSubtitle, { color: colors.textMuted }]}>
+                    Order #{reportingOrder?.id?.slice(-6).toUpperCase()}
+                  </Text>
+                </View>
+                <TouchableOpacity onPress={() => setReportingOrder(null)}>
+                  <Ionicons name="close" size={22} color={colors.textMuted} />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={[styles.formLabel, { color: colors.text }]}>Category</Text>
+                <View style={styles.categoryPillsWrap}>
+                  {["Print Quality", "Wrong Pages", "Drop Location Issue", "Payment Error"].map((cat) => (
+                    <TouchableOpacity
+                      key={cat}
+                      onPress={() => setIssueCategory(cat)}
+                      style={[
+                        styles.catChip,
+                        {
+                          backgroundColor: issueCategory === cat ? colors.primary + "18" : colors.secondary,
+                          borderColor: issueCategory === cat ? colors.primary : colors.border,
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.catChipText,
+                          {
+                            color: issueCategory === cat ? colors.primary : colors.textMuted,
+                            fontWeight: issueCategory === cat ? "700" : "500",
+                          },
+                        ]}
+                      >
+                        {cat}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
                 </View>
               </View>
-            ))}
-          </View>
-        </Card>
-      )}
 
-      {/* Problem Report Modal */}
-      <Modal
-        visible={!!reportingOrder}
-        transparent={true}
-        animationType="slide"
-        onRequestClose={() => setReportingOrder(null)}
-      >
-        <View style={styles.modalOverlay}>
-          <View
-            style={[
-              styles.modalContent,
-              { backgroundColor: colors.card, borderColor: colors.border },
-            ]}
-          >
-            <View style={styles.modalHeader}>
-              <View>
-                <Text style={[styles.modalTitle, { color: colors.text }]}>
-                  Report Problem
-                </Text>
-                <Text style={[styles.modalSubtitle, { color: colors.textMuted }]}>
-                  Order #{reportingOrder?.id?.slice(-6).toUpperCase()} • {reportingOrder?.fileName}
-                </Text>
-              </View>
-              <TouchableOpacity
-                onPress={() => setReportingOrder(null)}
-                style={styles.modalCloseBtn}
-              >
-                <Ionicons name="close" size={20} color={colors.textMuted} />
-              </TouchableOpacity>
-            </View>
-
-            {/* Category selection */}
-            <Text style={[styles.categoryLabel, { color: colors.text }]}>Problem Category</Text>
-            <View style={styles.categoryChipsRow}>
-              {[
-                "Print Quality Issue",
-                "Wrong Pages / Missing",
-                "Drop Location Missing",
-                "Payment / UTR Delay",
-                "Other",
-              ].map((cat) => (
-                <TouchableOpacity
-                  key={cat}
+              <View style={styles.formGroup}>
+                <Text style={[styles.formLabel, { color: colors.text }]}>Detailed Explanation *</Text>
+                <TextInput
                   style={[
-                    styles.catChip,
-                    {
-                      backgroundColor:
-                        issueCategory === cat ? colors.primary + "18" : colors.secondary,
-                      borderColor:
-                        issueCategory === cat ? colors.primary : colors.border,
-                    },
+                    styles.issueTextarea,
+                    { color: colors.text, borderColor: colors.border, backgroundColor: colors.secondary + "40" },
                   ]}
-                  onPress={() => setIssueCategory(cat)}
-                >
-                  <Text
-                    style={[
-                      styles.catChipText,
-                      {
-                        color: issueCategory === cat ? colors.primary : colors.textMuted,
-                        fontWeight: issueCategory === cat ? "700" : "500",
-                      },
-                    ]}
-                  >
-                    {cat}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+                  placeholder="Explain the problem with pages, faded print, or location..."
+                  placeholderTextColor={colors.textMuted}
+                  value={issueReason}
+                  onChangeText={setIssueReason}
+                  multiline
+                  numberOfLines={4}
+                />
+              </View>
 
-            <Text style={[styles.categoryLabel, { color: colors.text, marginTop: 12 }]}>
-              Detailed Description
-            </Text>
-            <TextInput
-              style={[
-                styles.modalTextInput,
-                {
-                  backgroundColor: colors.secondary,
-                  borderColor: colors.border,
-                  color: colors.text,
-                },
-              ]}
-              placeholder="Describe what happened so the print manager can resolve or reprint..."
-              placeholderTextColor={colors.textMuted}
-              multiline={true}
-              numberOfLines={3}
-              value={issueReason}
-              onChangeText={setIssueReason}
-            />
-
-            <View style={styles.modalActionsRow}>
-              <Button
-                title="Cancel"
-                variant="outline"
-                size="sm"
-                onPress={() => setReportingOrder(null)}
-              />
-              <Button
-                title={isSubmittingIssue ? "Submitting..." : "Submit Problem Report"}
-                variant="default"
-                size="sm"
-                onPress={handleReportIssue}
-                disabled={!issueReason.trim() || isSubmittingIssue}
-              />
+              <View style={styles.modalFooter}>
+                <Button
+                  title="Cancel"
+                  variant="outline"
+                  size="sm"
+                  onPress={() => setReportingOrder(null)}
+                />
+                <Button
+                  title={isSubmittingIssue ? "Submitting..." : "Submit Report"}
+                  variant="default"
+                  size="sm"
+                  onPress={handleReportIssue}
+                  disabled={isSubmittingIssue}
+                />
+              </View>
             </View>
           </View>
-        </View>
-      </Modal>
-    </ScrollView>
+        </Modal>
+      </ScrollView>
+    </ClientServiceGuard>
   );
 }
 
@@ -767,176 +1199,346 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
     gap: 16,
   },
-  heroBanner: {
-    padding: 18,
-  },
-  badgeRow: {
-    marginBottom: 8,
-  },
-  heroTitle: {
-    fontSize: 20,
-    fontWeight: "900",
-    letterSpacing: -0.4,
-  },
-  heroSubtitle: {
-    fontSize: 12,
-    marginTop: 4,
-    lineHeight: 18,
-  },
-  sectionCard: {
+  headerCard: {
     padding: 16,
+    gap: 6,
   },
-  sectionHeaderRow: {
+  headerTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  headerBadge: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    marginBottom: 10,
+  },
+  headerBadgeText: {
+    fontSize: 11,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  headerTitle: {
+    fontSize: 22,
+    fontWeight: "900",
+    letterSpacing: -0.5,
+  },
+  headerSub: {
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  ratePillsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    marginTop: 6,
+  },
+  sectionCard: {
+    padding: 16,
+    gap: 12,
   },
   sectionTitle: {
     fontSize: 14,
     fontWeight: "800",
-    letterSpacing: -0.2,
   },
-  dropzone: {
-    borderWidth: 2,
+  uploadDropzone: {
+    borderWidth: 1.5,
     borderStyle: "dashed",
     borderRadius: 14,
-    paddingVertical: 24,
-    paddingHorizontal: 16,
+    padding: 24,
     alignItems: "center",
     justifyContent: "center",
+    gap: 6,
   },
-  dropzoneTitle: {
-    fontSize: 13,
-    fontWeight: "700",
-    marginTop: 8,
-  },
-  dropzoneSubtitle: {
-    fontSize: 11,
-    marginTop: 2,
-  },
-  filePreviewBox: {
-    flexDirection: "row",
+  uploadIconCircle: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 4,
+  },
+  uploadPrompt: {
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  uploadHint: {
+    fontSize: 11,
+  },
+  pickedFileBox: {
     padding: 12,
     borderRadius: 12,
     borderWidth: 1,
+    gap: 10,
   },
-  fileIconBox: {
-    width: 38,
-    height: 38,
-    borderRadius: 10,
+  pickedFileTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  pickedFileLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+  },
+  pdfIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
     alignItems: "center",
     justifyContent: "center",
   },
-  fileNameText: {
+  fileName: {
     fontSize: 13,
     fontWeight: "700",
   },
-  fileMetaText: {
+  fileMeta: {
     fontSize: 11,
     marginTop: 2,
   },
-  formatGrid: {
+  removeFileBtn: {
+    padding: 4,
+  },
+  pageStepperRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingTop: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  pageStepperLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  pageStepperHint: {
+    fontSize: 10,
+    marginTop: 1,
+  },
+  pageCounterWrap: {
+    flexDirection: "row",
+    alignItems: "center",
     gap: 8,
   },
-  formatCard: {
-    padding: 12,
-    borderRadius: 10,
-    borderWidth: 1,
-  },
-  formatHeader: {
+  formatGrid: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 4,
+    flexWrap: "wrap",
+    gap: 8,
   },
-  formatName: {
-    fontSize: 12,
-    flex: 1,
-    marginRight: 6,
+  formatTile: {
+    width: "48%",
+    flexGrow: 1,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    gap: 4,
+  },
+  formatTileTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  radioCircle: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  radioDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
   formatRate: {
     fontSize: 12,
     fontWeight: "800",
   },
+  formatName: {
+    fontSize: 12,
+    fontWeight: "700",
+    marginTop: 4,
+  },
   formatDesc: {
-    fontSize: 11,
-    lineHeight: 15,
+    fontSize: 10,
+    lineHeight: 13,
   },
   copiesRow: {
     flexDirection: "row",
-    gap: 8,
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingTop: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
   },
-  copyBtn: {
-    flex: 1,
-    height: 38,
+  copiesLabel: {
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  counterWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  counterBtn: {
+    width: 30,
+    height: 30,
     borderRadius: 8,
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
   },
-  copyBtnText: {
-    fontSize: 13,
-    fontWeight: "700",
+  counterValue: {
+    fontSize: 15,
+    fontWeight: "800",
   },
-  chipsRow: {
+  quickLocations: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 6,
-    marginTop: 10,
   },
   locationChip: {
     paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingVertical: 6,
     borderRadius: 8,
     borderWidth: 1,
   },
-  chipText: {
+  locationChipText: {
     fontSize: 11,
-    fontWeight: "600",
   },
-  phoneHeaderRow: {
+  subLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  slotRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 6,
+  },
+  slotTile: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 8,
+    gap: 6,
+    padding: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  slotText: {
+    fontSize: 11,
+    flex: 1,
   },
   phoneInputRow: {
     flexDirection: "row",
     alignItems: "center",
+    marginTop: 4,
   },
-  summaryCard: {
-    padding: 18,
+  costSummaryBox: {
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    gap: 4,
   },
   summaryRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
-  payableLabel: {
-    fontSize: 11,
-    fontWeight: "700",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
+  summaryLabel: {
+    fontSize: 12,
   },
-  payableAmount: {
-    fontSize: 28,
+  summaryVal: {
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  floorNotice: {
+    fontSize: 11,
+    lineHeight: 16,
+    fontStyle: "italic",
+  },
+  totalLabel: {
+    fontSize: 14,
+    fontWeight: "800",
+  },
+  totalPrice: {
+    fontSize: 18,
     fontWeight: "900",
-    letterSpacing: -0.5,
-    marginTop: 2,
   },
-  payableBreakdown: {
-    fontSize: 11,
-    marginTop: 2,
-  },
-  orderCard: {
-    padding: 12,
-    borderRadius: 12,
-    borderWidth: 1,
+  upiBox: {
+    marginTop: 10,
     gap: 6,
   },
-  orderTopRow: {
+  upiHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  upiTitle: {
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  upiIdRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    marginTop: 4,
+  },
+  upiIdText: {
+    fontSize: 12,
+    fontWeight: "600",
+    flex: 1,
+  },
+  copyBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  copyText: {
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  ordersHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 6,
+  },
+  ordersTitle: {
+    fontSize: 15,
+    fontWeight: "800",
+  },
+  refreshBtnWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  refreshBtnText: {
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  emptyOrdersCard: {
+    padding: 24,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  emptyOrdersText: {
+    fontSize: 12,
+    textAlign: "center",
+  },
+  orderCard: {
+    padding: 14,
+    gap: 8,
+  },
+  orderCardTop: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
@@ -949,44 +1551,115 @@ const styles = StyleSheet.create({
     fontSize: 11,
     marginTop: 2,
   },
-  orderActionRow: {
+  issueAlertBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    padding: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  issueAlertText: {
+    fontSize: 11,
+    fontWeight: "600",
+    flex: 1,
+  },
+  orderFooter: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingTop: 8,
-    marginTop: 4,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: "rgba(150, 150, 150, 0.2)",
   },
-  chatUpdateBtn: {
+  chatBotLink: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    paddingVertical: 2,
   },
-  chatUpdateBtnText: {
+  chatBotText: {
     fontSize: 11,
     fontWeight: "600",
   },
-  underReviewBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
-  reportProblemBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    paddingVertical: 2,
-  },
-  reportProblemBtnText: {
-    fontSize: 11,
-    fontWeight: "500",
-  },
   modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.65)",
+    backgroundColor: "rgba(0,0,0,0.65)",
     justifyContent: "flex-end",
+  },
+  checkoutModalContent: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    borderTopWidth: 1,
+    padding: 20,
+    paddingBottom: 36,
+    gap: 12,
+  },
+  checkoutSummaryCard: {
+    padding: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    gap: 8,
+  },
+  checkoutItemRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  checkoutItemLabel: {
+    fontSize: 13,
+    fontWeight: "700",
+    flex: 1,
+  },
+  checkoutDetailGrid: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingTop: 6,
+  },
+  detailCol: {
+    gap: 2,
+  },
+  detailKey: {
+    fontSize: 10,
+    textTransform: "uppercase",
+    fontWeight: "600",
+  },
+  detailVal: {
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  checkoutDropRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingTop: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  checkoutDropText: {
+    fontSize: 11,
+  },
+  modalPricingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingTop: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  modalBaseCost: {
+    fontSize: 11,
+  },
+  modalTotalDue: {
+    fontSize: 16,
+    fontWeight: "900",
+  },
+  checkoutUpiSection: {
+    marginTop: 10,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    gap: 6,
+  },
+  utrHint: {
+    fontSize: 10,
+    marginTop: 1,
   },
   modalContent: {
     borderTopLeftRadius: 20,
@@ -994,34 +1667,32 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     padding: 20,
     paddingBottom: 36,
+    gap: 12,
   },
   modalHeader: {
     flexDirection: "row",
     alignItems: "flex-start",
     justifyContent: "space-between",
-    marginBottom: 14,
   },
   modalTitle: {
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: "800",
   },
   modalSubtitle: {
     fontSize: 11,
     marginTop: 2,
   },
-  modalCloseBtn: {
-    padding: 4,
+  formGroup: {
+    gap: 6,
   },
-  categoryLabel: {
+  formLabel: {
     fontSize: 12,
     fontWeight: "700",
-    marginBottom: 6,
   },
-  categoryChipsRow: {
+  categoryPillsWrap: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 6,
-    marginBottom: 4,
   },
   catChip: {
     paddingHorizontal: 10,
@@ -1032,19 +1703,19 @@ const styles = StyleSheet.create({
   catChipText: {
     fontSize: 11,
   },
-  modalTextInput: {
-    borderRadius: 10,
+  issueTextarea: {
     borderWidth: 1,
+    borderRadius: 10,
     padding: 10,
     fontSize: 12,
     minHeight: 80,
     textAlignVertical: "top",
   },
-  modalActionsRow: {
+  modalFooter: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "flex-end",
     gap: 10,
-    marginTop: 16,
+    marginTop: 10,
   },
 });

@@ -1,16 +1,26 @@
-import React, { useState, useEffect, useCallback } from "react";
-import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
+import React, { useState, useEffect } from "react";
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  ActivityIndicator,
+} from "react-native";
 import { Ionicons, Feather } from "@expo/vector-icons";
+import { useNavigation } from "@react-navigation/native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useTheme } from "../context/ThemeContext";
+import { useUser } from "../context/UserContext";
+import { apiClient } from "../services/apiClient";
 import { Card } from "./ui/Card";
 import { Button } from "./ui/Button";
 import { Badge } from "./ui/Badge";
-import { apiClient } from "../services/apiClient";
 
-export type MobileCampusServiceKey =
+export type CampusServiceKey =
   | "PRINT_STATION"
   | "INCOGNITO_WALL"
   | "GIG_HUB"
+  | "CAMPUS_GIGS"
   | "MARKETPLACE"
   | "CAB_SPLIT"
   | "LOST_AND_FOUND"
@@ -18,139 +28,188 @@ export type MobileCampusServiceKey =
   | "CGPA_CALCULATOR";
 
 interface ClientServiceGuardProps {
-  campusId?: string | null;
-  serviceKey: MobileCampusServiceKey;
+  serviceKey: CampusServiceKey;
   children: React.ReactNode;
+  navigation?: any;
 }
 
-const SERVICE_TITLES: Record<MobileCampusServiceKey, { title: string; desc: string; icon: string }> = {
+interface ServiceMeta {
+  title: string;
+  subtitle: string;
+  defaultReason: string;
+  iconName: any;
+}
+
+const SERVICE_META: Record<CampusServiceKey, ServiceMeta> = {
   PRINT_STATION: {
-    title: "Print Dispatch Paused",
-    desc: "Campus print operators are restocking toner or performing queue maintenance.",
-    icon: "printer",
+    title: "Print Dispatch Temporarily Offline",
+    subtitle: "Campus Print Station Maintenance",
+    defaultReason: "Print operators are restocking paper cartridges or clearing offline queues. Service will resume shortly.",
+    iconName: "printer",
   },
   CAB_SPLIT: {
     title: "Transit Splits on Hold",
-    desc: "Ride share coordination is paused during campus transit curfew.",
-    icon: "car",
+    subtitle: "Campus Travel Safety Interlock",
+    defaultReason: "Cab share coordination is temporarily paused during campus curfew or transit calibration.",
+    iconName: "car",
   },
   MARKETPLACE: {
-    title: "Marketplace Under Review",
-    desc: "Campus listings and escrow verification are undergoing scheduled moderation.",
-    icon: "shopping-bag",
+    title: "Marketplace Under Scheduled Review",
+    subtitle: "Student Escrow & Catalog Moderation",
+    defaultReason: "Peer-to-peer campus listings and settlement channels are undergoing standard moderation audit.",
+    iconName: "shopping-bag",
   },
   INCOGNITO_WALL: {
-    title: "Whisper Wall Cooldown",
-    desc: "Campus anonymous boards are undergoing automated sentiment filter resets.",
-    icon: "eye-off",
+    title: "Whisper Wall Cooldown Active",
+    subtitle: "Campus Moderation Filter Sync",
+    defaultReason: "Campus anonymous feeds are undergoing an automated sentiment reset and safety verification.",
+    iconName: "eye-off",
   },
   GIG_HUB: {
-    title: "Gig Hub Paused",
-    desc: "Freelance task escrow deposits and releases are held for ledger audit.",
-    icon: "briefcase",
+    title: "Student Task Hub Paused",
+    subtitle: "Escrow Ledger Validation",
+    defaultReason: "Campus gig deposits and bounties are temporarily on hold for ledger verification.",
+    iconName: "briefcase",
+  },
+  CAMPUS_GIGS: {
+    title: "Student Task Hub Paused",
+    subtitle: "Escrow Ledger Validation",
+    defaultReason: "Campus gig deposits and bounties are temporarily on hold for ledger verification.",
+    iconName: "briefcase",
   },
   LOST_AND_FOUND: {
-    title: "Lost & Found Syncing",
-    desc: "Recovery registry is synchronizing records with campus security.",
-    icon: "search",
+    title: "Lost & Found Desk Updating",
+    subtitle: "Security Registry Synchronization",
+    defaultReason: "Misplaced item registry is currently syncing verified recovery records with campus security.",
+    iconName: "search",
   },
   ATTENDANCE: {
     title: "Attendance Engine Syncing",
-    desc: "Lecture records are synchronizing with university academic schedules.",
-    icon: "calendar",
+    subtitle: "University ERP Interlock",
+    defaultReason: "Attendance databases are syncing term records with university server.",
+    iconName: "calendar",
   },
   CGPA_CALCULATOR: {
-    title: "Grade Calibration Active",
-    desc: "Grading curves and credit weights are undergoing routine maintenance.",
-    icon: "school",
+    title: "Transcript Service Maintenance",
+    subtitle: "Grading Scale Calibration",
+    defaultReason: "Academic grading scales and credit weightings are syncing with department regulations.",
+    iconName: "award",
   },
 };
 
-export function ClientServiceGuard({
-  campusId,
-  serviceKey,
-  children,
-}: ClientServiceGuardProps) {
+export function ClientServiceGuard({ serviceKey, children }: ClientServiceGuardProps) {
   const { colors } = useTheme();
-  const [service, setService] = useState<any | null>(null);
-  const [checked, setChecked] = useState(false);
-  const [isPinging, setIsPinging] = useState(false);
+  const { user } = useUser();
+  const navigation = useNavigation<any>();
 
-  const checkStatus = useCallback(async (showIndicator = false) => {
-    if (!campusId) {
-      setChecked(true);
-      return;
-    }
-    if (showIndicator) setIsPinging(true);
+  const [isChecking, setIsChecking] = useState(true);
+  const [isPinging, setIsPinging] = useState(false);
+  const [serviceStatus, setServiceStatus] = useState<{
+    isEnabled: boolean;
+    reason: string;
+  }>({ isEnabled: true, reason: "" });
+
+  const checkService = async (isManualPing = false) => {
+    if (isManualPing) setIsPinging(true);
+    else setIsChecking(true);
 
     try {
-      const res = await apiClient.get(`/admin/services?campusId=${campusId}`);
+      const collegeId = user?.collegeId || user?.college?.id || "default";
+      const res = await apiClient.get(`/services?campusId=${encodeURIComponent(collegeId)}`);
+
       if (res.success && Array.isArray(res.data)) {
+        AsyncStorage.setItem(`@otium_cached_services_${collegeId}`, JSON.stringify(res.data)).catch(() => {});
         const found = res.data.find((s: any) => s.serviceKey === serviceKey);
-        setService(found || null);
+        if (found && found.isEnabled === false) {
+          setServiceStatus({
+            isEnabled: false,
+            reason: found.maintenanceMessage || SERVICE_META[serviceKey].defaultReason,
+          });
+        } else {
+          setServiceStatus({ isEnabled: true, reason: "" });
+        }
+      } else {
+        // Read cached status if offline or endpoint unreachable
+        const cached = await AsyncStorage.getItem(`@otium_cached_services_${collegeId}`).catch(() => null);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          const found = parsed.find((s: any) => s.serviceKey === serviceKey);
+          if (found && found.isEnabled === false) {
+            setServiceStatus({
+              isEnabled: false,
+              reason: found.maintenanceMessage || SERVICE_META[serviceKey].defaultReason,
+            });
+            return;
+          }
+        }
+        setServiceStatus({ isEnabled: true, reason: "" });
       }
     } catch {
-      // safe fallback
+      setServiceStatus({ isEnabled: true, reason: "" });
     } finally {
-      setChecked(true);
-      if (showIndicator) setIsPinging(false);
+      setIsChecking(false);
+      setIsPinging(false);
     }
-  }, [campusId, serviceKey]);
+  };
 
   useEffect(() => {
-    checkStatus();
-  }, [checkStatus]);
+    checkService();
+  }, [serviceKey, user?.collegeId]);
 
-  if (!campusId || !checked) {
+  if (isChecking) {
     return <>{children}</>;
   }
 
-  if (service && !service.isEnabled) {
-    const meta = SERVICE_TITLES[serviceKey] || {
-      title: "Service Temporarily Offline",
-      desc: "This module is temporarily inactive for your campus.",
-      icon: "alert-circle",
-    };
+  // If service is disabled by admin, render the closed service screen
+  if (!serviceStatus.isEnabled) {
+    const meta = SERVICE_META[serviceKey] || SERVICE_META.PRINT_STATION;
+    const campus = user?.college?.name || "Campus";
 
     return (
-      <View style={styles.container}>
-        <Card style={styles.card}>
-          {/* Pulsing Hazard Icon */}
-          <View
-            style={[
-              styles.iconCircle,
-              {
-                backgroundColor: colors.warning + "18",
-                borderColor: colors.warning + "40",
-              },
-            ]}
-          >
-            <Feather name={meta.icon as any} size={28} color={colors.warning} />
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        <Card style={styles.maintenanceCard}>
+          {/* Pulsing Hazard Radar Icon */}
+          <View style={[styles.beaconOuter, { backgroundColor: colors.warning + "20" }]}>
+            <View style={[styles.beaconInner, { backgroundColor: colors.warning + "40" }]}>
+              <Feather name={meta.iconName} size={28} color={colors.warning} />
+            </View>
           </View>
 
-          {/* Badge */}
-          <Badge variant="warning" size="sm" style={{ marginTop: 14 }}>
-            CAMPUS_INTERLOCK_ACTIVE
-          </Badge>
+          <View style={styles.badgeRow}>
+            <Badge variant="warning" size="sm">
+              Service Paused
+            </Badge>
+            <Badge variant="outline" size="sm">
+              {campus}
+            </Badge>
+          </View>
 
-          {/* Title & Desc */}
-          <Text style={[styles.title, { color: colors.text }]}>
-            {service.serviceName || meta.title}
-          </Text>
+          <Text style={[styles.title, { color: colors.text }]}>{meta.title}</Text>
+          <Text style={[styles.subtitle, { color: colors.primary }]}>{meta.subtitle}</Text>
 
-          <Text style={[styles.desc, { color: colors.textMuted }]}>
-            {service.maintenanceMessage || meta.desc}
-          </Text>
+          <View style={[styles.reasonBox, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
+            <Ionicons name="information-circle-outline" size={16} color={colors.warning} style={{ marginTop: 2 }} />
+            <Text style={[styles.reasonText, { color: colors.textSecondary }]}>
+              {serviceStatus.reason || meta.defaultReason}
+            </Text>
+          </View>
 
-          {/* Interactive Actions */}
-          <View style={styles.buttonRow}>
+          <View style={styles.actionsCol}>
             <Button
-              title={isPinging ? "Querying Campus..." : "Ping Service Status"}
+              title={isPinging ? "Pinging Service..." : "Ping Service Status"}
+              variant="default"
+              size="md"
+              onPress={() => checkService(true)}
+              disabled={isPinging}
+              leftIcon={<Feather name="refresh-cw" size={15} color={colors.primaryForeground} />}
+            />
+
+            <Button
+              title="Return to Dashboard Hub"
               variant="outline"
-              size="sm"
-              isLoading={isPinging}
-              onPress={() => checkStatus(true)}
-              leftIcon={<Ionicons name="refresh" size={14} color={colors.text} />}
+              size="md"
+              onPress={() => navigation.navigate("Hub")}
+              leftIcon={<Feather name="arrow-left" size={15} color={colors.text} />}
             />
           </View>
         </Card>
@@ -164,40 +223,63 @@ export function ClientServiceGuard({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 16,
+    padding: 20,
     justifyContent: "center",
   },
-  card: {
+  maintenanceCard: {
+    padding: 24,
     alignItems: "center",
-    textAlign: "center",
-    paddingVertical: 28,
-    paddingHorizontal: 20,
+    gap: 14,
   },
-  iconCircle: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    borderWidth: 2,
+  beaconOuter: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
     alignItems: "center",
     justifyContent: "center",
+    marginBottom: 4,
+  },
+  beaconInner: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  badgeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
   },
   title: {
     fontSize: 18,
     fontWeight: "800",
     textAlign: "center",
-    marginTop: 12,
     letterSpacing: -0.3,
   },
-  desc: {
-    fontSize: 12,
+  subtitle: {
+    fontSize: 13,
+    fontWeight: "700",
     textAlign: "center",
-    marginTop: 6,
-    lineHeight: 18,
-    paddingHorizontal: 12,
+    marginTop: -6,
   },
-  buttonRow: {
-    marginTop: 18,
+  reasonBox: {
     flexDirection: "row",
-    gap: 8,
+    alignItems: "flex-start",
+    gap: 10,
+    padding: 14,
+    borderRadius: 10,
+    borderWidth: 1,
+    width: "100%",
+  },
+  reasonText: {
+    fontSize: 12,
+    lineHeight: 18,
+    flex: 1,
+  },
+  actionsCol: {
+    width: "100%",
+    gap: 10,
+    marginTop: 6,
   },
 });

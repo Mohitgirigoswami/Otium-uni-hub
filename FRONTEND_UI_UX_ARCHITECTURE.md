@@ -23,6 +23,10 @@
    - [5. CGPA & SGPA Forecaster](#5-cgpa--sgpa-forecaster)
    - [6. Profile & Live Theme Switcher](#6-profile--live-theme-switcher)
    - [7. Phase 1 Messaging & Express Print In-App Updates](#7-phase-1-messaging--express-print-in-app-updates)
+   - [8. Cab Split & RideShare](#8-cab-split--rideshare)
+   - [9. Campus Lost & Found](#9-campus-lost--found)
+   - [10. Student Marketplace](#10-student-marketplace)
+   - [11. Campus Freelance Gigs](#11-campus-freelance-gigs)
 6. [Motion Design, Animations & Micro-Interactions](#6-motion-design-animations--micro-interactions)
 7. [Agent Maintenance Checklist & Updating Rules](#7-agent-maintenance-checklist--updating-rules)
 
@@ -99,9 +103,11 @@ graph TD
    - Prompts for **University Campus** (required), with optional fields for **Phone Number**, **Department**, and **Academic Year**.
    - Ensures that multi-campus data isolation (marketplace listings, campus whisper feeds, delivery drops) is properly scoped from session 1.
 
-4. **Service Maintenance Guard (`src/components/ClientServiceGuard.tsx`)**:
+4. **Service Maintenance Guard (`src/components/ClientServiceGuard.tsx` & `mobile/src/components/ClientServiceGuard.tsx`)**:
    - Guards all student modules (`PRINT_STATION`, `ATTENDANCE`, `INCOGNITO_WALL`, `GIG_HUB`, `MARKETPLACE`, `CAB_SPLIT`).
    - If an admin toggles a campus service off, the screen renders an amber hazard radar beacon with custom admin notice and an interactive "Ping Service Status" Framer Motion button that checks service recovery in real-time.
+   - **Mobile Parity & Offline Cache**: Mobile `ClientServiceGuard` caches service statuses in `AsyncStorage` (`@otium_cached_services_${collegeId}`) so service guards hydrate instantaneously on launch and gracefully fallback to cached values if the device is experiencing intermittent network connectivity.
+   - **API Error Interceptor (`mobile/src/services/apiClient.ts`)**: Automatically checks if responses return `text/html` (such as 404 or 500 error pages) and converts them to human-readable error messages, preventing raw HTML from ever being displayed in mobile alerts.
 
 ---
 
@@ -268,13 +274,12 @@ Otium maintains a strict 1:1 component design equivalence between shadcn/ui on W
 | :--- | :--- | :--- | :--- |
 | **Button** | `button.tsx` | `Button.tsx` | Variants: `default`, `secondary`, `outline`, `destructive`, `ghost`. Supports `isLoading` with orbital spinner, and `leftIcon` / `rightIcon` slots. |
 | **Card** | `card.tsx` | `Card.tsx` | Variants: `default`, `outline`, `secondary`. Uses border tokens and surface elevation. |
-| **Badge** | `badge.tsx` | `Badge.tsx` | Variants: `default`, `outline`, `primary`, `success`, `warning`, `destructive`. |
-| **Input** | `input.tsx` | `Input.tsx` | Supports focus rings, error messages, and icon accessories. |
+| **Badge** | `badge.tsx` | `Badge.tsx` | Variants: `default`, `secondary`, `outline`, `primary`, `success`, `warning`, `destructive`. |
 | **Spinner** | `spinner.tsx` (Framer Motion) | `Spinner.tsx` (Animated SVG) | Variants: `orbit` (dual counter-rotating rings + satellite particle), `radar` (expanding sonar rings), `classic` (gradient arc). |
-| **Liquid Slider** | `liquid-slider.tsx` | `LiquidSlider.tsx` | Physical thumb stretching (`scaleX: 1.25, scaleY: 0.88`), magnetic floating percentage tooltip, quick-snap preset chips (65%, 75%, 80%, 85%). |
+| **Liquid Slider** | `liquid-slider.tsx` | `LiquidSlider.tsx` | Physical thumb stretching (`scaleX: 1.25, scaleY: 0.88`), magnetic floating percentage tooltip, quick-snap preset chips (65%, 75%, 80%, 85%), and PanResponder delta relative drag (`initialThumbX + gestureState.dx`) ensuring flawless mobile sliding across platforms. |
 | **Radial CGPA Gauge** | `RadialCgpaGauge.tsx` | `RadialCgpaGauge.tsx` | 270° SVG arc meter (0.00 - 10.00 scale), animated spring sweep, centered GPA readout, tier badge. |
 | **Print Order Tracker** | `PrintOrderTracker.tsx` | `PrintOrderTracker.tsx` | Horizontal laser timeline connecting `Submitted` → `Printing` → `Dispatched` → `Ready`. |
-| **Service Guard** | `ClientServiceGuard.tsx` | `ClientServiceGuard.tsx` | Concentric amber hazard beacon, admin notice, and live "Ping Service" status check. |
+| **Service Guard** | `ClientServiceGuard.tsx` | `ClientServiceGuard.tsx` | Concentric amber hazard beacon, campus maintenance notice, and live "Ping Service" check backed by `GET /api/services?campusId=...` for all campus modules. |
 
 ---
 
@@ -284,9 +289,9 @@ Otium maintains a strict 1:1 component design equivalence between shadcn/ui on W
 * **Web**: `src/app/dashboard/page.tsx`
 * **Mobile**: `mobile/src/screens/DashboardScreen.tsx`
 * **UX Principles**:
-  - Hero greeting with university campus badge and fast switcher.
+  - Dynamic university campus badge derived directly from `{user?.college?.name || "JCBOSEUST, YMCA"}` with fast switcher.
   - 75% attendance circular health summary widget.
-  - Quick launcher deck linking directly to Express Printing, Gigs, Marketplace, and Whisper Wall.
+  - Standardized portal launcher deck: all 8 service tiles use cohesive semantic background tint `colors.primary + "14"` and primary accent tags, eliminating ad-hoc color clashes.
   - Telemetry notifications panel showing recent campus orders and deliveries.
 
 ---
@@ -294,14 +299,24 @@ Otium maintains a strict 1:1 component design equivalence between shadcn/ui on W
 ### 2. Express Printing (Formerly Hostel Print)
 * **Web**: `src/app/print-station/page.tsx`
 * **Mobile**: `mobile/src/screens/PrintStationScreen.tsx`
-* **UX Principles & Anti-Double-Order Cooldown**:
+* **UX Principles & Checkout Architecture**:
+  - **Client Service Guard**: Wrapped in `<ClientServiceGuard serviceKey="PRINT_STATION">` checking real-time printer availability per campus.
   - **Document Selection**: PDF upload with direct-to-cloud resumable streaming and client-side page detection (`pdf-lib`).
   - **Configuration**: Duplex selection (B&W Double, B&W Single, Color Single, Color Double). Single-page discount bypass prevention is enforced on the server.
-  - **Campus Drop Location**: Dropdown or open text input with hostel block / library desk presets.
-  - **Contact Phone Sync**: Inline telephone input with SMS delivery alert confirmation.
+  - **Guaranteed Dynamic UPI ID**: Defaults to `8307798816@upi`, migrates legacy dummy DB values in `getPlatformSettingsAction`, caches locally in `@otium_cached_upi_id`, and refreshes dynamically from `GET /api/settings`.
+  - **₹5.00 Minimum Campus Order Floor**: Enforces a ₹5.00 minimum threshold (`Math.max(5.0, rawCost)`) on both client and server (`MINIMUM_ORDER_PAISE = 500`) to deter pranks and cover hostel courier handling fees. The UI visibly illustrates the floor adjustment item (+₹X.XX) if subtotal is under ₹5.
+  - **Dedicated Full Checkout Modal (`isCheckoutModalOpen`)**: Replaces cluttered inline forms with a dedicated checkout bottom-sheet modal:
+    - Itemized summary breakdown (PDF filename, page count, format, copies, drop location, delivery window).
+    - Subtotal and Minimum Floor adjustment line.
+    - 1-tap UPI ID Copy button & deep-link `"Pay with UPI App"`.
+    - 12-digit transaction UTR number validation.
+  - **Hermes-Safe PDF Page Calculation & Interactive Stepper**:
+    - Replaced the unsupported `FileReader.prototype.readAsBinaryString` (which threw exceptions in React Native Hermes and defaulted to 1 page) with `FileReader.readAsText` and robust multi-regex page detection (`/\/Type\s*\/Page[^s]/g` and `/\/Count\s+(\d+)/`).
+    - Added an interactive **Page Count Stepper** `[-] [ N Page(s) ] [+]` on the picked document card, giving students full control to verify or adjust page counts instantly.
+  - **Animated Order Refresh**: An animated 360° spinning icon on the refresh button (`Animated.Value`) along with `RefreshControl` on the `ScrollView` gives users immediate visual confirmation that the campus order queue is refreshing.
+  - **Auto-Loading on Boot**: Orders auto-query `/api/print/order?userId=${user.id}` on `[user?.id]`, eliminating 401 unauthenticated errors and blank states.
   - **Anti-Spam 4-Second Submission Cooldown**:
     ```tsx
-    // When the order submits successfully:
     setCooldownSeconds(4);
     const timer = setInterval(() => {
       setCooldownSeconds((prev) => {
@@ -317,57 +332,67 @@ Otium maintains a strict 1:1 component design equivalence between shadcn/ui on W
     - **Report Problem Action**: Both Web and Mobile feature a "Report Problem" modal dialog allowing students to report issues (Print quality faded, wrong/missing pages, drop location delivery issue, payment verification) with detailed notes.
   - **One-Way In-App System Dispatch Bot ("Express Print Station")**:
     - A dedicated system bot account (`Express Print Station` / `printing@otiumhub.in`) automatically sends transactional in-app SMS-style messages into the student's messaging inbox.
-    - Updates are dispatched immediately on:
-      1. Order placement & UPI receipt confirmation
-      2. Step status changes (`PRINTING`, `OUT_FOR_DELIVERY`, `READY`, `DELIVERED`, `REJECTED`, `ISSUE_REPORTED`)
-      3. Problem report submission acknowledgments.
 
 ---
 
 ### 3. 75% Attendance Guardrail & Offline Sync
 * **Web**: `src/app/attendance/page.tsx`
 * **Mobile**: `mobile/src/screens/AttendanceScreen.tsx`
-* **UX Principles & Uncluttered Card Layout**:
-  - **Uncluttered Cards**: Session weighting buttons (`1h`, `2h`, `3h`, `4h`) are **hidden from the main cards** and located inside the Add/Edit Subject modal sheet.
-  - **Action Controls**: Course cards feature simple `+ Attended` and `+ Bunked` quick-tap buttons.
-  - **Bunk / Recovery Math**: Automatically computes and badges `"Safe to bunk N classes"` (green) or `"Must attend N consecutive classes to reach target"` (rose).
-  - **Offline Sync Queue (Mobile)**:
-    - If offline, course modifications save to `AsyncStorage` (`@otium_attendance_subjects`).
-    - Failed sync mutations append to `@otium_attendance_pending_sync`.
-    - Automatically flushes queued mutations when connectivity restores. Status badges display `⚡ Live Synced` vs `☁️ Offline Mode`.
+* **UX Principles, Gesture Logging & Reconciled Offline Sync**:
+  - **Swipe-to-Log Gestures (`SwipeableSubjectCardItem`)**:
+    - Interactive `PanResponder` on subject cards: **Swipe Right ➔ `+ Present`**, **Swipe Left ➔ `+ Absent`**.
+    - Integrates tactile haptic feedback (`Vibration.vibrate(45)`), color-coded background reveals (emerald right, rose left), and spring recoil upon gesture release.
+    - Direction lock ratio (`|dx| > |dy| * 1.5`) prevents horizontal swipe interference during vertical scrolling.
+  - **Interactive Stepper & Quick-Select Target**:
+    - Replaced slippery sliders with a responsive numeric stepper `[-] [ 75% ] [+]` combined with direct editable text input.
+    - Quick-snap preset chips for one-tap policy switching: `65% Medical`, `75% Standard`, `80% Strict`, `85% Honors`, `90% Dean's List`.
+  - **Uncluttered Card Layout**:
+    - Duration numbers removed from action buttons: buttons read cleanly **`+ Present`** and **`+ Absent`**.
+    - Weight duration badge (`3h Lab` / `2 Periods`) is displayed cleanly in the header next to the subject name.
+  - **Strict Semantic Theming**:
+    - Purged all hardcoded `#ef4444` / `#22c55e` across all themes; strictly consumes semantic tokens (`colors.success`, `colors.destructive`, `colors.primary`, `colors.border`).
+  - **Non-Destructive Reconciled Fast Live Sync**:
+    - In `POST /api/attendance`, passes `userId: user?.id` with a 3.5s timeout.
+    - Merges offline logged counts non-destructively: local attended/total increments are added to remote base counts rather than being wiped by stale server responses.
+    - Prevents falling into offline mode on app boot by hooking sync triggers to `[user?.id]`.
 
 ---
 
 ### 4. Whisper Wall (Formerly Incognito)
 * **Web**: `src/app/incognito/page.tsx` & `src/app/incognito/[postId]/page.tsx`
 * **Mobile**: `mobile/src/screens/WhisperWallScreen.tsx`
-* **UX Principles, Inline Read-More & Full-Screen View**:
-  - **Privacy Guarantee**: True pseudonymity using robot avatar seeds (`@CyberScholar`, `@ShadowRunner`). Student roll numbers are never exposed.
-  - **Inline "Read more" Expansion**: Posts exceeding 180 chars (mobile) or 240 chars (web) are clamped with an inline toggle:
-    ```tsx
-    const isExpanded = expandedPostIds.has(post.id);
-    const isLong = post.content.length > 180;
-    // Toggles between "Read more ▾" and "Show less ▴"
-    ```
-  - **Dedicated Full-Screen Post Modal**:
-    - Tapping `"Full View"` or the post maximize icon triggers `activeModalPost`.
-    - Renders complete un-clamped text, full-resolution attached photos, synchronized upvote/downvote counter, comment counts, and direct thread link.
-    - **Whisper DM Action**: Features a `"Whisper DM"` trigger button in the modal footer allowing students to start a 100% anonymous direct message thread with the author without ever knowing or exposing each other's identity.
-  - **Campus vs Global Scope**: Toggle between student's local campus feed and the universal university network.
+* **UX Principles, Multi-Image Carousel & Responsive Likes**:
+  - **Instant 0ms Lag-Free Heart Like**:
+    - Replaced laggy up/down voting with a responsive Heart / Like button matching Web and the database `PostLike` schema.
+    - Backed by `/api/incognito` handling `action === "LIKE"`, updating UI instantly with 0ms lag without full-feed reloads.
+  - **Multi-Media Attachment & Carousel Gallery**:
+    - Supports uploading up to 4 images per whisper via `expo-document-picker` with `multiple: true`.
+    - Compose modal features horizontal thumbnail preview row with individual `(X)` delete badges and `+ Add Image` chip.
+    - Feed posts display single responsive photo or horizontal carousel gallery with `idx/total 📸` counter badge.
+    - `/api/upload` incorporates a local filesystem disk fallback (`public/uploads`) returning fully qualified HTTP URLs so uploads never fail with 500.
+  - **1-Tap Direct Whisper DMs Access**:
+    - Dedicated "DMs" button in the Whisper Wall header navigating directly to `Messages` (`initialTab: "whisper"`).
+  - **Inline "Read more" & Full-Screen Modal**:
+    - Posts exceeding 180 chars show inline `"Read more ▾"` / `"Show less ▴"`.
+    - Full View modal displays full-resolution images, Heart like button, and direct `"Start Whisper DM"` action.
 
 ---
 
 ### 5. CGPA & SGPA Forecaster
 * **Web**: `src/app/cgpa/page.tsx`
 * **Mobile**: `mobile/src/screens/CgpaPredictorScreen.tsx`
-* **UX Principles**:
-  - **Radial Dial**: 270° SVG arc meter adapting to theme colors.
-  - **Classification Tiers**:
-    - `≥ 8.50`: First Class with Distinction (Emerald)
-    - `≥ 7.50`: First Class Honours (Cyan/Primary)
-    - `≥ 6.50`: First Class (Amber)
-    - `< 6.50`: Pass Standing (Neutral)
-  - **Simulator**: Interactive credit slider calculating needed SGPA in future semesters to reach graduation targets.
+* **UX Principles & Multi-Semester Engine**:
+  - **Semester Persistence & Default**:
+    - Purged the bug that arbitrarily forced users to Semester 3 (`maxArchived + 1`).
+    - Defaults to Semester 1 on boot or reads the student's selected semester from `@otium_cgpa_selected_sem`.
+    - Tapping any semester chip immediately persists the choice.
+  - **8-Semester Switcher**: Horizontal selector tabs (`Sem 1` through `Sem 8`) with verified checkmark badges (`✓`).
+  - **Dual-View Architecture**:
+    - **Term Worksheet View**: Interactive credit inputs (1-6) and letter grade chips (`O: 10`, `A+: 9`, `A: 8`, `B+: 7`, `B: 6`, `C: 5`, `P: 4`, `F: 0`), real-time term SGPA radial gauge, and a "Save Semester to Transcript" button.
+    - **Transcript Archive View**: Comprehensive record of all verified past semesters showing university honors tier badges, total credit counts, course breakdowns, and quick-actions to either "Edit in Worksheet" or "Delete" (`DELETE /api/cgpa`).
+  - **Accurate Cumulative Math (Zero Double-Counting)**:
+    $$\text{CGPA} = \frac{\sum_{s \neq \text{active}} (\text{SGPA}_s \times \text{Credits}_s) + \text{Active Points}}{\sum_{s \neq \text{active}} \text{Credits}_s + \text{Active Credits}}$$
+  - **Target CGPA Forecaster**: Interactive credit & target simulator calculating required future SGPA.
 
 ---
 
@@ -381,15 +406,93 @@ Otium maintains a strict 1:1 component design equivalence between shadcn/ui on W
 
 ---
 
-### 7. Phase 1 Messaging & Express Print In-App Updates
+### 7. In-App Messaging & Express Print In-App Updates
 * **Web**: `src/app/messages/page.tsx`
 * **Mobile**: `mobile/src/screens/MessagesScreen.tsx`
-* **UX Principles & Strict Phase 1 Isolation**:
-  - **Strict Scope**: Confined exclusively to Phase 1 social and transactional features (Peer chats, Express Print Station order updates, Whisper Wall anonymous DMs). Pure calculator tools like **Attendance** and **CGPA** have zero forced messaging.
-  - **Dual-Inbox Architecture**:
-    - **Direct & Print Updates Tab**: Real-name peer chatting, campus networking, and automated one-way order dispatch messages from `Express Print Station`.
-    - **Whisper DMs Tab**: 100% secret anonymous conversations initiated from Whisper Wall posts and comments, powered by cryptographic blind IDs (`sha256(userId + salt)`). Real names, emails, and database user IDs are completely scrubbed.
-  - **REST API Parity**: Mobile and Web connect to universal REST endpoints (`/api/chat` and `/api/chat/[id]/messages`) with Bearer token authentication and real-time polling.
+* **UX Principles & Classmate Search**:
+  - **Live Chat Engine**: Connected to `GET /api/chat`, `POST /api/chat`, and `/api/users`.
+  - **Universal Classmate Search**: Debounced search in `MessagesScreen` queries across name, email, department, and campus-wide fallback if college match has 0 results.
+  - **Route Tab Synchronization**: Deep-linking with `initialTab: "whisper"` or `initialTab: "direct"` automatically focuses the corresponding inbox tab.
+  - **Dashboard Portal Launcher**: Quick tile in `DashboardScreen` launches directly into `Messages`.
+  - **Android 3-Button Navigation Bar Clearance**: `TabNavigator` computes `bottomInset = Math.max(insets.bottom, Platform.OS === "android" ? 14 : 16)` and overall height `60 + bottomInset`, ensuring the Android 48px software navigation bar (Back, Home, Recents) never overlaps or covers tab bar icons.
+  - **Mobile Keyboard & Feed Positioning**: Full-screen chat modal uses `KeyboardAvoidingView` with `behavior={Platform.OS === "ios" ? "padding" : "height"}` and `keyboardVerticalOffset={Platform.OS === "ios" ? 12 : 0}`, `FlatList` with `keyboardShouldPersistTaps="handled"`, and auto-scrolls to the newest message on input focus so the text input always pushes up cleanly above the on-screen keyboard.
+  - **Whisper Wall Direct DM Fallback**: When initiating a DM from an anonymous whisper post, the client creates a responsive local whisper conversation session with tab auto-selection even if the remote backend endpoint is in transit.
+
+---
+
+### 8. Cab Split & RideShare
+* **Web**: `src/app/rideshare/page.tsx`
+* **Mobile**: `mobile/src/screens/RideShareScreen.tsx`
+* **UX Principles**:
+  - **Client Service Guard**: Wrapped in `<ClientServiceGuard serviceKey="CAB_SPLIT">`.
+  - **Zero Mock Data**: Purged `INITIAL_FALLBACK_RIDES`.
+  - **Editable Campus Origin**: Pickup origin is fully editable with interactive campus quick-chips ("JC Bose Gate", "Hostel Block 1", "YMCA Library", "Faridabad Metro").
+  - Origin & Destination route markers with connecting visual path.
+  - Per-seat calculated split fare badge in ₹.
+  - Real-time seat reservation action with host notification.
+  - Bottom sheet modal for hosting new cab splits with provider chips (`Uber XL`, `Ola Prime`, `Rapido`, `InDrive`).
+  - Search filter by transit destination (Airport, Railway Station, Metro).
+
+---
+
+### 9. Campus Lost & Found
+* **Web**: `src/app/lost-and-found/page.tsx`
+* **Mobile**: `mobile/src/screens/LostAndFoundScreen.tsx`
+* **UX Principles**:
+  - **Client Service Guard**: Wrapped in `<ClientServiceGuard serviceKey="LOST_AND_FOUND">`.
+  - **Zero Mock Data**: Purged `INITIAL_FALLBACK_ITEMS`.
+  - Horizontal category selector chips (`Electronics`, `ID Cards & Keys`, `Wallets & Bags`, `Books & Notes`, `Other`).
+  - Photo preview cards with location found and date tags.
+  - One-tap claim action and direct "Chat with Finder" button navigating to Messages.
+  - Bottom sheet modal for reporting found belongings with photo URL and identifying mark description.
+
+---
+
+### 10. Student Marketplace
+* **Web**: `src/app/marketplace/page.tsx`
+* **Mobile**: `mobile/src/screens/MarketplaceScreen.tsx`
+* **UX Principles**:
+  - **Client Service Guard**: Wrapped in `<ClientServiceGuard serviceKey="MARKETPLACE">`.
+  - **Zero Mock Data**: Purged `INITIAL_FALLBACK_MARKETPLACE`.
+  - Peer-to-peer campus classifieds with zero middleman commissions.
+  - Categories: `Books & Notes`, `Electronics`, `Cycles & Transport`, `Furniture`, `Hostel Essentials`, `Clothing`.
+  - Condition tags: `Brand New`, `Like New (Mint)`, `Good`, `Fair / Used`.
+  - Owner actions: "Mark Sold" and "Remove Listing".
+  - Buyer actions: "Message Seller" creating instant direct conversation in Messages.
+  - Bottom sheet "List an Item" modal with photo upload and price inputs.
+
+---
+
+### 11. Campus Freelance Gigs
+* **Web**: `src/app/gigs/page.tsx`
+* **Mobile**: `mobile/src/screens/GigsScreen.tsx`
+* **UX Principles**:
+  - **Client Service Guard**: Wrapped in `<ClientServiceGuard serviceKey="CAMPUS_GIGS">`.
+  - **Zero Mock Data**: Purged `INITIAL_FALLBACK_GIGS`.
+  - Peer freelance marketplace with proxy escrow protection notices.
+  - Categories: `Coding & Dev`, `Assignments & Reports`, `UI/UX & Design`, `Projects & Lab Work`, `Research`, `Tutoring`.
+  - Bounty display in ₹ with open/assigned/completed status badges.
+  - Claim action with anti-hoarding guardrail checks.
+  - Bottom sheet modal to post student bounties (minimum ₹50).
+
+---
+
+### 12. Super-App Offline Architecture & Local Storage Parity Map
+
+To ensure flawless mobile operation when walking across campus with dead zones or Wi-Fi packet drops, all student modules implement local persistence and automatic offline sync queues:
+
+| Module | Offline Storage Keys | Offline Fallback Mechanism | Sync Resumption Strategy |
+| :--- | :--- | :--- | :--- |
+| **Attendance Guardrail** | `@otium_attendance_subjects`<br/>`@otium_attendance_target`<br/>`@otium_attendance_pending_sync` | Immediate 0ms local mutation; advice math recalculated offline; queued in `@otium_attendance_pending_sync` | Two-way reconciliation via `POST /api/attendance` (`SYNC_OFFLINE`); auto-flushes pending queue on pull-to-refresh |
+| **Express Print Station** | `@otium_cached_print_orders`<br/>`@otium_print_pending_sync` | Recent orders loaded instantly; offline orders queued as `QUEUED` with `isOfflinePending: true` | `flushOfflinePrintQueue()` on screen mount and refresh; automatically submits pending UTR payloads to `/api/print/order` |
+| **CGPA Forecaster** | `@otium_cgpa_semesters`<br/>`@otium_cgpa_active_courses` | Full academic worksheet & transcript semesters cached locally | Saves locally when offline with friendly toast; syncs to `/api/cgpa` when connectivity restored |
+| **Whisper Wall** | `@otium_cached_whispers` | Zero hardcoded seeds; cached posts loaded instantly; optimistic up/down votes; offline posts saved locally | New posts append to state & disk; syncs on next pull-to-refresh |
+| **Dashboard Hub** | `@otium_cached_dashboard_snapshot` | Cached operational metrics snapshot (Pending prints, attendance safety, open tasks, listings) | 0ms instant display without layout shift; refreshes live counts in background via `/api/print/order`, `/api/gigs`, etc. |
+| **Cab Split & RideShare** | `@otium_cached_rides` | Cached listings + interactive campus origin chips ("JC Bose Gate", "Hostel 1", etc.) | Offline ride hosting appends to local list and caches to disk with offline toast notice |
+| **Lost & Found** | `@otium_cached_lost_found` | Cached item registry + clean empty state card | Offline found reports append locally to disk; claims marked locally |
+| **Student Marketplace** | `@otium_cached_marketplace` | Cached peer classifieds + clean empty state card | Offline listings persist to disk with owner actions preserved |
+| **Campus Freelance Gigs** | `@otium_cached_gigs` | Cached bounties + clean empty state card | Offline task postings save to disk with full title, budget, and category details |
+| **Dual-Inbox Messages** | `@otium_cached_conversations`<br/>`@otium_thread_[id]` | Cached conversations list + per-thread message history + live classmate search | Optimistic message append; automatic background polling every 12 seconds when online |
 
 ---
 

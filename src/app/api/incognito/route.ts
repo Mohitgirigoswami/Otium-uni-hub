@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getIncognitoPosts, createIncognitoPost } from "@/actions/incognito.actions";
+import { getIncognitoPosts, createIncognitoPost, toggleLikeIncognitoPost } from "@/actions/incognito.actions";
 import { verifyAuth } from "@/utils/auth";
 
 export async function OPTIONS() {
@@ -32,11 +32,26 @@ export async function POST(req: NextRequest) {
     const userId = auth.authenticated && auth.user ? auth.user.id : body.userId;
     if (!userId) {
       return NextResponse.json(
-        { success: false, error: "Authentication required to publish whispers." },
+        { success: false, error: "Authentication required." },
         { status: 401 }
       );
     }
 
+    // 1. Handle Like / Vote action
+    if (body.action === "LIKE" || body.action === "VOTE") {
+      const postId = body.postId;
+      if (!postId) {
+        return NextResponse.json(
+          { success: false, error: "Post ID is required to like." },
+          { status: 400 }
+        );
+      }
+
+      const res = await toggleLikeIncognitoPost(postId, userId);
+      return NextResponse.json(res);
+    }
+
+    // 2. Otherwise create new anonymous whisper
     const { content, feedType, mediaUrl, mediaUrls, collegeId } = body;
 
     const res = await createIncognitoPost({
@@ -68,3 +83,4 @@ export async function POST(req: NextRequest) {
     );
   }
 }
+

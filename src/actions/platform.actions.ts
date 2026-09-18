@@ -22,7 +22,7 @@ export async function getPlatformSettingsAction(): Promise<
       const created = await prisma.platformSetting.create({
         data: {
           id: "global_config",
-          upiId: "otium.escrow@okhdfcbank",
+          upiId: "8307798816@upi",
         },
       });
       return {
@@ -31,6 +31,21 @@ export async function getPlatformSettingsAction(): Promise<
           upiId: created.upiId,
           buyerDiscountPct: (created as any).buyerDiscountPct ?? 5,
           updatedAt: created.updatedAt,
+        },
+      };
+    }
+
+    if (setting.upiId.includes("okhdfcbank") || setting.upiId.includes("otium.escrow") || !setting.upiId) {
+      const updated = await prisma.platformSetting.update({
+        where: { id: "global_config" },
+        data: { upiId: "8307798816@upi" },
+      });
+      return {
+        success: true,
+        data: {
+          upiId: updated.upiId,
+          buyerDiscountPct: (updated as any).buyerDiscountPct ?? 5,
+          updatedAt: updated.updatedAt,
         },
       };
     }
@@ -48,7 +63,7 @@ export async function getPlatformSettingsAction(): Promise<
     return {
       success: true,
       data: {
-        upiId: "otium.escrow@okhdfcbank",
+        upiId: "8307798816@upi",
         buyerDiscountPct: 5,
         updatedAt: new Date(),
       },

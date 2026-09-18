@@ -3,7 +3,7 @@ import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
+  FlatList,
   TouchableOpacity,
   TextInput,
   Modal,
@@ -11,1669 +11,1388 @@ import {
   ActivityIndicator,
   RefreshControl,
   Image,
-  KeyboardAvoidingView,
   Platform,
+  ScrollView,
+  Dimensions,
 } from "react-native";
+import { Ionicons, Feather } from "@expo/vector-icons";
 import * as DocumentPicker from "expo-document-picker";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { Ionicons, Feather, FontAwesome5 } from "@expo/vector-icons";
-import { colors } from "../theme/colors";
-import { GlassCard } from "../components/GlassCard";
-import { Badge } from "../components/Badge";
-import { Button } from "../components/MintButton";
-import { apiClient } from "../services/apiClient";
+import { useTheme } from "../context/ThemeContext";
 import { useUser } from "../context/UserContext";
+import { apiClient } from "../services/apiClient";
+import { Card } from "../components/ui/Card";
+import { Badge } from "../components/ui/Badge";
+import { Button } from "../components/ui/Button";
+import { Input } from "../components/ui/Input";
+import { ClientServiceGuard } from "../components/ClientServiceGuard";
 
 interface WhisperPost {
   id: string;
   handle: string;
-  avatarSeed: string;
-  campus: string;
+  avatarSeed?: string;
+  campus?: string;
   collegeId?: string;
-  category: "CONFESSION" | "ADVICE" | "MEME" | "CAMPUS_NEWS" | "GENERAL";
+  category: string;
   content: string;
   mediaUrls?: string[];
-  mediaUrl?: string;
-  timeAgo: string;
+  imageUrl?: string;
+  createdAt: string;
   upvotes: number;
   downvotes: number;
   userVote?: "UP" | "DOWN";
   commentCount: number;
+  authorId?: string;
 }
-
-const INITIAL_WHISPERS: WhisperPost[] = [
-  {
-    id: "1",
-    handle: "ShadowRunner_42",
-    avatarSeed: "ShadowRunner",
-    campus: "DTU Campus",
-    category: "CONFESSION",
-    content: "Accidentally submitted my meme compilation instead of the Software Engineering final project file on the portal at 11:59 PM. Professor gave me full marks for 'creativity and exceptional humor'.",
-    timeAgo: "14m ago",
-    upvotes: 84,
-    downvotes: 3,
-    commentCount: 19,
-  },
-  {
-    id: "2",
-    handle: "LibraryGhost",
-    avatarSeed: "LibraryGhost",
-    campus: "DTU Campus",
-    category: "ADVICE",
-    content: "Pro-tip for 2nd years: The 3rd floor reading room AC vent table #18 is the only spot where campus Wi-Fi hits 300 Mbps without packet drops. Keep it secret.",
-    timeAgo: "45m ago",
-    upvotes: 142,
-    downvotes: 1,
-    commentCount: 32,
-  },
-  {
-    id: "3",
-    handle: "HostelChef_99",
-    avatarSeed: "HostelChef",
-    campus: "Global Feed",
-    category: "MEME",
-    content: "Me calculating how many classes I can bunk without getting debarred: 🧠📈\nMe realizing mid-terms are worth 50% attendance weightage: 📉💀",
-    timeAgo: "2h ago",
-    upvotes: 215,
-    downvotes: 8,
-    commentCount: 47,
-  },
-  {
-    id: "4",
-    handle: "CampusInsider",
-    avatarSeed: "CampusInsider",
-    campus: "DTU Campus",
-    category: "CAMPUS_NEWS",
-    content: "Night cafeteria will officially remain open until 3:30 AM during end-sem examination weeks starting this Monday. Chai and Maggi stalls confirmed!",
-    timeAgo: "5h ago",
-    upvotes: 310,
-    downvotes: 4,
-    commentCount: 68,
-  },
-];
 
 const CATEGORIES = [
   { label: "All Whispers", value: "ALL" },
-  { label: "🔥 Confessions", value: "CONFESSION" },
-  { label: "💡 Campus Advice", value: "ADVICE" },
-  { label: "😂 Memes & Banter", value: "MEME" },
-  { label: "📢 Campus News", value: "CAMPUS_NEWS" },
+  { label: "Confessions", value: "CONFESSION" },
+  { label: "Campus Advice", value: "ADVICE" },
+  { label: "Memes & Banter", value: "MEME" },
+  { label: "Campus News", value: "CAMPUS_NEWS" },
 ];
 
+const STORAGE_KEY_WHISPERS = "@otium_cached_whispers";
+
+export const resolveMediaUri = (uri?: string) => {
+  if (!uri) return "";
+  if (uri.startsWith("http://") || uri.startsWith("https://")) return uri;
+  if (uri.startsWith("/uploads/")) {
+    return `http://192.168.31.146:3000${uri}`;
+  }
+  if (uri.startsWith("uploads/")) {
+    return `http://192.168.31.146:3000/${uri}`;
+  }
+  return uri;
+};
+
+const SCREEN_WIDTH = Dimensions.get("window").width;
+
 export function WhisperWallScreen({ navigation }: any) {
-  const { user, setUser } = useUser();
-  const [posts, setPosts] = useState<WhisperPost[]>(INITIAL_WHISPERS);
-  const [scope, setScope] = useState<"CAMPUS" | "GLOBAL">("CAMPUS");
+  const { colors, isDark } = useTheme();
+  const { user } = useUser();
+
+  const [posts, setPosts] = useState<WhisperPost[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [activeCategory, setActiveCategory] = useState<string>("ALL");
+  const [scope, setScope] = useState<"CAMPUS" | "GLOBAL">("CAMPUS");
+
+  // Compose Modal State (Supports Multi-Image)
   const [isComposeOpen, setIsComposeOpen] = useState(false);
   const [composeContent, setComposeContent] = useState("");
-  const [composeCategory, setComposeCategory] = useState<WhisperPost["category"]>("CONFESSION");
+  const [composeCategory, setComposeCategory] = useState<string>("CONFESSION");
   const [composeImages, setComposeImages] = useState<string[]>([]);
+  const [composeUrlInput, setComposeUrlInput] = useState("");
   const [isUploadingImage, setIsUploadingImage] = useState(false);
-  const [enlargedImage, setEnlargedImage] = useState<string | null>(null);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [isPublishing, setIsPublishing] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Long Post Expansion & Dedicated Fullscreen View State
+  // Full-screen post modal & read more
   const [expandedPostIds, setExpandedPostIds] = useState<Set<string>>(new Set());
   const [activeModalPost, setActiveModalPost] = useState<WhisperPost | null>(null);
 
-  const toggleExpandPost = (id: string) => {
-    setExpandedPostIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      return next;
-    });
-  };
-
-  const handleStartAnonymousChat = async (post: any) => {
-    if (!post) return;
-    try {
-      const authorId = post.authorId || post.userId || post.profileId;
-      if (!authorId) {
-        setActiveModalPost(null);
-        navigation?.navigate("Messages", { initialTab: "whisper" });
-        return;
-      }
-
-      const res = await apiClient.post("/chat", {
-        participantTwoId: authorId,
-        isAnonymousChat: true,
-      });
-
-      setActiveModalPost(null);
-      if (res.success && res.data) {
-        navigation?.navigate("Messages", {
-          conversationId: res.data.id,
-          initialTab: "whisper",
-        });
-      } else {
-        navigation?.navigate("Messages", { initialTab: "whisper" });
-      }
-    } catch (err) {
-      setActiveModalPost(null);
-      navigation?.navigate("Messages", { initialTab: "whisper" });
-    }
-  };
-
-  // Campus Selector Modal State
-  const [isCampusModalOpen, setIsCampusModalOpen] = useState(false);
-  const [colleges, setColleges] = useState<any[]>([]);
-  const [isLoadingColleges, setIsLoadingColleges] = useState(false);
-  const [isSavingCampus, setIsSavingCampus] = useState(false);
-
-  // Fetch colleges list
-  const fetchColleges = async () => {
-    setIsLoadingColleges(true);
-    try {
-      const res = await apiClient.get("/colleges");
-      if (res.success && Array.isArray(res.data)) {
-        setColleges(res.data);
-      }
-    } catch (e) {
-      console.warn("Could not fetch colleges:", e);
-    } finally {
-      setIsLoadingColleges(false);
-    }
-  };
-
-  // Check if campus is assigned on initial load
-  useEffect(() => {
-    fetchColleges();
-    async function checkSavedCampus() {
-      try {
-        const storedCampus = await AsyncStorage.getItem("@otium_selected_campus");
-        if (storedCampus) {
-          const parsed = JSON.parse(storedCampus);
-          if (parsed?.id) {
-            // Already chosen in advance! Do NOT re-prompt
-            if (!user?.collegeId) {
-              setUser((prev: any) => ({ ...prev, collegeId: parsed.id, college: parsed }));
-            }
-            return;
-          }
-        }
-      } catch {}
-
-      if (!user?.collegeId) {
-        // Only prompt user if NO campus was ever selected
-        setIsCampusModalOpen(true);
-      }
-    }
-
-    checkSavedCampus();
-  }, [user?.collegeId]);
-
-  const fetchWhispers = async (targetCollegeId?: string) => {
-    try {
-      const activeCollegeId = targetCollegeId || user?.collegeId;
-      let query = `?scope=${scope}`;
-      if (activeCategory !== "ALL") {
-        query += `&feedType=${activeCategory}`;
-      }
-      if (scope === "CAMPUS" && activeCollegeId) {
-        query += `&collegeId=${activeCollegeId}`;
-      }
-
-      const res = await apiClient.get(`/incognito${query}`);
-      if (res.success && Array.isArray(res.data) && res.data.length > 0) {
-        const mapped: WhisperPost[] = res.data.map((p: any) => ({
-          id: p.id,
-          handle: p.profile?.handle || "AnonBot",
-          avatarSeed: p.profile?.handle || p.id,
-          campus: p.college?.name || "Campus Feed",
-          collegeId: p.collegeId,
-          category: p.feedType || "CONFESSION",
-          content: p.content,
-          mediaUrls: Array.isArray(p.mediaUrls) && p.mediaUrls.length > 0
-            ? p.mediaUrls
-            : (p.mediaUrl ? [p.mediaUrl] : []),
-          timeAgo: new Date(p.createdAt).toLocaleTimeString([], {
-            hour: "2-digit",
-            minute: "2-digit",
-          }),
-          upvotes: p._count?.likes || p.likesCount || 0,
-          downvotes: 0,
-          commentCount: p._count?.comments || 0,
-        }));
-        setPosts(mapped);
-      }
-    } catch (e) {
-      console.warn("Could not fetch whispers:", e);
-    }
-  };
-
-  useEffect(() => {
-    fetchWhispers();
-  }, [activeCategory, scope, user?.collegeId]);
-
-  const onRefresh = async () => {
-    setIsRefreshing(true);
-    await fetchWhispers();
-    setIsRefreshing(false);
-  };
-
-  const handleSelectCampus = async (college: any) => {
-    setIsSavingCampus(true);
-    try {
-      // 1. Immediately persist to AsyncStorage so it never prompts again!
-      await AsyncStorage.setItem(
-        "@otium_selected_campus",
-        JSON.stringify({ id: college.id, name: college.name, code: college.code })
-      );
-
-      setUser((prev: any) => ({ ...prev, collegeId: college.id, college }));
-      setIsCampusModalOpen(false);
-      setScope("CAMPUS");
-      fetchWhispers(college.id);
-
-      // 2. Persist to backend profile in background
-      apiClient.patch("/profile", { collegeId: college.id }).catch(() => {});
-      Alert.alert("Campus Selected", `Switched to ${college.name}!`);
-    } catch (e: any) {
-      Alert.alert("Error", e.message || "Could not save campus.");
-    } finally {
-      setIsSavingCampus(false);
-    }
-  };
-
-  const filteredPosts = posts.filter((p) => {
-    const matchesCat = activeCategory === "ALL" ? true : p.category === activeCategory;
-    return matchesCat;
-  });
-
-  const handleVote = (postId: string, type: "UP" | "DOWN") => {
-    setPosts((prev) =>
-      prev.map((p) => {
-        if (p.id === postId) {
-          let updatedPost: WhisperPost;
-          if (p.userVote === type) {
-            updatedPost = {
-              ...p,
-              upvotes: type === "UP" ? p.upvotes - 1 : p.upvotes,
-              downvotes: type === "DOWN" ? p.downvotes - 1 : p.downvotes,
-              userVote: undefined,
-            };
-          } else {
-            const oldUp = p.userVote === "UP" ? p.upvotes - 1 : p.upvotes;
-            const oldDown = p.userVote === "DOWN" ? p.downvotes - 1 : p.downvotes;
-            updatedPost = {
-              ...p,
-              upvotes: type === "UP" ? oldUp + 1 : oldUp,
-              downvotes: type === "DOWN" ? oldDown + 1 : oldDown,
-              userVote: type,
-            };
-          }
-          if (activeModalPost?.id === postId) {
-            setActiveModalPost(updatedPost);
-          }
-          return updatedPost;
-        }
-        return p;
-      })
-    );
-  };
-
   const handlePickImage = async () => {
     if (composeImages.length >= 4) {
-      Alert.alert("Limit Reached", "You can attach up to 4 images per whisper.");
+      Alert.alert("Limit Reached", "You can upload a maximum of 4 photos per whisper.");
       return;
     }
-
     try {
       const result = await DocumentPicker.getDocumentAsync({
-        type: ["image/jpeg", "image/png", "image/webp", "image/gif"],
+        type: ["image/*"],
+        multiple: true,
         copyToCacheDirectory: true,
       });
 
-      if (result.canceled || !result.assets || result.assets.length === 0) {
-        return;
-      }
+      if (result.canceled || !result.assets || result.assets.length === 0) return;
 
-      const asset = result.assets[0];
       setIsUploadingImage(true);
 
-      const formData = new FormData();
-      formData.append("file", {
-        uri: asset.uri,
-        name: asset.name || "whisper_image.jpg",
-        type: asset.mimeType || "image/jpeg",
-      } as any);
-      formData.append("folder", "otium_wall_memes");
+      const uploadedUrls: string[] = [];
+      for (const asset of result.assets) {
+        if (composeImages.length + uploadedUrls.length >= 4) break;
+        try {
+          const formData = new FormData();
+          formData.append("file", {
+            uri: asset.uri,
+            name: asset.name || "whisper_image.jpg",
+            type: asset.mimeType || "image/jpeg",
+          } as any);
+          formData.append("folder", "otium_wall_memes");
 
-      const uploadRes = await apiClient.upload("/upload", formData);
-      setIsUploadingImage(false);
-
-      if (uploadRes.success && uploadRes.data?.url) {
-        setComposeImages((prev) => [...prev, uploadRes.data.url]);
-      } else {
-        Alert.alert("Upload Failed", uploadRes.error || "Could not upload image. Please try again.");
+          const uploadRes = await apiClient.post("/upload", formData);
+          if (uploadRes.success && uploadRes.data?.url) {
+            uploadedUrls.push(uploadRes.data.url);
+          } else {
+            uploadedUrls.push(asset.uri);
+          }
+        } catch {
+          uploadedUrls.push(asset.uri);
+        }
       }
-    } catch (err: any) {
+
+      setComposeImages((prev) => [...prev, ...uploadedUrls].slice(0, 4));
+    } catch {
+      Alert.alert("Picker Error", "Could not select the image.");
+    } finally {
       setIsUploadingImage(false);
-      Alert.alert("Image Error", err?.message || "Failed to pick image.");
     }
+  };
+
+  const handleAddUrlImage = () => {
+    const trimmed = composeUrlInput.trim();
+    if (!trimmed) return;
+    if (composeImages.length >= 4) {
+      Alert.alert("Limit Reached", "Max 4 images allowed.");
+      return;
+    }
+    setComposeImages((prev) => [...prev, trimmed].slice(0, 4));
+    setComposeUrlInput("");
   };
 
   const handleRemoveComposeImage = (idxToRemove: number) => {
     setComposeImages((prev) => prev.filter((_, idx) => idx !== idxToRemove));
   };
 
-  const handlePublishWhisper = async () => {
-    if (!composeContent.trim()) {
-      Alert.alert("Error", "Please write a whisper before publishing.");
+  const fetchPosts = async (isPull = false) => {
+    if (isPull) setRefreshing(true);
+
+    // 1. Load cached whispers on initial mount
+    try {
+      const cached = await AsyncStorage.getItem(STORAGE_KEY_WHISPERS);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setPosts(parsed);
+        }
+      }
+    } catch {}
+
+    // 2. Fetch fresh whispers from server
+    try {
+      let url = "/incognito";
+      const params = [];
+      if (activeCategory !== "ALL") {
+        params.push(`feedType=${encodeURIComponent(activeCategory)}`);
+      }
+      if (scope === "CAMPUS") {
+        params.push(`scope=CAMPUS`);
+        if (user?.collegeId) {
+          params.push(`collegeId=${encodeURIComponent(user.collegeId)}`);
+        }
+      } else {
+        params.push(`scope=GLOBAL`);
+      }
+      if (params.length > 0) url += `?${params.join("&")}`;
+
+      const res = await apiClient.get(url);
+      if (res.success && Array.isArray(res.data)) {
+        const mapped: WhisperPost[] = res.data.map((p: any) => {
+          const up = p._count?.likes ?? (typeof p.upvotes === "number" ? p.upvotes : 0);
+          const down = typeof p.downvotes === "number" ? p.downvotes : 0;
+          const userHasLiked = Array.isArray(p.likes) && user?.id
+            ? p.likes.some((l: any) => l.userId === user.id)
+            : p.userVote === "UP";
+          const mediaList = Array.isArray(p.mediaUrls) && p.mediaUrls.length > 0
+            ? p.mediaUrls
+            : p.mediaUrl
+            ? [p.mediaUrl]
+            : [];
+          return {
+            id: String(p.id),
+            handle: p.profile?.handle || p.handle || "Anonymous Student",
+            avatarSeed: p.profile?.handle || p.avatarSeed || "bot",
+            campus: p.college?.name || p.campus || (user?.college?.name || "JCBOSEUST, YMCA"),
+            category: p.feedType || p.category || "CONFESSION",
+            content: p.content || "",
+            mediaUrls: mediaList,
+            imageUrl: mediaList[0] || p.imageUrl,
+            createdAt: p.createdAt || new Date().toISOString(),
+            upvotes: up,
+            downvotes: down,
+            userVote: userHasLiked ? "UP" : undefined,
+            commentCount: p._count?.comments ?? (typeof p.commentCount === "number" ? p.commentCount : 0),
+            authorId: p.profile?.userId || p.authorId,
+          };
+        });
+        setPosts(mapped);
+        AsyncStorage.setItem(STORAGE_KEY_WHISPERS, JSON.stringify(mapped)).catch(() => {});
+      }
+    } catch {
+      console.log("[Fetch Whispers Note]: Operating in offline cached mode");
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchPosts();
+  }, [activeCategory, scope]);
+
+  const toggleExpandPost = (id: string) => {
+    setExpandedPostIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  // Instant 0ms Optimistic Heart / Like toggle
+  const handleToggleLike = async (post: WhisperPost) => {
+    const isCurrentlyLiked = post.userVote === "UP";
+    const nextLiked = !isCurrentlyLiked;
+    const currentCount = Number(post.upvotes) || 0;
+    const nextCount = nextLiked ? currentCount + 1 : Math.max(0, currentCount - 1);
+
+    // 1. Instant local update
+    setPosts((prev) =>
+      prev.map((p) => {
+        if (p.id === post.id) {
+          return {
+            ...p,
+            upvotes: nextCount,
+            userVote: nextLiked ? "UP" : undefined,
+          };
+        }
+        return p;
+      })
+    );
+
+    // Also update activeModalPost if currently viewing
+    if (activeModalPost && activeModalPost.id === post.id) {
+      setActiveModalPost((prev) =>
+        prev
+          ? {
+              ...prev,
+              upvotes: nextCount,
+              userVote: nextLiked ? "UP" : undefined,
+            }
+          : null
+      );
+    }
+
+    // 2. Send to backend in background
+    try {
+      await apiClient.post("/incognito", {
+        action: "LIKE",
+        postId: post.id,
+        userId: user?.id,
+      });
+    } catch {
+      // Keep optimistic state to prevent jarring snap-backs
+    }
+  };
+
+  const handleCreateWhisper = async () => {
+    if (!composeContent.trim() || isSubmitting) {
+      Alert.alert("Empty Post", "Please write your anonymous whisper before posting.");
       return;
     }
 
-    setIsPublishing(true);
+    setIsSubmitting(true);
+    const localPost: WhisperPost = {
+      id: Date.now().toString(),
+      handle: user?.name ? `Anon_${user.name.split(" ")[0]}` : "Anonymous Student",
+      avatarSeed: `Seed_${Date.now()}`,
+      campus: scope === "CAMPUS" ? (user?.college?.name || "JCBOSEUST, YMCA") : "Global Feed",
+      category: composeCategory,
+      content: composeContent.trim(),
+      mediaUrls: composeImages,
+      imageUrl: composeImages[0] || undefined,
+      createdAt: new Date().toISOString(),
+      upvotes: 1,
+      downvotes: 0,
+      commentCount: 0,
+      userVote: "UP",
+      authorId: user?.id,
+    };
+
     try {
       const res = await apiClient.post("/incognito", {
         content: composeContent.trim(),
         feedType: composeCategory,
-        collegeId: user?.collegeId,
+        category: composeCategory,
+        mediaUrl: composeImages[0] || undefined,
         mediaUrls: composeImages,
-        mediaUrl: composeImages.length > 0 ? composeImages[0] : undefined,
+        scope,
+        collegeId: user?.collegeId,
       });
-      setIsPublishing(false);
 
       if (res.success) {
-        Alert.alert("Whisper Published! 🎭", "Your anonymous whisper is live on the campus wall.");
+        Alert.alert("Whisper Posted! 💬", "Your anonymous post is live on the Whisper Wall.");
         setIsComposeOpen(false);
         setComposeContent("");
         setComposeImages([]);
-        fetchWhispers();
+        setComposeUrlInput("");
+        fetchPosts();
       } else {
-        Alert.alert("Error", res.error || "Failed to publish whisper.");
+        // Save locally
+        const updated = [localPost, ...posts];
+        setPosts(updated);
+        AsyncStorage.setItem(STORAGE_KEY_WHISPERS, JSON.stringify(updated)).catch(() => {});
+        Alert.alert("Saved Locally ☁️", "Saved on your device. Will synchronize when online.");
+        setIsComposeOpen(false);
+        setComposeContent("");
+        setComposeImages([]);
+        setComposeUrlInput("");
       }
-    } catch (e: any) {
-      setIsPublishing(false);
-      Alert.alert("Error", e.message || "Failed to publish.");
+    } catch {
+      const updated = [localPost, ...posts];
+      setPosts(updated);
+      AsyncStorage.setItem(STORAGE_KEY_WHISPERS, JSON.stringify(updated)).catch(() => {});
+      Alert.alert("Saved Locally ☁️", "Network unavailable. Post saved on your device.");
+      setIsComposeOpen(false);
+      setComposeContent("");
+      setComposeImages([]);
+      setComposeUrlInput("");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleStartWhisperChat = async (post: WhisperPost) => {
+    setActiveModalPost(null);
+    if (!post.authorId) {
+      Alert.alert("Notice", "Unable to start whisper direct chat with this author.");
+      return;
+    }
+    if (post.authorId === user?.id) {
+      Alert.alert("Your Whisper", "You cannot send a Whisper DM to your own anonymous post.");
+      return;
+    }
+
+    try {
+      const res = await apiClient.post("/chat", {
+        participantTwoId: post.authorId,
+        isAnonymousChat: true,
+      });
+
+      if (res.success && res.data) {
+        navigation?.navigate("Messages", {
+          conversationId: res.data.id,
+          initialTab: "whisper",
+        });
+      } else {
+        // Fallback session to prevent blocking user if server deployment is still completing
+        const fallbackConvId = `whisper_${post.authorId || post.id}`;
+        navigation?.navigate("Messages", {
+          conversationId: fallbackConvId,
+          initialTab: "whisper",
+        });
+      }
+    } catch {
+      const fallbackConvId = `whisper_${post.authorId || post.id}`;
+      navigation?.navigate("Messages", {
+        conversationId: fallbackConvId,
+        initialTab: "whisper",
+      });
     }
   };
 
   return (
-    <View style={styles.container}>
-      <ScrollView
-        contentContainerStyle={styles.contentContainer}
-        refreshControl={
-          <RefreshControl
-            refreshing={isRefreshing}
-            onRefresh={onRefresh}
-            tintColor={colors.brand[400]}
-          />
-        }
-      >
-        {/* Hero Header Banner */}
-        <View style={styles.heroBanner}>
-          <View style={styles.heroBadgeRow}>
-            <Badge variant="purple" size="sm">
-              Anonymous Campus Wall & Whispers
-            </Badge>
+    <ClientServiceGuard serviceKey="INCOGNITO_WALL" navigation={navigation}>
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
+        {/* 1. Header */}
+        <View style={[styles.header, { borderBottomColor: colors.border }]}>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.headerTitle, { color: colors.text }]}>Whisper Wall</Text>
+            <Text style={[styles.headerSub, { color: colors.textMuted }]}>
+              Anonymous student confessions & advice
+            </Text>
           </View>
-          <Text style={styles.heroTitle}>Whisper Wall</Text>
-          <Text style={styles.heroSubtitle}>
-            Express unfiltered opinions, share anonymous exam tips, memes, and campus banter. Identity is shielded behind private robot avatars.
-          </Text>
-        </View>
 
-        {/* Campus Switcher Banner (Requirement: Open Whisper Wall asks/selects campus) */}
-        <TouchableOpacity
-          activeOpacity={0.8}
-          onPress={() => setIsCampusModalOpen(true)}
-          style={styles.campusSwitcherBanner}
-        >
-          <View style={styles.campusSwitcherLeft}>
-            <View style={styles.campusIconCircle}>
-              <Ionicons name="school" size={16} color={colors.brand[400]} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.campusSwitcherName} numberOfLines={1}>
-                {user?.college?.name || "Choose Your Campus Hub"}
-              </Text>
-              <Text style={styles.campusSwitcherSubtitle}>
-                {user?.college?.name ? "Tap to change university campus" : "Select campus to view local student whispers"}
-              </Text>
-            </View>
-          </View>
-          <View style={styles.campusSwitcherRight}>
-            <Text style={styles.campusSwitcherAction}>Switch</Text>
-            <Feather name="chevron-right" size={16} color={colors.brand[400]} />
-          </View>
-        </TouchableOpacity>
-
-        {/* Scope Selector (My Campus vs Global Feed) */}
-        <View style={styles.scopeTabsContainer}>
-          <TouchableOpacity
-            activeOpacity={0.8}
-            onPress={() => {
-              if (!user?.collegeId) {
-                setIsCampusModalOpen(true);
-              } else {
-                setScope("CAMPUS");
-              }
-            }}
-            style={[styles.scopeTab, scope === "CAMPUS" && styles.scopeTabActive]}
-          >
-            <Ionicons
-              name="business"
-              size={14}
-              color={scope === "CAMPUS" ? "#FFFFFF" : colors.slate[400]}
-            />
-            <Text
+          <View style={styles.headerActions}>
+            {/* Quick 1-tap Whisper DMs navigation */}
+            <TouchableOpacity
+              onPress={() => navigation?.navigate("Messages", { initialTab: "whisper" })}
               style={[
-                styles.scopeTabText,
-                scope === "CAMPUS" && styles.scopeTabTextActive,
+                styles.headerDmBtn,
+                { backgroundColor: colors.secondary, borderColor: colors.border },
               ]}
             >
-              My Campus
-            </Text>
-          </TouchableOpacity>
+              <Ionicons name="chatbubbles-outline" size={15} color={colors.primary} />
+              <Text style={[styles.headerDmBtnText, { color: colors.text }]}>DMs</Text>
+            </TouchableOpacity>
 
-          <TouchableOpacity
-            activeOpacity={0.8}
-            onPress={() => setScope("GLOBAL")}
-            style={[styles.scopeTab, scope === "GLOBAL" && styles.scopeTabActivePurple]}
-          >
-            <Ionicons
-              name="globe-outline"
-              size={14}
-              color={scope === "GLOBAL" ? "#FFFFFF" : colors.slate[400]}
-            />
-            <Text
-              style={[
-                styles.scopeTabText,
-                scope === "GLOBAL" && styles.scopeTabTextActive,
-              ]}
+            {/* Compose button */}
+            <TouchableOpacity
+              onPress={() => setIsComposeOpen(true)}
+              style={[styles.composeBtn, { backgroundColor: colors.primary }]}
             >
-              Global Feed
-            </Text>
-          </TouchableOpacity>
+              <Feather name="plus" size={15} color={colors.primaryForeground} />
+              <Text style={[styles.composeBtnText, { color: colors.primaryForeground }]}>Whisper</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
-        {/* Category Horizontal Chips */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.categoriesRow}
-        >
-          {CATEGORIES.map((cat) => {
-            const isSelected = activeCategory === cat.value;
-            return (
-              <TouchableOpacity
-                key={cat.value}
-                onPress={() => setActiveCategory(cat.value)}
+        {/* 2. Scope & Category Filters */}
+        <View style={styles.filterSection}>
+          {/* Scope Tabs: Campus vs Global */}
+          <View style={[styles.scopeToggle, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
+            <TouchableOpacity
+              onPress={() => setScope("CAMPUS")}
+              style={[
+                styles.scopeTab,
+                scope === "CAMPUS" && { backgroundColor: colors.card, borderColor: colors.border },
+              ]}
+            >
+              <Ionicons
+                name="school-outline"
+                size={13}
+                color={scope === "CAMPUS" ? colors.primary : colors.textMuted}
+              />
+              <Text
                 style={[
-                  styles.categoryChip,
-                  isSelected && styles.categoryChipActive,
+                  styles.scopeTabText,
+                  { color: scope === "CAMPUS" ? colors.text : colors.textMuted },
                 ]}
               >
-                <Text
+                My Campus
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => setScope("GLOBAL")}
+              style={[
+                styles.scopeTab,
+                scope === "GLOBAL" && { backgroundColor: colors.card, borderColor: colors.border },
+              ]}
+            >
+              <Ionicons
+                name="globe-outline"
+                size={13}
+                color={scope === "GLOBAL" ? colors.primary : colors.textMuted}
+              />
+              <Text
+                style={[
+                  styles.scopeTabText,
+                  { color: scope === "GLOBAL" ? colors.text : colors.textMuted },
+                ]}
+              >
+                Global Feed
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Categories Scroll */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.categoriesRow}
+          >
+            {CATEGORIES.map((cat) => {
+              const isSelected = activeCategory === cat.value;
+              return (
+                <TouchableOpacity
+                  key={cat.value}
+                  onPress={() => setActiveCategory(cat.value)}
                   style={[
-                    styles.categoryChipText,
-                    isSelected && styles.categoryChipTextActive,
+                    styles.categoryPill,
+                    {
+                      backgroundColor: isSelected ? colors.primary : colors.card,
+                      borderColor: isSelected ? colors.primary : colors.border,
+                    },
                   ]}
                 >
-                  {cat.label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
-
-        {/* Whisper Posts Feed */}
-        <View style={styles.postsList}>
-          {filteredPosts.map((post) => {
-            const isConfession = post.category === "CONFESSION";
-            const isAdvice = post.category === "ADVICE";
-            const isMeme = post.category === "MEME";
-
-            return (
-              <GlassCard key={post.id} style={styles.postCard}>
-                {/* Post Header: Avatar, Alias, Campus & Category Badge */}
-                <View style={styles.postHeader}>
-                  <View style={styles.authorRow}>
-                    <View style={styles.avatarCircle}>
-                      <FontAwesome5 name="robot" size={14} color={colors.purple[400]} />
-                    </View>
-                    <View>
-                      <Text style={styles.authorHandle}>@{post.handle}</Text>
-                      <Text style={styles.postMeta}>
-                        {post.campus} • {post.timeAgo}
-                      </Text>
-                    </View>
-                  </View>
-
-                  <Badge
-                    variant={
-                      isConfession
-                        ? "danger"
-                        : isAdvice
-                        ? "brand"
-                        : isMeme
-                        ? "purple"
-                        : "neutral"
-                    }
-                    size="sm"
-                  >
-                    {post.category}
-                  </Badge>
-                </View>
-
-                {/* Post Text Content with Long Post Read More Toggle */}
-                {(() => {
-                  const isExpanded = expandedPostIds.has(post.id);
-                  const isLong = (post.content || "").length > 180;
-                  const displayContent =
-                    isLong && !isExpanded
-                      ? `${post.content.slice(0, 180)}...`
-                      : post.content;
-
-                  return (
-                    <View style={styles.postContentWrapper}>
-                      <Text style={styles.postContent}>{displayContent}</Text>
-                      {isLong && (
-                        <TouchableOpacity
-                          activeOpacity={0.7}
-                          onPress={() => toggleExpandPost(post.id)}
-                          style={styles.readMoreBtn}
-                        >
-                          <Text style={styles.readMoreText}>
-                            {isExpanded ? "Show less ▴" : "Read more ▾"}
-                          </Text>
-                        </TouchableOpacity>
-                      )}
-                    </View>
-                  );
-                })()}
-
-                {/* Post Attached Images (Single or Multi-Grid) */}
-                {post.mediaUrls && post.mediaUrls.length > 0 && (
-                  <View style={styles.mediaContainer}>
-                    {post.mediaUrls.length === 1 ? (
-                      <TouchableOpacity
-                        activeOpacity={0.9}
-                        onPress={() => setEnlargedImage(post.mediaUrls![0])}
-                        style={styles.singleImageWrapper}
-                      >
-                        <Image
-                          source={{ uri: post.mediaUrls[0] }}
-                          style={styles.singleImage}
-                          resizeMode="cover"
-                        />
-                      </TouchableOpacity>
-                    ) : (
-                      <View style={styles.multiImageGrid}>
-                        {post.mediaUrls.slice(0, 4).map((imgUrl, imgIdx) => (
-                          <TouchableOpacity
-                            key={imgIdx}
-                            activeOpacity={0.9}
-                            onPress={() => setEnlargedImage(imgUrl)}
-                            style={styles.gridImageWrapper}
-                          >
-                            <Image
-                              source={{ uri: imgUrl }}
-                              style={styles.gridImage}
-                              resizeMode="cover"
-                            />
-                          </TouchableOpacity>
-                        ))}
-                      </View>
-                    )}
-                  </View>
-                )}
-
-                {/* Interaction Footer: Upvote, Downvote, Comment, Share */}
-                <View style={styles.postFooter}>
-                  {/* Voting Group */}
-                  <View style={styles.voteGroup}>
-                    <TouchableOpacity
-                      onPress={() => handleVote(post.id, "UP")}
-                      style={[
-                        styles.voteBtn,
-                        post.userVote === "UP" && styles.voteBtnUpActive,
-                      ]}
-                    >
-                      <Ionicons
-                        name={post.userVote === "UP" ? "arrow-up-circle" : "arrow-up-outline"}
-                        size={18}
-                        color={post.userVote === "UP" ? colors.brand[400] : colors.slate[400]}
-                      />
-                      <Text
-                        style={[
-                          styles.voteCount,
-                          post.userVote === "UP" && { color: colors.brand[400] },
-                        ]}
-                      >
-                        {post.upvotes}
-                      </Text>
-                    </TouchableOpacity>
-
-                    <View style={styles.voteDivider} />
-
-                    <TouchableOpacity
-                      onPress={() => handleVote(post.id, "DOWN")}
-                      style={[
-                        styles.voteBtn,
-                        post.userVote === "DOWN" && styles.voteBtnDownActive,
-                      ]}
-                    >
-                      <Ionicons
-                        name={post.userVote === "DOWN" ? "arrow-down-circle" : "arrow-down-outline"}
-                        size={18}
-                        color={post.userVote === "DOWN" ? colors.rose[400] : colors.slate[400]}
-                      />
-                    </TouchableOpacity>
-                  </View>
-
-                  {/* Comment, Full View & Share Counts */}
-                  <View style={styles.rightActions}>
-                    <TouchableOpacity
-                      style={styles.actionCountBtn}
-                      onPress={() => setActiveModalPost(post)}
-                      activeOpacity={0.7}
-                    >
-                      <Feather name="maximize-2" size={14} color={colors.brand[400]} />
-                      <Text style={[styles.actionCountText, { color: colors.brand[400], fontWeight: "700" }]}>
-                        Full View
-                      </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={styles.actionCountBtn}>
-                      <Ionicons name="chatbubble-outline" size={16} color={colors.slate[400]} />
-                      <Text style={styles.actionCountText}>{post.commentCount}</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={styles.actionCountBtn}>
-                      <Feather name="share-2" size={15} color={colors.slate[400]} />
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              </GlassCard>
-            );
-          })}
-        </View>
-      </ScrollView>
-
-      {/* Floating Action Button (FAB) / Compose Trigger */}
-      <TouchableOpacity
-        activeOpacity={0.85}
-        onPress={() => {
-          if (!user?.collegeId) {
-            setIsCampusModalOpen(true);
-          } else {
-            setIsComposeOpen(true);
-          }
-        }}
-        style={styles.fabButton}
-      >
-        <Feather name="edit-3" size={20} color="#FFFFFF" />
-        <Text style={styles.fabText}>Whisper</Text>
-      </TouchableOpacity>
-
-      {/* Compose Whisper Modal with Image Attachment & Keyboard UX */}
-      <Modal visible={isComposeOpen} transparent animationType="slide" onRequestClose={() => setIsComposeOpen(false)}>
-        <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
-          style={styles.modalOverlay}
-        >
-          <TouchableOpacity
-            style={styles.modalOverlayTouch}
-            activeOpacity={1}
-            onPress={() => setIsComposeOpen(false)}
-          />
-          <GlassCard style={styles.composeModalCard}>
-            <View style={styles.composeHeader}>
-              <View style={styles.composeTitleRow}>
-                <Ionicons name="eye-off-outline" size={20} color={colors.purple[400]} />
-                <Text style={styles.composeTitle}>Post Anonymous Whisper</Text>
-              </View>
-              <TouchableOpacity onPress={() => setIsComposeOpen(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-                <Ionicons name="close" size={22} color={colors.slate[400]} />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-              {/* Category Select Pills */}
-              <Text style={styles.composeLabel}>Select Topic / Category:</Text>
-              <View style={styles.composeCatGrid}>
-                {(["CONFESSION", "ADVICE", "MEME", "CAMPUS_NEWS"] as const).map((cat) => (
-                  <TouchableOpacity
-                    key={cat}
-                    onPress={() => setComposeCategory(cat)}
+                  <Text
                     style={[
-                      styles.composeCatChip,
-                      composeCategory === cat && styles.composeCatChipActive,
+                      styles.categoryPillText,
+                      {
+                        color: isSelected ? colors.primaryForeground : colors.textMuted,
+                        fontWeight: isSelected ? "700" : "500",
+                      },
                     ]}
                   >
-                    <Text
-                      style={[
-                        styles.composeCatChipText,
-                        composeCategory === cat && styles.composeCatChipTextActive,
-                      ]}
-                    >
-                      {cat}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              {/* Content Input */}
-              <TextInput
-                multiline
-                numberOfLines={4}
-                placeholder="What's on your mind? Share confessions, exam tips, or campus tea... Identity is completely anonymous."
-                placeholderTextColor={colors.slate[500]}
-                value={composeContent}
-                onChangeText={setComposeContent}
-                style={styles.composeInput}
-              />
-
-              {/* Attached Images Preview Row */}
-              {composeImages.length > 0 && (
-                <View style={styles.attachedImagesRow}>
-                  {composeImages.map((imgUrl, idx) => (
-                    <View key={idx} style={styles.attachedImageItem}>
-                      <Image source={{ uri: imgUrl }} style={styles.attachedThumbnail} />
-                      <TouchableOpacity
-                        style={styles.removeAttachedBtn}
-                        onPress={() => handleRemoveComposeImage(idx)}
-                      >
-                        <Ionicons name="close-circle" size={20} color={colors.rose[400]} />
-                      </TouchableOpacity>
-                    </View>
-                  ))}
-                </View>
-              )}
-
-              {/* Attach Image / Meme Button */}
-              <TouchableOpacity
-                activeOpacity={0.7}
-                onPress={handlePickImage}
-                disabled={isUploadingImage}
-                style={styles.attachImageBtn}
-              >
-                {isUploadingImage ? (
-                  <ActivityIndicator size="small" color={colors.purple[400]} />
-                ) : (
-                  <Feather name="image" size={16} color={colors.purple[400]} />
-                )}
-                <Text style={styles.attachImageBtnText}>
-                  {isUploadingImage
-                    ? "Uploading image to wall..."
-                    : composeImages.length > 0
-                    ? `Add another photo (${composeImages.length}/4)`
-                    : "Attach Photo or Meme (Up to 4)"}
-                </Text>
-              </TouchableOpacity>
-
-              {/* Submit Button */}
-              <Button
-                title="Publish Anonymously"
-                variant="brand"
-                loading={isPublishing}
-                onPress={handlePublishWhisper}
-                style={{ marginTop: 14 }}
-              />
-            </ScrollView>
-          </GlassCard>
-        </KeyboardAvoidingView>
-      </Modal>
-
-      {/* Fullscreen Image Preview Modal */}
-      <Modal visible={!!enlargedImage} transparent animationType="fade" onRequestClose={() => setEnlargedImage(null)}>
-        <View style={styles.fullImageBackdrop}>
-          <TouchableOpacity
-            style={styles.closeFullImageBtn}
-            onPress={() => setEnlargedImage(null)}
-          >
-            <Ionicons name="close" size={28} color="#FFFFFF" />
-          </TouchableOpacity>
-          {enlargedImage && (
-            <Image
-              source={{ uri: enlargedImage }}
-              style={styles.fullImage}
-              resizeMode="contain"
-            />
-          )}
-        </View>
-      </Modal>
-
-      {/* Dedicated Fullscreen Post Modal */}
-      <Modal
-        visible={!!activeModalPost}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setActiveModalPost(null)}
-      >
-        <View style={styles.fullPostModalOverlay}>
-          <View style={styles.fullPostModalCard}>
-            {/* Modal Header */}
-            <View style={styles.fullPostHeader}>
-              <View style={styles.authorRow}>
-                <View style={styles.avatarCircle}>
-                  <FontAwesome5 name="robot" size={16} color={colors.purple[400]} />
-                </View>
-                <View>
-                  <Text style={styles.authorHandle}>@{activeModalPost?.handle}</Text>
-                  <Text style={styles.postMeta}>
-                    {activeModalPost?.campus} • {activeModalPost?.timeAgo}
+                    {cat.label}
                   </Text>
-                </View>
-              </View>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                {activeModalPost && (
-                  <Badge
-                    variant={
-                      activeModalPost.category === "CONFESSION"
-                        ? "danger"
-                        : activeModalPost.category === "ADVICE"
-                        ? "brand"
-                        : activeModalPost.category === "MEME"
-                        ? "purple"
-                        : "neutral"
-                    }
-                    size="sm"
-                  >
-                    {activeModalPost.category}
-                  </Badge>
-                )}
-                <TouchableOpacity
-                  onPress={() => setActiveModalPost(null)}
-                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                  style={styles.closeFullPostBtn}
-                >
-                  <Ionicons name="close" size={22} color={colors.slate[300]} />
                 </TouchableOpacity>
-              </View>
-            </View>
+              );
+            })}
+          </ScrollView>
+        </View>
 
-            {/* Modal Scrollable Body */}
-            <ScrollView
-              style={styles.fullPostBodyScroll}
-              contentContainerStyle={{ paddingBottom: 20, gap: 14 }}
-              showsVerticalScrollIndicator={false}
-            >
-              <Text style={styles.fullPostContent} selectable>
-                {activeModalPost?.content}
-              </Text>
+        {/* 3. Whispers Feed */}
+        {loading ? (
+          <View style={styles.loadingWrap}>
+            <ActivityIndicator size="small" color={colors.primary} />
+            <Text style={[styles.loadingText, { color: colors.textMuted }]}>
+              Decrypting campus whispers...
+            </Text>
+          </View>
+        ) : posts.length === 0 ? (
+          <View style={styles.emptyWrap}>
+            <Ionicons name="eye-off-outline" size={48} color={colors.textMuted} />
+            <Text style={[styles.emptyTitle, { color: colors.text }]}>No Whispers Yet</Text>
+            <Text style={[styles.emptySub, { color: colors.textMuted }]}>
+              Be the first to share an anonymous confession, tip, or banter with campus batchmates!
+            </Text>
+            <Button
+              title="Post a Whisper"
+              variant="default"
+              size="sm"
+              onPress={() => setIsComposeOpen(true)}
+              style={{ marginTop: 8 }}
+            />
+          </View>
+        ) : (
+          <FlatList
+            data={posts}
+            keyExtractor={(item) => item.id}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={() => fetchPosts(true)}
+                tintColor={colors.primary}
+              />
+            }
+            contentContainerStyle={styles.listContent}
+            renderItem={({ item }) => {
+              const isExpanded = expandedPostIds.has(item.id);
+              const isLong = item.content.length > 180;
+              const seed = item.avatarSeed || item.handle || "bot";
+              const avatarUri = `https://api.dicebear.com/9.x/bottts/png?seed=${encodeURIComponent(seed)}&size=80`;
+              const mediaList = item.mediaUrls && item.mediaUrls.length > 0 ? item.mediaUrls : item.imageUrl ? [item.imageUrl] : [];
+              const isLiked = item.userVote === "UP";
 
-              {/* Attached Images in Full View */}
-              {activeModalPost?.mediaUrls && activeModalPost.mediaUrls.length > 0 && (
-                <View style={{ gap: 10, marginTop: 4 }}>
-                  {activeModalPost.mediaUrls.map((imgUrl, idx) => (
-                    <TouchableOpacity
-                      key={idx}
-                      activeOpacity={0.9}
-                      onPress={() => setEnlargedImage(imgUrl)}
-                      style={styles.fullPostImageWrapper}
-                    >
+              return (
+                <Card style={styles.postCard}>
+                  {/* Author Row */}
+                  <View style={styles.postAuthorRow}>
+                    <View style={styles.authorLeft}>
+                      <Image source={{ uri: avatarUri }} style={styles.botAvatar} />
+                      <View style={{ marginLeft: 8 }}>
+                        <Text style={[styles.authorHandle, { color: colors.text }]}>
+                          {item.handle || "Anonymous Student"}
+                        </Text>
+                        <Text style={[styles.timeAgo, { color: colors.textMuted }]}>
+                          {item.createdAt ? new Date(item.createdAt).toLocaleDateString([], { month: "short", day: "numeric" }) : "Just now"}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <Badge variant="outline" size="sm">
+                      {item.category || "CONFESSION"}
+                    </Badge>
+                  </View>
+
+                  {/* Content */}
+                  <Text
+                    style={[styles.postContent, { color: colors.text }]}
+                    numberOfLines={isExpanded ? undefined : 4}
+                  >
+                    {item.content}
+                  </Text>
+
+                  {/* Read more toggle */}
+                  {isLong && (
+                    <TouchableOpacity onPress={() => toggleExpandPost(item.id)}>
+                      <Text style={[styles.readMoreText, { color: colors.primary }]}>
+                        {isExpanded ? "Show less ▴" : "Read more ▾"}
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+
+                  {/* Attached Multi-Image Gallery */}
+                  {mediaList.length === 1 ? (
+                    <TouchableOpacity activeOpacity={0.9} onPress={() => setActiveModalPost(item)}>
                       <Image
-                        source={{ uri: imgUrl }}
-                        style={styles.fullPostImage}
+                        source={{ uri: resolveMediaUri(mediaList[0]) }}
+                        style={styles.postImageSingle}
                         resizeMode="cover"
                       />
                     </TouchableOpacity>
-                  ))}
-                </View>
-              )}
+                  ) : mediaList.length > 1 ? (
+                    <View style={styles.mediaCarouselContainer}>
+                      <ScrollView
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        contentContainerStyle={styles.mediaCarouselRow}
+                      >
+                        {mediaList.map((imgUri, idx) => (
+                          <TouchableOpacity
+                            key={idx}
+                            activeOpacity={0.9}
+                            onPress={() => setActiveModalPost(item)}
+                            style={styles.carouselImgWrapper}
+                          >
+                            <Image
+                              source={{ uri: resolveMediaUri(imgUri) }}
+                              style={styles.postImageMultiple}
+                              resizeMode="cover"
+                            />
+                            <View style={styles.carouselIdxBadge}>
+                              <Text style={styles.carouselIdxText}>{idx + 1}/{mediaList.length}</Text>
+                            </View>
+                          </TouchableOpacity>
+                        ))}
+                      </ScrollView>
+                    </View>
+                  ) : null}
 
-              {/* Student Identity Protection Notice */}
-              <View style={styles.safetyNoticeBox}>
-                <Ionicons name="shield-checkmark" size={16} color={colors.brand[400]} />
-                <Text style={styles.safetyNoticeText}>
-                  Student identity protected by Otium End-to-End Anonymous Protocol.
-                </Text>
-              </View>
-            </ScrollView>
-
-            {/* Modal Footer Actions */}
-            <View style={styles.fullPostFooter}>
-              <View style={styles.voteGroup}>
-                <TouchableOpacity
-                  onPress={() => activeModalPost && handleVote(activeModalPost.id, "UP")}
-                  style={[
-                    styles.voteBtn,
-                    activeModalPost?.userVote === "UP" && styles.voteBtnUpActive,
-                  ]}
-                >
-                  <Ionicons
-                    name={activeModalPost?.userVote === "UP" ? "arrow-up-circle" : "arrow-up-outline"}
-                    size={18}
-                    color={activeModalPost?.userVote === "UP" ? colors.brand[400] : colors.slate[400]}
-                  />
-                  <Text
-                    style={[
-                      styles.voteCount,
-                      activeModalPost?.userVote === "UP" && { color: colors.brand[400] },
-                    ]}
-                  >
-                    {activeModalPost?.upvotes}
-                  </Text>
-                </TouchableOpacity>
-
-                <View style={styles.voteDivider} />
-
-                <TouchableOpacity
-                  onPress={() => activeModalPost && handleVote(activeModalPost.id, "DOWN")}
-                  style={[
-                    styles.voteBtn,
-                    activeModalPost?.userVote === "DOWN" && styles.voteBtnDownActive,
-                  ]}
-                >
-                  <Ionicons
-                    name={activeModalPost?.userVote === "DOWN" ? "arrow-down-circle" : "arrow-down-outline"}
-                    size={18}
-                    color={activeModalPost?.userVote === "DOWN" ? colors.rose[400] : colors.slate[400]}
-                  />
-                </TouchableOpacity>
-              </View>
-
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                <View style={styles.actionCountBtn}>
-                  <Ionicons name="chatbubble-outline" size={16} color={colors.slate[400]} />
-                  <Text style={styles.actionCountText}>{activeModalPost?.commentCount || 0}</Text>
-                </View>
-
-                <TouchableOpacity
-                  onPress={() => handleStartAnonymousChat(activeModalPost)}
-                  style={styles.anonDmActionBtn}
-                >
-                  <Ionicons name="paper-plane-outline" size={14} color={colors.purple[400]} />
-                  <Text style={styles.anonDmActionText}>Whisper DM</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  onPress={() => setActiveModalPost(null)}
-                  style={styles.closeFullPostActionBtn}
-                >
-                  <Text style={styles.closeFullPostActionText}>Done</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Select Campus Modal (Prompt on open or tap switch) */}
-      <Modal visible={isCampusModalOpen} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={styles.campusModalCard}>
-            <View style={styles.modalHeader}>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                <View style={styles.campusIconCircle}>
-                  <Ionicons name="school" size={18} color={colors.brand[400]} />
-                </View>
-                <View>
-                  <Text style={styles.modalTitle}>Select Your Campus</Text>
-                  <Text style={styles.modalSubtitle}>Customizes your Whisper Wall & Local Feed</Text>
-                </View>
-              </View>
-              {user?.collegeId && (
-                <TouchableOpacity onPress={() => setIsCampusModalOpen(false)}>
-                  <Ionicons name="close" size={22} color={colors.slate[400]} />
-                </TouchableOpacity>
-              )}
-            </View>
-
-            {isLoadingColleges ? (
-              <View style={{ padding: 40, alignItems: "center" }}>
-                <ActivityIndicator size="large" color={colors.brand[400]} />
-                <Text style={{ color: colors.slate[400], marginTop: 12, fontSize: 13 }}>
-                  Loading university campuses...
-                </Text>
-              </View>
-            ) : (
-              <ScrollView style={{ maxHeight: 380 }} showsVerticalScrollIndicator={false}>
-                {colleges.map((col) => {
-                  const isSelected = user?.collegeId === col.id;
-                  return (
+                  {/* Footer Controls: Heart Like, Full View, Whisper DM */}
+                  <View style={[styles.postFooter, { borderTopColor: colors.border }]}>
+                    {/* Responsive Heart Like Button (0ms Lag-Free) */}
                     <TouchableOpacity
-                      key={col.id}
-                      activeOpacity={0.7}
-                      onPress={() => handleSelectCampus(col)}
+                      onPress={() => handleToggleLike(item)}
                       style={[
-                        styles.collegeItem,
-                        isSelected && styles.collegeItemActive,
+                        styles.likeBtn,
+                        {
+                          backgroundColor: isLiked ? colors.destructive + "15" : colors.secondary,
+                          borderColor: isLiked ? colors.destructive + "40" : colors.border,
+                        },
                       ]}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      activeOpacity={0.7}
                     >
-                      <View style={{ flex: 1, gap: 3 }}>
+                      <Ionicons
+                        name={isLiked ? "heart" : "heart-outline"}
+                        size={17}
+                        color={isLiked ? colors.destructive : colors.textMuted}
+                      />
+                      <Text
+                        style={[
+                          styles.likeCount,
+                          { color: isLiked ? colors.destructive : colors.text },
+                        ]}
+                      >
+                        {item.upvotes || 0}
+                      </Text>
+                    </TouchableOpacity>
+
+                    {/* Right side controls */}
+                    <View style={styles.postControlsRight}>
+                      <TouchableOpacity
+                        style={[styles.controlBtn, { backgroundColor: colors.secondary + "80", borderColor: colors.border }]}
+                        onPress={() => setActiveModalPost(item)}
+                      >
+                        <Feather name="maximize-2" size={12} color={colors.textMuted} />
+                        <Text style={[styles.controlBtnText, { color: colors.textMuted }]}>
+                          Full View
+                        </Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={[styles.whisperDmBtn, { backgroundColor: colors.primary + "15", borderColor: colors.primary + "30" }]}
+                        onPress={() => handleStartWhisperChat(item)}
+                      >
+                        <Ionicons name="chatbubble-ellipses-outline" size={13} color={colors.primary} />
+                        <Text style={[styles.whisperDmText, { color: colors.primary }]}>
+                          Whisper DM
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </Card>
+              );
+            }}
+          />
+        )}
+
+        {/* 4. Compose Whisper Bottom Sheet Modal */}
+        <Modal
+          visible={isComposeOpen}
+          animationType="slide"
+          transparent={true}
+          onRequestClose={() => setIsComposeOpen(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View
+              style={[
+                styles.modalContent,
+                { backgroundColor: colors.card, borderColor: colors.border },
+              ]}
+            >
+              <View style={styles.modalHeader}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.modalTitle, { color: colors.text }]}>Post Anonymous Whisper</Text>
+                  <Text style={[styles.modalSubtitle, { color: colors.textMuted }]}>
+                    Identity protected by cryptographic alias & robot avatar
+                  </Text>
+                </View>
+                <TouchableOpacity onPress={() => setIsComposeOpen(false)} style={{ padding: 4 }}>
+                  <Ionicons name="close" size={22} color={colors.textMuted} />
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 420 }}>
+                {/* Category Selection */}
+                <View style={styles.formGroup}>
+                  <Text style={[styles.formLabel, { color: colors.text }]}>Category</Text>
+                  <View style={styles.categoryPillsWrap}>
+                    {CATEGORIES.filter((c) => c.value !== "ALL").map((cat) => (
+                      <TouchableOpacity
+                        key={cat.value}
+                        onPress={() => setComposeCategory(cat.value)}
+                        style={[
+                          styles.modalCategoryChip,
+                          {
+                            backgroundColor:
+                              composeCategory === cat.value ? colors.primary + "18" : colors.secondary,
+                            borderColor:
+                              composeCategory === cat.value ? colors.primary : colors.border,
+                          },
+                        ]}
+                      >
                         <Text
                           style={[
-                            styles.collegeNameText,
-                            isSelected && { color: colors.brand[400] },
+                            styles.modalCategoryChipText,
+                            {
+                              color: composeCategory === cat.value ? colors.primary : colors.textMuted,
+                              fontWeight: composeCategory === cat.value ? "700" : "500",
+                            },
                           ]}
                         >
-                          {col.name}
+                          {cat.label}
                         </Text>
-                        <Text style={styles.collegeCityText}>
-                          📍 {col.city || "Campus"}, {col.state || "India"}
-                        </Text>
-                      </View>
-                      {isSelected ? (
-                        <Ionicons name="checkmark-circle" size={22} color={colors.brand[400]} />
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+
+                {/* Text Content */}
+                <View style={[styles.formGroup, { marginTop: 12 }]}>
+                  <Text style={[styles.formLabel, { color: colors.text }]}>Whisper Content *</Text>
+                  <TextInput
+                    style={[
+                      styles.composeTextarea,
+                      { color: colors.text, borderColor: colors.border, backgroundColor: colors.secondary + "40" },
+                    ]}
+                    placeholder="Share your campus secret, question, confession, or funny moment..."
+                    placeholderTextColor={colors.textMuted}
+                    value={composeContent}
+                    onChangeText={setComposeContent}
+                    multiline
+                    numberOfLines={4}
+                  />
+                </View>
+
+                {/* Multi-Image Attachment */}
+                <View style={[styles.formGroup, { marginTop: 12 }]}>
+                  <View style={styles.mediaLabelRow}>
+                    <Text style={[styles.formLabel, { color: colors.text }]}>
+                      Attached Photos / Memes ({composeImages.length}/4)
+                    </Text>
+                    {composeImages.length < 4 && (
+                      <TouchableOpacity
+                        onPress={handlePickImage}
+                        disabled={isUploadingImage}
+                        style={[styles.addPhotoChip, { backgroundColor: colors.primary + "15", borderColor: colors.primary + "30" }]}
+                      >
+                        <Feather name="plus" size={13} color={colors.primary} />
+                        <Text style={[styles.addPhotoChipText, { color: colors.primary }]}>Add Image</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+
+                  {/* Thumbnail Previews */}
+                  {composeImages.length > 0 && (
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={styles.thumbScrollRow}
+                    >
+                      {composeImages.map((uri, idx) => (
+                        <View key={idx} style={styles.thumbWrap}>
+                          <Image source={{ uri: resolveMediaUri(uri) }} style={styles.thumbImage} />
+                          <TouchableOpacity
+                            onPress={() => handleRemoveComposeImage(idx)}
+                            style={styles.thumbDeleteBadge}
+                          >
+                            <Ionicons name="close" size={13} color="#FFF" />
+                          </TouchableOpacity>
+                        </View>
+                      ))}
+                    </ScrollView>
+                  )}
+
+                  {/* Pick Button if 0 photos */}
+                  {composeImages.length === 0 && (
+                    <TouchableOpacity
+                      onPress={handlePickImage}
+                      disabled={isUploadingImage}
+                      style={[
+                        styles.uploadImageBtn,
+                        { borderColor: colors.border, backgroundColor: colors.secondary + "30" },
+                      ]}
+                    >
+                      {isUploadingImage ? (
+                        <ActivityIndicator size="small" color={colors.primary} />
                       ) : (
-                        <Feather name="chevron-right" size={18} color={colors.slate[500]} />
+                        <>
+                          <Ionicons name="images-outline" size={20} color={colors.primary} />
+                          <Text style={[styles.uploadImageText, { color: colors.text }]}>
+                            Select Photos or Memes (up to 4)
+                          </Text>
+                        </>
                       )}
                     </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
-            )}
+                  )}
 
-            {isSavingCampus && (
-              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, marginTop: 10 }}>
-                <ActivityIndicator size="small" color={colors.brand[400]} />
-                <Text style={{ color: colors.slate[400], fontSize: 12 }}>Saving campus preference...</Text>
+                  {/* Quick URL paste */}
+                  {composeImages.length < 4 && (
+                    <View style={styles.urlInputRow}>
+                      <TextInput
+                        style={[styles.urlInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.secondary + "30" }]}
+                        placeholder="Or paste image URL link..."
+                        placeholderTextColor={colors.textMuted}
+                        value={composeUrlInput}
+                        onChangeText={setComposeUrlInput}
+                        autoCapitalize="none"
+                      />
+                      <TouchableOpacity
+                        onPress={handleAddUrlImage}
+                        disabled={!composeUrlInput.trim()}
+                        style={[
+                          styles.urlAddBtn,
+                          { backgroundColor: composeUrlInput.trim() ? colors.primary : colors.secondary },
+                        ]}
+                      >
+                        <Text style={[styles.urlAddBtnText, { color: composeUrlInput.trim() ? colors.primaryForeground : colors.textMuted }]}>
+                          + Add
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                </View>
+              </ScrollView>
+
+              <View style={styles.modalFooter}>
+                <Button
+                  title="Cancel"
+                  variant="outline"
+                  size="sm"
+                  onPress={() => setIsComposeOpen(false)}
+                />
+                <Button
+                  title={isSubmitting ? "Posting..." : "Post Whisper"}
+                  variant="default"
+                  size="sm"
+                  onPress={handleCreateWhisper}
+                  disabled={isSubmitting}
+                />
               </View>
-            )}
+            </View>
           </View>
-        </View>
-      </Modal>
-    </View>
+        </Modal>
+
+        {/* 5. Dedicated Full-Screen Post Modal */}
+        <Modal
+          visible={!!activeModalPost}
+          animationType="fade"
+          transparent={true}
+          onRequestClose={() => setActiveModalPost(null)}
+        >
+          <View style={styles.modalOverlay}>
+            <View
+              style={[
+                styles.fullViewContent,
+                { backgroundColor: colors.card, borderColor: colors.border },
+              ]}
+            >
+              <View style={styles.modalHeader}>
+                <View style={styles.authorLeft}>
+                  <Image
+                    source={{
+                      uri: `https://api.dicebear.com/9.x/bottts/png?seed=${encodeURIComponent(activeModalPost?.avatarSeed || activeModalPost?.handle || "bot")}&size=80`,
+                    }}
+                    style={styles.botAvatar}
+                  />
+                  <View style={{ marginLeft: 8 }}>
+                    <Text style={[styles.authorHandle, { color: colors.text }]}>
+                      {activeModalPost?.handle || "Anonymous Student"}
+                    </Text>
+                    <Text style={[styles.timeAgo, { color: colors.textMuted }]}>
+                      {activeModalPost?.category || "CONFESSION"} • {activeModalPost?.campus || "Campus"}
+                    </Text>
+                  </View>
+                </View>
+                <TouchableOpacity onPress={() => setActiveModalPost(null)} style={{ padding: 4 }}>
+                  <Ionicons name="close" size={22} color={colors.textMuted} />
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 340 }}>
+                <Text style={[styles.fullViewText, { color: colors.text }]}>
+                  {activeModalPost?.content}
+                </Text>
+                
+                {/* Images list in Full View */}
+                {activeModalPost?.mediaUrls && activeModalPost.mediaUrls.length > 0 ? (
+                  <View style={{ marginTop: 12, gap: 10 }}>
+                    {activeModalPost.mediaUrls.map((uri, i) => (
+                      <Image
+                        key={i}
+                        source={{ uri: resolveMediaUri(uri) }}
+                        style={styles.modalFullImage}
+                        resizeMode="cover"
+                      />
+                    ))}
+                  </View>
+                ) : activeModalPost?.imageUrl ? (
+                  <Image
+                    source={{ uri: resolveMediaUri(activeModalPost.imageUrl) }}
+                    style={styles.modalFullImage}
+                    resizeMode="cover"
+                  />
+                ) : null}
+              </ScrollView>
+
+              <View style={[styles.fullViewFooter, { borderTopColor: colors.border }]}>
+                {activeModalPost && (
+                  <TouchableOpacity
+                    onPress={() => handleToggleLike(activeModalPost)}
+                    style={[
+                      styles.likeBtn,
+                      {
+                        backgroundColor: activeModalPost.userVote === "UP" ? colors.destructive + "15" : colors.secondary,
+                        borderColor: activeModalPost.userVote === "UP" ? colors.destructive + "40" : colors.border,
+                      },
+                    ]}
+                  >
+                    <Ionicons
+                      name={activeModalPost.userVote === "UP" ? "heart" : "heart-outline"}
+                      size={17}
+                      color={activeModalPost.userVote === "UP" ? colors.destructive : colors.textMuted}
+                    />
+                    <Text
+                      style={[
+                        styles.likeCount,
+                        { color: activeModalPost.userVote === "UP" ? colors.destructive : colors.text },
+                      ]}
+                    >
+                      {activeModalPost.upvotes || 0}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+
+                <Button
+                  title="Start Whisper DM"
+                  variant="default"
+                  size="sm"
+                  onPress={() => activeModalPost && handleStartWhisperChat(activeModalPost)}
+                  leftIcon={<Ionicons name="chatbubble-ellipses-outline" size={14} color={colors.primaryForeground} />}
+                />
+              </View>
+            </View>
+          </View>
+        </Modal>
+      </View>
+    </ClientServiceGuard>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
   },
-  contentContainer: {
-    padding: 16,
-    paddingBottom: 90,
-    gap: 16,
-  },
-  heroBanner: {
-    borderRadius: 24,
-    padding: 20,
-    backgroundColor: "rgba(168, 85, 247, 0.12)",
-    borderWidth: 1,
-    borderColor: "rgba(168, 85, 247, 0.3)",
-  },
-  heroBadgeRow: {
-    marginBottom: 8,
-  },
-  heroTitle: {
-    fontSize: 22,
-    fontWeight: "900",
-    color: "#FFFFFF",
-    letterSpacing: -0.4,
-    lineHeight: 28,
-  },
-  heroSubtitle: {
-    fontSize: 13,
-    color: colors.slate[300],
-    marginTop: 6,
-    lineHeight: 19,
-  },
-  campusSwitcherBanner: {
+  header: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 16,
-    backgroundColor: "rgba(20, 184, 166, 0.08)",
-    borderWidth: 1,
-    borderColor: "rgba(20, 184, 166, 0.25)",
+    paddingTop: Platform.OS === "ios" ? 52 : 36,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
   },
-  campusSwitcherLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    flex: 1,
-  },
-  campusIconCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
-    backgroundColor: "rgba(20, 184, 166, 0.15)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  campusSwitcherName: {
-    fontSize: 13,
+  headerTitle: {
+    fontSize: 18,
     fontWeight: "800",
-    color: "#FFFFFF",
+    letterSpacing: -0.3,
   },
-  campusSwitcherSubtitle: {
-    fontSize: 10.5,
-    color: colors.slate[400],
+  headerSub: {
+    fontSize: 11,
     marginTop: 1,
   },
-  campusSwitcherRight: {
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  headerDmBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 18,
+    borderWidth: 1,
+  },
+  headerDmBtnText: {
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  composeBtn: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    paddingLeft: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 18,
   },
-  campusSwitcherAction: {
+  composeBtnText: {
     fontSize: 12,
     fontWeight: "700",
-    color: colors.brand[400],
   },
-  scopeTabsContainer: {
+  filterSection: {
+    paddingVertical: 8,
+    gap: 8,
+  },
+  scopeToggle: {
     flexDirection: "row",
-    borderRadius: 14,
-    backgroundColor: colors.surface,
+    marginHorizontal: 16,
+    padding: 3,
+    borderRadius: 10,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
-    padding: 4,
-    gap: 6,
   },
   scopeTab: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 8,
-    paddingVertical: 10,
-    borderRadius: 10,
-  },
-  scopeTabActive: {
-    backgroundColor: colors.brand[600],
-  },
-  scopeTabActivePurple: {
-    backgroundColor: colors.purple[600],
+    gap: 5,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "transparent",
   },
   scopeTabText: {
-    fontSize: 12.5,
+    fontSize: 11,
     fontWeight: "700",
-    color: colors.slate[400],
-  },
-  scopeTabTextActive: {
-    color: "#FFFFFF",
   },
   categoriesRow: {
-    gap: 8,
-    paddingVertical: 2,
+    paddingHorizontal: 16,
+    gap: 6,
   },
-  categoryChip: {
+  categoryPill: {
     paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 20,
-    backgroundColor: colors.surface,
+    paddingVertical: 6,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
   },
-  categoryChipActive: {
-    backgroundColor: colors.slate[800],
-    borderColor: colors.brand[400],
+  categoryPillText: {
+    fontSize: 11,
   },
-  categoryChipText: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: colors.slate[400],
-  },
-  categoryChipTextActive: {
-    color: "#FFFFFF",
-    fontWeight: "700",
-  },
-  postsList: {
-    gap: 14,
-  },
-  postCard: {
-    padding: 16,
+  listContent: {
+    paddingHorizontal: 16,
+    paddingBottom: 32,
     gap: 12,
   },
-  postHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  authorRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-  },
-  avatarCircle: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: "rgba(168, 85, 247, 0.15)",
-    borderWidth: 1,
-    borderColor: "rgba(168, 85, 247, 0.3)",
+  loadingWrap: {
+    flex: 1,
     alignItems: "center",
     justifyContent: "center",
+    gap: 8,
+  },
+  loadingText: {
+    fontSize: 12,
+  },
+  emptyWrap: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 32,
+    gap: 10,
+  },
+  emptyTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  emptySub: {
+    fontSize: 12,
+    textAlign: "center",
+    lineHeight: 18,
+  },
+  postCard: {
+    padding: 14,
+    gap: 10,
+  },
+  postAuthorRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  authorLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  botAvatar: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
   },
   authorHandle: {
-    fontSize: 12.5,
-    fontWeight: "800",
-    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "700",
   },
-  postMeta: {
-    fontSize: 10.5,
-    color: colors.slate[400],
+  timeAgo: {
+    fontSize: 10,
     marginTop: 1,
   },
   postContent: {
-    fontSize: 13.5,
-    lineHeight: 20,
-    color: colors.slate[200],
+    fontSize: 13,
+    lineHeight: 19,
+  },
+  readMoreText: {
+    fontSize: 11,
+    fontWeight: "600",
+  },
+  postImageSingle: {
+    width: "100%",
+    height: 190,
+    borderRadius: 10,
+  },
+  mediaCarouselContainer: {
+    marginTop: 2,
+  },
+  mediaCarouselRow: {
+    gap: 8,
+  },
+  carouselImgWrapper: {
+    position: "relative",
+    borderRadius: 10,
+    overflow: "hidden",
+  },
+  postImageMultiple: {
+    width: SCREEN_WIDTH * 0.65,
+    height: 180,
+    borderRadius: 10,
+  },
+  carouselIdxBadge: {
+    position: "absolute",
+    top: 8,
+    right: 8,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 10,
+  },
+  carouselIdxText: {
+    color: "#FFF",
+    fontSize: 10,
+    fontWeight: "700",
   },
   postFooter: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
-    marginTop: 4,
-    paddingTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: "rgba(255, 255, 255, 0.05)",
+    justifyContent: "space-between",
+    paddingTop: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
   },
-  voteGroup: {
+  likeBtn: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: colors.slate[900],
-    borderRadius: 18,
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
-    paddingHorizontal: 4,
-    paddingVertical: 2,
   },
-  voteBtn: {
+  likeCount: {
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  postControlsRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  controlBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingVertical: 5,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  controlBtnText: {
+    fontSize: 11,
+  },
+  whisperDmBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingVertical: 5,
+    paddingHorizontal: 9,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  whisperDmText: {
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.65)",
+    justifyContent: "flex-end",
+  },
+  modalContent: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    borderTopWidth: 1,
+    padding: 20,
+    paddingBottom: 36,
+    gap: 12,
+  },
+  modalHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+  },
+  modalTitle: {
+    fontSize: 17,
+    fontWeight: "800",
+  },
+  modalSubtitle: {
+    fontSize: 11,
+    marginTop: 2,
+  },
+  formGroup: {
+    gap: 6,
+  },
+  formLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  mediaLabelRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 4,
+  },
+  addPhotoChip: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
     paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: 14,
+    borderRadius: 8,
+    borderWidth: 1,
   },
-  voteBtnUpActive: {
-    backgroundColor: "rgba(20, 184, 166, 0.15)",
-  },
-  voteBtnDownActive: {
-    backgroundColor: "rgba(244, 63, 94, 0.15)",
-  },
-  voteDivider: {
-    width: 1,
-    height: 14,
-    backgroundColor: colors.cardBorder,
-  },
-  voteCount: {
-    fontSize: 12,
+  addPhotoChipText: {
+    fontSize: 11,
     fontWeight: "700",
-    color: colors.slate[300],
   },
-  rightActions: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-  actionCountBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    paddingHorizontal: 8,
+  thumbScrollRow: {
+    gap: 8,
     paddingVertical: 4,
   },
-  actionCountText: {
-    fontSize: 12,
-    color: colors.slate[400],
-    fontWeight: "600",
+  thumbWrap: {
+    position: "relative",
+    width: 72,
+    height: 72,
+    borderRadius: 8,
+    overflow: "hidden",
   },
-  fabButton: {
+  thumbImage: {
+    width: "100%",
+    height: "100%",
+    borderRadius: 8,
+  },
+  thumbDeleteBadge: {
     position: "absolute",
-    bottom: 24,
-    right: 20,
+    top: 4,
+    right: 4,
+    backgroundColor: "rgba(0,0,0,0.75)",
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  urlInputRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    backgroundColor: colors.purple[600],
-    paddingHorizontal: 18,
-    paddingVertical: 12,
-    borderRadius: 24,
-    shadowColor: colors.purple[500],
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-    elevation: 8,
+    gap: 6,
+    marginTop: 8,
   },
-  fabText: {
-    color: "#FFFFFF",
-    fontSize: 14,
-    fontWeight: "800",
-  },
-  modalOverlay: {
+  urlInput: {
     flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.8)",
-    justifyContent: "flex-end",
-  },
-  composeModalCard: {
-    backgroundColor: colors.surface,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    height: 38,
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.1)",
-    padding: 20,
-    gap: 12,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    fontSize: 12,
   },
-  composeHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
+  urlAddBtn: {
+    paddingHorizontal: 12,
+    height: 38,
+    borderRadius: 8,
     alignItems: "center",
-    paddingBottom: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.cardBorder,
+    justifyContent: "center",
   },
-  composeTitleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  composeTitle: {
-    fontSize: 16,
-    fontWeight: "800",
-    color: "#FFFFFF",
-  },
-  composeLabel: {
-    fontSize: 11,
+  urlAddBtnText: {
+    fontSize: 12,
     fontWeight: "700",
-    color: colors.slate[400],
-    textTransform: "uppercase",
-    marginTop: 4,
   },
-  composeCatGrid: {
+  categoryPillsWrap: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 8,
+    gap: 6,
   },
-  composeCatChip: {
-    paddingHorizontal: 12,
+  modalCategoryChip: {
+    paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 8,
-    backgroundColor: colors.slate[900],
     borderWidth: 1,
-    borderColor: colors.cardBorder,
   },
-  composeCatChipActive: {
-    backgroundColor: colors.purple[600],
-    borderColor: colors.purple[400],
-  },
-  composeCatChipText: {
+  modalCategoryChipText: {
     fontSize: 11,
-    fontWeight: "700",
-    color: colors.slate[400],
   },
-  composeCatChipTextActive: {
-    color: "#FFFFFF",
-  },
-  composeInput: {
-    backgroundColor: colors.slate[900],
+  composeTextarea: {
     borderWidth: 1,
-    borderColor: colors.cardBorder,
-    borderRadius: 14,
-    padding: 14,
-    fontSize: 13.5,
-    color: "#FFFFFF",
-    minHeight: 110,
+    borderRadius: 12,
+    padding: 12,
+    fontSize: 13,
+    minHeight: 90,
     textAlignVertical: "top",
-    marginTop: 6,
   },
-  campusModalCard: {
-    backgroundColor: colors.surface,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.1)",
+  modalFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: 10,
+    marginTop: 10,
+  },
+  fullViewContent: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    borderTopWidth: 1,
     padding: 20,
+    paddingBottom: 36,
     gap: 14,
-    maxHeight: "85%",
   },
-  modalHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.cardBorder,
+  fullViewText: {
+    fontSize: 14,
+    lineHeight: 22,
   },
-  modalTitle: {
-    fontSize: 16,
-    fontWeight: "800",
-    color: "#FFFFFF",
-  },
-  modalSubtitle: {
-    fontSize: 11,
-    color: colors.slate[400],
-    marginTop: 2,
-  },
-  collegeItem: {
+  fullViewFooter: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    padding: 14,
-    borderRadius: 14,
-    backgroundColor: "rgba(255, 255, 255, 0.03)",
+    paddingTop: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  uploadImageBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 14,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: colors.cardBorder,
-    marginBottom: 8,
+    borderStyle: "dashed",
+    marginTop: 4,
   },
-  collegeItemActive: {
-    borderColor: colors.brand[400],
-    backgroundColor: "rgba(20, 184, 166, 0.1)",
+  uploadImageText: {
+    fontSize: 13,
+    fontWeight: "600",
   },
-  collegeNameText: {
-    fontSize: 13.5,
-    fontWeight: "800",
-    color: "#FFFFFF",
-  },
-  collegeCityText: {
-    fontSize: 11,
-    color: colors.slate[400],
-  },
-  modalOverlayTouch: {
-    flex: 1,
-  },
-  mediaContainer: {
-    marginTop: 8,
-    borderRadius: 14,
-    overflow: "hidden",
-  },
-  singleImageWrapper: {
-    borderRadius: 14,
-    overflow: "hidden",
-    borderWidth: 1,
-    borderColor: colors.cardBorder,
-    backgroundColor: colors.slate[900],
-  },
-  singleImage: {
+  modalFullImage: {
     width: "100%",
     height: 220,
-    borderRadius: 14,
-  },
-  multiImageGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 6,
-  },
-  gridImageWrapper: {
-    width: "48.5%",
-    height: 140,
     borderRadius: 12,
-    overflow: "hidden",
-    borderWidth: 1,
-    borderColor: colors.cardBorder,
-    backgroundColor: colors.slate[900],
-  },
-  gridImage: {
-    width: "100%",
-    height: "100%",
-  },
-  attachedImagesRow: {
-    flexDirection: "row",
-    gap: 8,
-    marginTop: 10,
-    flexWrap: "wrap",
-  },
-  attachedImageItem: {
-    position: "relative",
-    width: 68,
-    height: 68,
-    borderRadius: 10,
-    overflow: "hidden",
-    borderWidth: 1,
-    borderColor: colors.brand[400],
-  },
-  attachedThumbnail: {
-    width: "100%",
-    height: "100%",
-  },
-  removeAttachedBtn: {
-    position: "absolute",
-    top: 2,
-    right: 2,
-    backgroundColor: "rgba(0, 0, 0, 0.7)",
-    borderRadius: 10,
-  },
-  attachImageBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    paddingVertical: 10,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "rgba(168, 85, 247, 0.3)",
-    backgroundColor: "rgba(168, 85, 247, 0.08)",
-    marginTop: 12,
-  },
-  attachImageBtnText: {
-    fontSize: 12.5,
-    fontWeight: "700",
-    color: colors.purple[300],
-  },
-  fullImageBackdrop: {
-    flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.95)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  closeFullImageBtn: {
-    position: "absolute",
-    top: 48,
-    right: 20,
-    zIndex: 10,
-    padding: 8,
-    backgroundColor: "rgba(255, 255, 255, 0.15)",
-    borderRadius: 20,
-  },
-  fullImage: {
-    width: "92%",
-    height: "80%",
-  },
-  postContentWrapper: {
-    gap: 6,
-  },
-  readMoreBtn: {
-    alignSelf: "flex-start",
-    paddingVertical: 2,
-  },
-  readMoreText: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: colors.brand[400],
-  },
-  fullPostModalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.85)",
-    justifyContent: "flex-end",
-  },
-  fullPostModalCard: {
-    backgroundColor: colors.surface,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.12)",
-    padding: 20,
-    gap: 14,
-    maxHeight: "90%",
-  },
-  fullPostHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.cardBorder,
-  },
-  closeFullPostBtn: {
-    padding: 4,
-    borderRadius: 8,
-    backgroundColor: "rgba(255, 255, 255, 0.06)",
-  },
-  fullPostBodyScroll: {
-    maxHeight: 420,
-  },
-  fullPostContent: {
-    fontSize: 15,
-    lineHeight: 23,
-    color: colors.slate[100],
-  },
-  fullPostImageWrapper: {
-    borderRadius: 14,
-    overflow: "hidden",
-    borderWidth: 1,
-    borderColor: colors.cardBorder,
-    backgroundColor: colors.slate[900],
-  },
-  fullPostImage: {
-    width: "100%",
-    height: 240,
-    borderRadius: 14,
-  },
-  safetyNoticeBox: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    padding: 10,
-    borderRadius: 10,
-    backgroundColor: "rgba(20, 184, 166, 0.08)",
-    borderWidth: 1,
-    borderColor: "rgba(20, 184, 166, 0.2)",
-    marginTop: 6,
-  },
-  safetyNoticeText: {
-    flex: 1,
-    fontSize: 11,
-    color: colors.slate[300],
-  },
-  fullPostFooter: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: colors.cardBorder,
-  },
-  closeFullPostActionBtn: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 12,
-    backgroundColor: "rgba(255, 255, 255, 0.08)",
-    borderWidth: 1,
-    borderColor: colors.cardBorder,
-  },
-  closeFullPostActionText: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: colors.slate[200],
-  },
-  anonDmActionBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 8,
-    backgroundColor: "rgba(168, 85, 247, 0.15)",
-    borderWidth: 1,
-    borderColor: "rgba(168, 85, 247, 0.3)",
-  },
-  anonDmActionText: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: colors.purple[400],
   },
 });

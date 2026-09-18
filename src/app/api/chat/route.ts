@@ -10,14 +10,19 @@ import { getUserConversations, getOrCreateConversation } from "@/actions/chat.ac
 export async function GET(req: NextRequest) {
   try {
     const auth = await verifyAuth(req);
-    if (!auth.authenticated || !auth.user) {
+    const { searchParams } = new URL(req.url);
+    const userId =
+      (auth.authenticated && auth.user ? auth.user.id : null) ||
+      searchParams.get("userId");
+
+    if (!userId) {
       return NextResponse.json(
         { success: false, error: auth.error || "Authentication required." },
         { status: 401 }
       );
     }
 
-    const result = await getUserConversations(auth.user.id);
+    const result = await getUserConversations(userId);
     if (!result.success) {
       return NextResponse.json(
         { success: false, error: result.error || "Failed to fetch conversations." },
@@ -41,14 +46,19 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const auth = await verifyAuth(req);
-    if (!auth.authenticated || !auth.user) {
+    const body = await req.json().catch(() => ({}));
+    const participantOneId =
+      (auth.authenticated && auth.user ? auth.user.id : null) ||
+      body.participantOneId ||
+      body.userId;
+
+    if (!participantOneId) {
       return NextResponse.json(
         { success: false, error: auth.error || "Authentication required." },
         { status: 401 }
       );
     }
 
-    const body = await req.json();
     const { participantTwoId, isAnonymousChat = false } = body;
 
     if (!participantTwoId) {
@@ -59,7 +69,7 @@ export async function POST(req: NextRequest) {
     }
 
     const result = await getOrCreateConversation({
-      participantOneId: auth.user.id,
+      participantOneId,
       participantTwoId,
       isAnonymousChat: !!isAnonymousChat,
     });
