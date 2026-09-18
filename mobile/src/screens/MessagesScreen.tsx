@@ -13,6 +13,7 @@ import {
   RefreshControl,
   Image,
   Alert,
+  Keyboard,
 } from "react-native";
 import { Ionicons, Feather } from "@expo/vector-icons";
 import { useTheme } from "../context/ThemeContext";
@@ -177,6 +178,18 @@ export function MessagesScreen({ navigation, route }: any) {
       }
     }
   }, [route?.params?.conversationId]);
+
+  // Auto-scroll message feed to bottom when keyboard appears (especially on Android)
+  useEffect(() => {
+    if (!activeConv) return;
+    const showEvent = Platform.OS === "android" ? "keyboardDidShow" : "keyboardWillShow";
+    const showSub = Keyboard.addListener(showEvent, () => {
+      flatListRef.current?.scrollToEnd({ animated: true });
+    });
+    return () => {
+      showSub.remove();
+    };
+  }, [activeConv]);
 
   const openChat = async (conv: ConversationItem) => {
     setActiveConv(conv);
@@ -572,7 +585,7 @@ export function MessagesScreen({ navigation, route }: any) {
         <KeyboardAvoidingView
           style={[styles.chatModalContainer, { backgroundColor: colors.background }]}
           behavior={Platform.OS === "ios" ? "padding" : "height"}
-          keyboardVerticalOffset={Platform.OS === "ios" ? 12 : 0}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 20 : 0}
         >
           {/* Chat Header */}
           <View style={[styles.chatHeader, { borderBottomColor: colors.border }]}>
@@ -632,10 +645,11 @@ export function MessagesScreen({ navigation, route }: any) {
               ref={flatListRef}
               data={threadMessages}
               keyExtractor={(item) => item.id}
+              style={styles.threadList}
+              contentContainerStyle={[styles.threadContent, { flexGrow: 1 }]}
               keyboardShouldPersistTaps="handled"
               onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
               onLayout={() => flatListRef.current?.scrollToEnd({ animated: true })}
-              contentContainerStyle={styles.threadContent}
               renderItem={({ item }) => {
                 const isMine = item.isMine;
                 return (
@@ -709,7 +723,10 @@ export function MessagesScreen({ navigation, route }: any) {
               placeholderTextColor={colors.textMuted}
               value={inputMessage}
               onChangeText={setInputMessage}
-              onFocus={() => setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 150)}
+              onFocus={() => {
+                setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
+                setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 250);
+              }}
               multiline={false}
               returnKeyType="send"
               onSubmitEditing={handleSendMessage}
@@ -859,6 +876,9 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   chatModalContainer: {
+    flex: 1,
+  },
+  threadList: {
     flex: 1,
   },
   chatHeader: {
