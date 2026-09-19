@@ -35,16 +35,28 @@ export async function getOrCreateConversation(data: {
       return { error: rateCheck.error };
     }
 
-    const { participantOneId, participantTwoId, isAnonymousChat = false } = data;
+    const { participantOneId, isAnonymousChat = false } = data;
+    let targetUserId = data.participantTwoId;
 
-    if (participantOneId === participantTwoId) {
+    // If anonymous chat, check if participantTwoId is an IncognitoProfile.id
+    if (isAnonymousChat && targetUserId) {
+      const maybeProfile = await prisma.incognitoProfile.findUnique({
+        where: { id: targetUserId },
+        select: { userId: true },
+      });
+      if (maybeProfile?.userId) {
+        targetUserId = maybeProfile.userId;
+      }
+    }
+
+    if (participantOneId === targetUserId) {
       return { error: "Cannot create conversation with yourself." };
     }
 
     // 1. ANONYMOUS CHAT: Cryptographic Blind IDs & Database Isolation
     if (isAnonymousChat) {
       const blindIdOne = await getBlindParticipantId(participantOneId);
-      const blindIdTwo = await getBlindParticipantId(participantTwoId);
+      const blindIdTwo = await getBlindParticipantId(targetUserId);
 
       // Ensure both users have IncognitoProfiles created
       const [profileOne, profileTwo] = await Promise.all([
@@ -58,9 +70,9 @@ export async function getOrCreateConversation(data: {
           update: {},
         }),
         prisma.incognitoProfile.upsert({
-          where: { userId: participantTwoId },
+          where: { userId: targetUserId },
           create: {
-            userId: participantTwoId,
+            userId: targetUserId,
             handle: `Anon_${Math.floor(1000 + Math.random() * 9000)}`,
             avatarUrl: `https://api.dicebear.com/9.x/bottts/svg?seed=${blindIdTwo.slice(0, 10)}`,
           },
@@ -141,10 +153,10 @@ export async function getOrCreateConversation(data: {
         OR: [
           {
             participantOneId,
-            participantTwoId,
+            participantTwoId: targetUserId,
           },
           {
-            participantOneId: participantTwoId,
+            participantOneId: targetUserId,
             participantTwoId: participantOneId,
           },
         ],
@@ -177,7 +189,7 @@ export async function getOrCreateConversation(data: {
       conversation = await prisma.conversation.create({
         data: {
           participantOneId,
-          participantTwoId,
+          participantTwoId: targetUserId,
           isAnonymousChat: false,
         },
         include: {
@@ -249,7 +261,7 @@ export async function getUserConversations(
           select: {
             id: true,
             name: true,
-            email: true,
+            username: true,
             image: true,
             department: true,
           },
@@ -258,7 +270,7 @@ export async function getUserConversations(
           select: {
             id: true,
             name: true,
-            email: true,
+            username: true,
             image: true,
             department: true,
           },
@@ -365,7 +377,7 @@ export async function getConversationDetails(
           select: {
             id: true,
             name: true,
-            email: true,
+            username: true,
             image: true,
             department: true,
           },
@@ -374,7 +386,7 @@ export async function getConversationDetails(
           select: {
             id: true,
             name: true,
-            email: true,
+            username: true,
             image: true,
             department: true,
           },
@@ -452,7 +464,12 @@ export async function getConversationDetails(
  */
 export async function getConversationMessages(
   conversationId: string,
-  userId: string
+  userId: string,
+  options?: {
+    cursor?: string;
+    limit?: number;
+    after?: string;
+  }
 ): Promise<ActionResponse<any[]>> {
   try {
     const blindId = await getBlindParticipantId(userId);
@@ -472,7 +489,10 @@ export async function getConversationMessages(
       return { error: "Conversation not found." };
     }
 
-    // Verify access
+    const limit = Math.min(50, Math.max(1, options?.limit || 25));
+    const isDeltaSync = !!options?.after;
+
+    // Verify access & query anonymous messages
     if (conversation.isAnonymousChat) {
       if (
         conversation.anonParticipantOneId !== blindId &&
@@ -481,9 +501,13 @@ export async function getConversationMessages(
         return { error: "Unauthorized access to anonymous thread." };
       }
 
-      // Query anonymous messages without any User relation
-      const anonymousMessages = await prisma.message.findMany({
-        where: { conversationId },
+      const whereClause: any = { conversationId };
+      if (isDeltaSync && options?.after) {
+        whereClause.createdAt = { gt: new Date(options.after) };
+      }
+
+      const queryOpts: any = {
+        where: whereClause,
         select: {
           id: true,
           conversationId: true,
@@ -497,8 +521,18 @@ export async function getConversationMessages(
             },
           },
         },
-        orderBy: { createdAt: "asc" },
-      });
+        orderBy: { createdAt: isDeltaSync ? "asc" : "desc" },
+      };
+
+      if (!isDeltaSync) {
+        queryOpts.take = limit;
+        if (options?.cursor) {
+          queryOpts.cursor = { id: options.cursor };
+          queryOpts.skip = 1;
+        }
+      }
+
+      const anonymousMessages: any[] = await prisma.message.findMany(queryOpts);
 
       const scrubbed = anonymousMessages.map((m) => ({
         id: m.id,
@@ -511,6 +545,10 @@ export async function getConversationMessages(
           incognitoProfile: m.incognitoProfile,
         },
       }));
+
+      const hasMore = !isDeltaSync && scrubbed.length === limit;
+      const lastId = scrubbed.length > 0 ? scrubbed[scrubbed.length - 1].id : null;
+      (scrubbed as any).nextCursor = hasMore ? lastId : null;
 
       return {
         success: true,
@@ -526,8 +564,13 @@ export async function getConversationMessages(
       return { error: "Unauthorized access to messages." };
     }
 
-    const messages = await prisma.message.findMany({
-      where: { conversationId },
+    const whereClause: any = { conversationId };
+    if (isDeltaSync && options?.after) {
+      whereClause.createdAt = { gt: new Date(options.after) };
+    }
+
+    const queryOpts: any = {
+      where: whereClause,
       select: {
         id: true,
         conversationId: true,
@@ -538,13 +581,24 @@ export async function getConversationMessages(
           select: {
             id: true,
             name: true,
+            username: true,
             image: true,
             department: true,
           },
         },
       },
-      orderBy: { createdAt: "asc" },
-    });
+      orderBy: { createdAt: isDeltaSync ? "asc" : "desc" },
+    };
+
+    if (!isDeltaSync) {
+      queryOpts.take = limit;
+      if (options?.cursor) {
+        queryOpts.cursor = { id: options.cursor };
+        queryOpts.skip = 1;
+      }
+    }
+
+    const messages: any[] = await prisma.message.findMany(queryOpts);
 
     const formatted = messages.map((m) => ({
       id: m.id,
@@ -555,6 +609,10 @@ export async function getConversationMessages(
       isMine: m.senderId === userId,
       sender: m.sender,
     }));
+
+    const hasMore = !isDeltaSync && formatted.length === limit;
+    const lastId = formatted.length > 0 ? formatted[formatted.length - 1].id : null;
+    (formatted as any).nextCursor = hasMore ? lastId : null;
 
     return {
       success: true,

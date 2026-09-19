@@ -17,16 +17,18 @@ export async function GET(req: NextRequest) {
     const fallbackUserId = searchParams.get("userId")?.trim() || "";
     const currentUserId = auth.authenticated && auth.user ? auth.user.id : fallbackUserId;
 
-    const query = searchParams.get("search")?.trim() || "";
+    const rawQuery = searchParams.get("search")?.trim() || "";
+    const cleanQuery = rawQuery.replace(/^@/, "");
     const collegeParam = searchParams.get("collegeId")?.trim() || "";
     const userCollegeId = auth.user?.collegeId || collegeParam || null;
 
-    // Search query conditions
-    const orConditions = query
+    // Search query conditions - strictly search by Name, Public Username, or Department.
+    // NEVER search by or leak student email addresses!
+    const orConditions = cleanQuery
       ? [
-          { name: { contains: query, mode: "insensitive" } },
-          { email: { contains: query, mode: "insensitive" } },
-          { department: { contains: query, mode: "insensitive" } },
+          { name: { contains: cleanQuery, mode: "insensitive" as const } },
+          { username: { contains: cleanQuery, mode: "insensitive" as const } },
+          { department: { contains: cleanQuery, mode: "insensitive" as const } },
         ]
       : undefined;
 
@@ -52,7 +54,7 @@ export async function GET(req: NextRequest) {
       select: {
         id: true,
         name: true,
-        email: true,
+        username: true,
         image: true,
         department: true,
         year: true,
@@ -81,7 +83,7 @@ export async function GET(req: NextRequest) {
         select: {
           id: true,
           name: true,
-          email: true,
+          username: true,
           image: true,
           department: true,
           year: true,

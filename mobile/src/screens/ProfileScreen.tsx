@@ -33,6 +33,7 @@ export function ProfileScreen() {
   // Edit Profile Modal State
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editName, setEditName] = useState("");
+  const [editUsername, setEditUsername] = useState("");
   const [editPhone, setEditPhone] = useState("");
   const [editDepartment, setEditDepartment] = useState("");
   const [editYear, setEditYear] = useState("2");
@@ -72,6 +73,7 @@ export function ProfileScreen() {
   const openEditModal = () => {
     const active = profileData || user || {};
     setEditName(active.name || "");
+    setEditUsername(active.username || "");
     setEditPhone(active.phone || "");
     setEditDepartment(active.department || "");
     setEditYear(active.year ? String(active.year) : "2");
@@ -85,10 +87,22 @@ export function ProfileScreen() {
       return;
     }
 
+    if (editUsername.trim()) {
+      const uRegex = /^[a-zA-Z0-9_]{3,20}$/;
+      if (!uRegex.test(editUsername.trim())) {
+        Alert.alert(
+          "Invalid Username",
+          "Username must be 3-20 characters long and contain only letters, numbers, or underscores."
+        );
+        return;
+      }
+    }
+
     setIsSaving(true);
     try {
       const payload: any = {
         name: editName.trim(),
+        username: editUsername.trim().toLowerCase() || null,
         phone: editPhone.trim(),
         department: editDepartment.trim(),
         year: parseInt(editYear, 10) || 1,
@@ -171,6 +185,12 @@ export function ProfileScreen() {
                 {currentUser.role || "STUDENT"}
               </Badge>
             </View>
+            <Text
+              style={[styles.userHandle, { color: colors.primary, fontWeight: "700" }]}
+              numberOfLines={1}
+            >
+              {currentUser.username ? `@${currentUser.username}` : "@username_pending"}
+            </Text>
             <Text
               style={[styles.userEmail, { color: colors.textSecondary }]}
               numberOfLines={1}
@@ -489,7 +509,7 @@ export function ProfileScreen() {
         onRequestClose={() => setIsEditModalOpen(false)}
       >
         <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
           style={styles.keyboardAvoidingModal}
         >
           <TouchableOpacity
@@ -542,6 +562,30 @@ export function ProfileScreen() {
                     },
                   ]}
                 />
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={[styles.formLabel, { color: colors.textMuted }]}>
+                  Public Username (@handle)
+                </Text>
+                <TextInput
+                  value={editUsername}
+                  onChangeText={(t) => setEditUsername(t.replace(/[^a-zA-Z0-9_]/g, "").toLowerCase())}
+                  placeholder="e.g. rohit_campus"
+                  placeholderTextColor={colors.textMuted}
+                  autoCapitalize="none"
+                  style={[
+                    styles.input,
+                    {
+                      backgroundColor: colors.cardSecondary,
+                      borderColor: colors.border,
+                      color: colors.text,
+                    },
+                  ]}
+                />
+                <Text style={{ fontSize: 11, color: colors.textMuted, marginTop: 3 }}>
+                  Classmates can search and chat with you via @{editUsername || "username"} without ever seeing your email.
+                </Text>
               </View>
 
               <View style={styles.formGroup}>
@@ -715,6 +759,10 @@ const styles = StyleSheet.create({
   userName: {
     fontSize: 16.5,
     fontWeight: "800",
+  },
+  userHandle: {
+    fontSize: 12.5,
+    fontWeight: "700",
   },
   userEmail: {
     fontSize: 12,

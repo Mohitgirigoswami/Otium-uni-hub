@@ -186,17 +186,21 @@ export default function IncognitoWallPage() {
   const handleAnonymousChat = async (targetIncognitoProfileId: string) => {
     if (!user) return;
     setChatLoadingId(targetIncognitoProfileId);
-    const res = await getOrCreateConversation({
-      participantOneId: user.id,
-      participantTwoId: targetIncognitoProfileId,
-      isAnonymousChat: true,
-    });
-    setChatLoadingId(null);
-
-    if (res.success && res.data) {
-      router.push(`/messages?id=${res.data.id}`);
-    } else {
+    try {
+      const res = await getOrCreateConversation({
+        participantOneId: user.id,
+        participantTwoId: targetIncognitoProfileId,
+        isAnonymousChat: true,
+      });
+      if (res.success && res.data) {
+        router.push(`/messages?id=${res.data.id}&initialTab=whisper`);
+      } else {
+        toast.error(res.error || "Unable to start anonymous conversation.");
+      }
+    } catch {
       toast.error("Unable to start anonymous conversation.");
+    } finally {
+      setChatLoadingId(null);
     }
   };
 
@@ -398,16 +402,16 @@ export default function IncognitoWallPage() {
                       </button>
                     </div>
 
-                    {/* Anonymous 1-on-1 Chat */}
-                    {post.authorProfileId && user?.id !== post.authorId && (
+                    {/* Anonymous 1-on-1 Whisper DM */}
+                    {(post.profileId || post.profile?.id) && post.profile?.userId !== user?.id && (
                       <Button
                         variant="outline"
                         size="sm"
-                        isLoading={chatLoadingId === post.authorProfileId}
-                        onClick={() => handleAnonymousChat(post.authorProfileId)}
+                        isLoading={chatLoadingId === (post.profileId || post.profile?.id)}
+                        onClick={() => handleAnonymousChat(post.profileId || post.profile?.id)}
                         leftIcon={<EyeOff className="w-3.5 h-3.5 text-primary" />}
                       >
-                        Whisper to Author
+                        Whisper DM
                       </Button>
                     )}
                   </div>

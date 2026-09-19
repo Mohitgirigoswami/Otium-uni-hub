@@ -85,6 +85,7 @@ export async function getUserById(userId: string): Promise<ActionResponse<any>> 
 export async function updateUserProfile(data: {
   userId: string;
   name?: string;
+  username?: string | null;
   bio?: string;
   phone?: string;
   department?: string;
@@ -103,16 +104,39 @@ export async function updateUserProfile(data: {
       return { error: "Unauthorized: You cannot edit another student's profile." };
     }
 
+    const updatePayload: any = {
+      ...(data.name !== undefined && { name: data.name.trim() }),
+      ...(data.bio !== undefined && { bio: data.bio.trim() }),
+      ...(data.phone !== undefined && { phone: data.phone.trim() }),
+      ...(data.department !== undefined && { department: data.department.trim() }),
+      ...(data.year !== undefined && { year: Number(data.year) }),
+      ...(data.collegeId !== undefined && { collegeId: data.collegeId }),
+    };
+
+    if (data.username !== undefined) {
+      if (data.username) {
+        const clean = data.username.trim().toLowerCase().replace(/[^a-z0-9_]/g, "");
+        if (clean.length < 3 || clean.length > 20) {
+          return { error: "Username must be 3-20 characters long and contain only letters, numbers, or underscores." };
+        }
+        const conflict = await prisma.user.findFirst({
+          where: {
+            username: clean,
+            id: { not: data.userId },
+          },
+        });
+        if (conflict) {
+          return { error: `Username @${clean} is already claimed. Pick another!` };
+        }
+        updatePayload.username = clean;
+      } else {
+        updatePayload.username = null;
+      }
+    }
+
     const updatedUser = await prisma.user.update({
       where: { id: data.userId },
-      data: {
-        ...(data.name !== undefined && { name: data.name.trim() }),
-        ...(data.bio !== undefined && { bio: data.bio.trim() }),
-        ...(data.phone !== undefined && { phone: data.phone.trim() }),
-        ...(data.department !== undefined && { department: data.department.trim() }),
-        ...(data.year !== undefined && { year: Number(data.year) }),
-        ...(data.collegeId !== undefined && { collegeId: data.collegeId }),
-      },
+      data: updatePayload,
       include: {
         incognitoProfile: true,
         college: true,
@@ -123,6 +147,7 @@ export async function updateUserProfile(data: {
       success: true,
       data: updatedUser,
     };
+
   } catch (error: any) {
     console.error("Error in updateUserProfile:", error);
     return {

@@ -14,6 +14,7 @@ import {
   Platform,
   ScrollView,
   Dimensions,
+  KeyboardAvoidingView,
 } from "react-native";
 import { Ionicons, Feather } from "@expo/vector-icons";
 import * as DocumentPicker from "expo-document-picker";
@@ -697,7 +698,10 @@ export function WhisperWallScreen({ navigation }: any) {
           transparent={true}
           onRequestClose={() => setIsComposeOpen(false)}
         >
-          <View style={styles.modalOverlay}>
+          <KeyboardAvoidingView
+            style={styles.modalOverlay}
+            behavior={Platform.OS === "ios" ? "padding" : undefined}
+          >
             <View
               style={[
                 styles.modalContent,
@@ -874,7 +878,7 @@ export function WhisperWallScreen({ navigation }: any) {
                 />
               </View>
             </View>
-          </View>
+          </KeyboardAvoidingView>
         </Modal>
 
         {/* 5. Dedicated Full-Screen Post Modal */}

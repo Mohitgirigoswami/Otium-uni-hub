@@ -88,7 +88,7 @@ export default function PrintStationPage() {
   const [utrNumber, setUtrNumber] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [copiedUpi, setCopiedUpi] = useState(false);
-  const [platformUpiId, setPlatformUpiId] = useState("otium.escrow@okhdfcbank");
+  const [platformUpiId, setPlatformUpiId] = useState("8307798816@upi");
 
   // Issue reporting states
   const [reportingOrder, setReportingOrder] = useState<any | null>(null);
@@ -174,9 +174,15 @@ export default function PrintStationPage() {
   };
 
   const fetchPlatformUpi = async () => {
-    const res = await getPlatformSettingsAction();
-    if (res?.success && res.data?.upiId) {
-      setPlatformUpiId(res.data.upiId);
+    try {
+      const res = await getPlatformSettingsAction();
+      if (res?.success && res.data?.upiId) {
+        setPlatformUpiId(res.data.upiId);
+      } else {
+        setPlatformUpiId("8307798816@upi");
+      }
+    } catch {
+      setPlatformUpiId("8307798816@upi");
     }
   };
 
@@ -189,10 +195,11 @@ export default function PrintStationPage() {
     fetchOrders();
   }, [user?.id]);
 
-  // Pricing calculations
-  const totalPagesToPrint = (detectedPages || 1) * copies;
-  const baseCostPaise = calculatePrintCostPaise(detectedPages || 1, printType, rates);
-  const totalCostPaise = baseCostPaise * copies;
+  // Pricing calculations with strict ₹5 minimum floor rule
+  const effectivePages = Math.max(1, detectedPages || 1);
+  const totalPagesToPrint = effectivePages * copies;
+  const rawCostPaise = calculatePrintCostPaise(effectivePages, printType, rates) * copies;
+  const totalCostPaise = Math.max(500, rawCostPaise); // Strict ₹5 floor rule
   const totalCostRupees = totalCostPaise / 100;
 
   // Amount-locked UPI deep link & QR
@@ -376,32 +383,67 @@ export default function PrintStationPage() {
                     ))}
                   </div>
 
-                  {/* Copies input */}
-                  <div className="pt-1 flex items-center justify-between gap-4">
-                    <span className="text-xs font-medium text-muted-foreground">
-                      Number of Copies:
-                    </span>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setCopies(Math.max(1, copies - 1))}
-                        disabled={copies <= 1}
-                      >
-                        -
-                      </Button>
-                      <span className="w-8 text-center text-xs font-bold text-foreground">
-                        {copies}
+                  {/* Manual Page Count Stepper & Copies Stepper */}
+                  <div className="pt-2 border-t border-border space-y-3">
+                    <div className="flex items-center justify-between gap-4">
+                      <div>
+                        <span className="text-xs font-semibold text-foreground block">
+                          Document Pages:
+                        </span>
+                        <span className="text-[11px] text-muted-foreground">
+                          {detectedPages > 0 ? "Auto-detected (or adjust manually)" : "Set pages manually"}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setDetectedPages((p) => Math.max(1, (p || 1) - 1))}
+                          disabled={(detectedPages || 1) <= 1}
+                        >
+                          -
+                        </Button>
+                        <span className="w-10 text-center text-xs font-bold text-foreground">
+                          {detectedPages || 1}
+                        </span>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setDetectedPages((p) => (p || 1) + 1)}
+                        >
+                          +
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-4">
+                      <span className="text-xs font-semibold text-foreground">
+                        Number of Copies:
                       </span>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setCopies(copies + 1)}
-                      >
-                        +
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setCopies(Math.max(1, copies - 1))}
+                          disabled={copies <= 1}
+                        >
+                          -
+                        </Button>
+                        <span className="w-10 text-center text-xs font-bold text-foreground">
+                          {copies}
+                        </span>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setCopies(copies + 1)}
+                        >
+                          +
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -530,8 +572,15 @@ export default function PrintStationPage() {
                     <label className="block text-xs font-bold uppercase tracking-wider text-foreground">
                       4. UPI Payment Confirmation
                     </label>
-                    <div className="text-sm font-bold text-foreground">
-                      Total: ₹{totalCostRupees.toFixed(2)}
+                    <div className="text-right">
+                      <div className="text-sm font-bold text-foreground">
+                        Total: ₹{totalCostRupees.toFixed(2)}
+                      </div>
+                      {rawCostPaise < 500 && (
+                        <div className="text-[10px] text-amber-500 font-semibold">
+                          Minimum order ₹5.00 applied
+                        </div>
+                      )}
                     </div>
                   </div>
 

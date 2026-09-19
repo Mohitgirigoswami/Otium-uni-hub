@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   View,
   Text,
@@ -11,17 +11,23 @@ import {
   ActivityIndicator,
   Modal,
   RefreshControl,
-  Image,
   Alert,
   Keyboard,
+  BackHandler,
 } from "react-native";
 import { Ionicons, Feather } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useTheme } from "../context/ThemeContext";
 import { useUser } from "../context/UserContext";
 import { apiClient } from "../services/apiClient";
-import { Card } from "../components/ui/Card";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
+import {
+  joinMobileSocketConversation,
+  leaveMobileSocketConversation,
+  broadcastMobileSocketMessage,
+  onMobileSocketMessage,
+} from "../services/socketClient";
 
 export interface ConversationItem {
   id: string;
@@ -32,8 +38,6 @@ export interface ConversationItem {
   updatedAt: string;
   createdAt: string;
 }
-
-import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const STORAGE_KEY_CONVERSATIONS = "@otium_cached_conversations";
 
@@ -55,15 +59,31 @@ export function MessagesScreen({ navigation, route }: any) {
   const [isSearchingUsers, setIsSearchingUsers] = useState(false);
   const [isStartingChat, setIsStartingChat] = useState(false);
 
-  // Active chat thread modal
+  // Active chat thread state (rendered IN-PLACE full-screen, NOT inside a modal)
   const [activeConv, setActiveConv] = useState<ConversationItem | null>(null);
   const [threadMessages, setThreadMessages] = useState<any[]>([]);
   const [loadingThread, setLoadingThread] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const [hasMoreMessages, setHasMoreMessages] = useState(true);
   const [inputMessage, setInputMessage] = useState("");
   const [isSending, setIsSending] = useState(false);
 
   const flatListRef = useRef<FlatList>(null);
 
+  // Hardware back button handler for Android
+  useEffect(() => {
+    const onBackPress = () => {
+      if (activeConv) {
+        closeChat();
+        return true;
+      }
+      return false;
+    };
+    const sub = BackHandler.addEventListener("hardwareBackPress", onBackPress);
+    return () => sub.remove();
+  }, [activeConv]);
+
+  // Search classmates by name or @username (zero emails)
   const searchClassmates = async (q: string) => {
     setSearchQuery(q);
     if (!q.trim()) {
@@ -74,7 +94,9 @@ export function MessagesScreen({ navigation, route }: any) {
     try {
       const userParam = user?.id ? `&userId=${encodeURIComponent(user.id)}` : "";
       const collegeParam = user?.collegeId ? `&collegeId=${encodeURIComponent(user.collegeId)}` : "";
-      const res = await apiClient.get(`/users?search=${encodeURIComponent(q.trim())}${userParam}${collegeParam}`);
+      const res = await apiClient.get(
+        `/users?search=${encodeURIComponent(q.trim())}${userParam}${collegeParam}`
+      );
       if (res.success && Array.isArray(res.data)) {
         setSearchResults(res.data.filter((u: any) => u.id !== user?.id));
       }
@@ -123,14 +145,14 @@ export function MessagesScreen({ navigation, route }: any) {
       }
     } catch {}
 
-    // 2. Fetch fresh from server
+    // 2. Fresh fetch
     try {
       const res = await apiClient.get("/chat");
       if (res.success && Array.isArray(res.data)) {
         setConversations(res.data);
         AsyncStorage.setItem(STORAGE_KEY_CONVERSATIONS, JSON.stringify(res.data)).catch(() => {});
       }
-    } catch (err) {
+    } catch {
       console.log("[Fetch Conversations Note]: Operating in offline cached mode");
     } finally {
       setLoading(false);
@@ -150,7 +172,7 @@ export function MessagesScreen({ navigation, route }: any) {
     }
   }, [route?.params?.initialTab]);
 
-  // Handle open conversation passed from route params (e.g. from WhisperWall or PrintStation)
+  // Auto-open conversation passed from route params (e.g. from WhisperWall or PrintStation)
   useEffect(() => {
     if (route?.params?.conversationId) {
       const convId = route.params.conversationId;
@@ -158,7 +180,7 @@ export function MessagesScreen({ navigation, route }: any) {
       if (found) {
         openChat(found);
       } else {
-        apiClient.get(`/chat/${convId}/messages`).then((res) => {
+        apiClient.get(`/chat/${convId}/messages?limit=25`).then((res) => {
           if (res.success) {
             const stub: ConversationItem = {
               id: convId,
@@ -179,29 +201,16 @@ export function MessagesScreen({ navigation, route }: any) {
     }
   }, [route?.params?.conversationId]);
 
-  // Auto-scroll message feed to bottom when keyboard appears (especially on Android)
-  useEffect(() => {
-    if (!activeConv) return;
-    const showEvent = Platform.OS === "android" ? "keyboardDidShow" : "keyboardWillShow";
-    const showSub = Keyboard.addListener(showEvent, () => {
-      flatListRef.current?.scrollToEnd({ animated: true });
-    });
-    return () => {
-      showSub.remove();
-    };
-  }, [activeConv]);
-
+  // Open chat: enter room, load latest 25 messages descending
   const openChat = async (conv: ConversationItem) => {
     setActiveConv(conv);
     setLoadingThread(true);
+    setHasMoreMessages(true);
 
-    // Preload from active conversation messages if available
-    if (Array.isArray(conv.messages) && conv.messages.length > 0) {
-      setThreadMessages(conv.messages);
-    }
+    joinMobileSocketConversation(conv.id);
 
+    const threadCacheKey = `@otium_thread_${conv.id}`;
     try {
-      const threadCacheKey = `@otium_thread_${conv.id}`;
       const cached = await AsyncStorage.getItem(threadCacheKey);
       if (cached) {
         const parsed = JSON.parse(cached);
@@ -210,16 +219,101 @@ export function MessagesScreen({ navigation, route }: any) {
         }
       }
 
-      const res = await apiClient.get(`/chat/${conv.id}/messages`);
+      // Fetch fresh 25 messages (ordered descending from backend: newest at index 0)
+      const res = await apiClient.get(`/chat/${conv.id}/messages?limit=25`);
       if (res.success && Array.isArray(res.data)) {
         setThreadMessages(res.data);
+        setHasMoreMessages(res.data.length >= 25);
         AsyncStorage.setItem(threadCacheKey, JSON.stringify(res.data)).catch(() => {});
       }
-    } catch (err) {
+    } catch {
       console.log("[Open Chat Note]: Operating in offline cached thread mode");
     } finally {
       setLoadingThread(false);
-      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: false }), 100);
+    }
+  };
+
+  const closeChat = () => {
+    if (activeConv) {
+      leaveMobileSocketConversation(activeConv.id);
+    }
+    setActiveConv(null);
+    setThreadMessages([]);
+    setInputMessage("");
+  };
+
+  // Realtime WebSockets listener + Delta Sync fallback
+  useEffect(() => {
+    if (!activeConv) return;
+
+    // 1. Socket message listener
+    const unsubscribeSocket = onMobileSocketMessage((data: any) => {
+      if (data?.conversationId === activeConv.id && data?.message) {
+        const incoming = data.message;
+        setThreadMessages((prev) => {
+          if (prev.some((m) => m.id === incoming.id)) return prev;
+          const isMine = incoming.senderId === user?.id;
+          return [{ ...incoming, isMine }, ...prev];
+        });
+      }
+    });
+
+    // 2. Periodic delta sync polling (every 2.5s) to catch any offline or dropped packets
+    const deltaInterval = setInterval(async () => {
+      if (threadMessages.length === 0) return;
+      const latestMessage = threadMessages[0];
+      if (!latestMessage?.createdAt) return;
+
+      try {
+        const res = await apiClient.get(
+          `/chat/${activeConv.id}/messages?after=${encodeURIComponent(latestMessage.createdAt)}`
+        );
+        if (res.success && Array.isArray(res.data) && res.data.length > 0) {
+          setThreadMessages((prev) => {
+            const existingIds = new Set(prev.map((m) => m.id));
+            const fresh = res.data.filter((m: any) => !existingIds.has(m.id));
+            if (fresh.length === 0) return prev;
+            // Fresh items are ordered asc by after filter, reverse so newest is first
+            return [...fresh.reverse(), ...prev];
+          });
+        }
+      } catch {}
+    }, 2500);
+
+    return () => {
+      unsubscribeSocket();
+      clearInterval(deltaInterval);
+    };
+  }, [activeConv?.id, threadMessages]);
+
+  // Load older messages (cursor pagination on inverted scroll-up)
+  const loadOlderMessages = async () => {
+    if (loadingOlder || !hasMoreMessages || threadMessages.length === 0 || !activeConv) return;
+
+    const oldestMsg = threadMessages[threadMessages.length - 1];
+    if (!oldestMsg?.id) return;
+
+    setLoadingOlder(true);
+    try {
+      const res = await apiClient.get(
+        `/chat/${activeConv.id}/messages?cursor=${encodeURIComponent(oldestMsg.id)}&limit=25`
+      );
+      if (res.success && Array.isArray(res.data)) {
+        if (res.data.length < 25) {
+          setHasMoreMessages(false);
+        }
+        setThreadMessages((prev) => {
+          const existingIds = new Set(prev.map((m) => m.id));
+          const fresh = res.data.filter((m: any) => !existingIds.has(m.id));
+          return [...prev, ...fresh];
+        });
+      } else {
+        setHasMoreMessages(false);
+      }
+    } catch {
+      // quiet fail
+    } finally {
+      setLoadingOlder(false);
     }
   };
 
@@ -229,15 +323,24 @@ export function MessagesScreen({ navigation, route }: any) {
     const content = inputMessage.trim();
     setInputMessage("");
 
-    // Optimistic message
+    // WhatsApp-style optimistic instant bubble at index 0 (top of inverted list)
+    const tempId = `temp-${Date.now()}`;
     const optimistic = {
-      id: `temp-${Date.now()}`,
+      id: tempId,
+      conversationId: activeConv.id,
       content,
       isMine: true,
+      senderId: user?.id,
       createdAt: new Date().toISOString(),
     };
-    setThreadMessages((prev) => [...prev, optimistic]);
-    setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 50);
+
+    setThreadMessages((prev) => [optimistic, ...prev]);
+
+    // Broadcast through socket
+    broadcastMobileSocketMessage({
+      conversationId: activeConv.id,
+      message: optimistic,
+    });
 
     setIsSending(true);
     try {
@@ -245,9 +348,20 @@ export function MessagesScreen({ navigation, route }: any) {
         content,
       });
       if (res.success && res.data) {
-        // Replace temp or refresh
         setThreadMessages((prev) =>
-          prev.map((m) => (m.id === optimistic.id ? { ...res.data, isMine: true } : m))
+          prev.map((m) => (m.id === tempId ? { ...res.data, isMine: true } : m))
+        );
+        // Also update latest message in conversations list preview
+        setConversations((prev) =>
+          prev.map((c) =>
+            c.id === activeConv.id
+              ? {
+                  ...c,
+                  messages: [res.data],
+                  updatedAt: new Date().toISOString(),
+                }
+              : c
+          )
         );
       }
     } catch (err) {
@@ -265,12 +379,207 @@ export function MessagesScreen({ navigation, route }: any) {
     activeConv &&
     !activeConv.isAnonymousChat &&
     (activeConv.otherParticipant?.name === "Express Print Station" ||
+      activeConv.otherParticipant?.username === "express_print" ||
       activeConv.otherParticipant?.email === "printing@otiumhub.in");
 
+  // ==========================================
+  // IN-PLACE FULL-SCREEN ACTIVE CHAT VIEW
+  // (Replaces old Modal: allows Android adjustResize to naturally lift the input field)
+  // ==========================================
+  if (activeConv) {
+    const participantTitle = activeConv.isAnonymousChat
+      ? activeConv.otherParticipant?.incognitoProfile?.handle || "Anonymous Whisper"
+      : isPrintStationThread
+      ? "Express Print Station"
+      : activeConv.otherParticipant?.name || "Campus Student";
+
+    const participantHandle = activeConv.isAnonymousChat
+      ? "100% Secret • Zero-Knowledge Blind ID"
+      : isPrintStationThread
+      ? "Campus Automated Order Updates"
+      : activeConv.otherParticipant?.username
+      ? `@${activeConv.otherParticipant.username}`
+      : "Campus Peer Chat";
+
+    return (
+      <KeyboardAvoidingView
+        style={[styles.container, { backgroundColor: colors.background }]}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 10 : 0}
+      >
+        {/* Chat Header */}
+        <View style={[styles.chatHeader, { borderBottomColor: colors.border, backgroundColor: colors.card }]}>
+          <TouchableOpacity
+            onPress={closeChat}
+            style={styles.chatBackBtn}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Ionicons name="arrow-back" size={22} color={colors.text} />
+          </TouchableOpacity>
+
+          <View style={styles.chatHeaderInfo}>
+            <Text style={[styles.chatHeaderName, { color: colors.text }]} numberOfLines={1}>
+              {participantTitle}
+            </Text>
+            <Text style={[styles.chatHeaderSub, { color: colors.textMuted }]} numberOfLines={1}>
+              {participantHandle}
+            </Text>
+          </View>
+
+          {isPrintStationThread && (
+            <Badge variant="success" size="sm">
+              Official
+            </Badge>
+          )}
+        </View>
+
+        {/* Print Station Delivery Notice */}
+        {isPrintStationThread && (
+          <View
+            style={[
+              styles.oneWayNoticeBox,
+              { backgroundColor: colors.primary + "12", borderColor: colors.primary + "25" },
+            ]}
+          >
+            <Feather name="info" size={13} color={colors.primary} />
+            <Text style={[styles.oneWayNoticeText, { color: colors.text }]}>
+              This is a transactional update feed for your print orders and delivery dispatches.
+            </Text>
+          </View>
+        )}
+
+        {/* WhatsApp-Style Inverted Lazy Messages Feed */}
+        {loadingThread ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="small" color={colors.primary} />
+            <Text style={[styles.loadingText, { color: colors.textMuted }]}>Connecting to chat...</Text>
+          </View>
+        ) : (
+          <FlatList
+            ref={flatListRef}
+            data={threadMessages}
+            inverted={true}
+            keyExtractor={(item) => item.id}
+            style={styles.threadList}
+            contentContainerStyle={styles.threadContentInverted}
+            keyboardShouldPersistTaps="handled"
+            onEndReached={loadOlderMessages}
+            onEndReachedThreshold={0.2}
+            ListFooterComponent={
+              loadingOlder ? (
+                <View style={{ paddingVertical: 12, alignItems: "center" }}>
+                  <ActivityIndicator size="small" color={colors.primary} />
+                </View>
+              ) : null
+            }
+            renderItem={({ item }) => {
+              const isMine = item.isMine;
+              return (
+                <View
+                  style={[
+                    styles.messageRow,
+                    isMine ? styles.messageRowMine : styles.messageRowOther,
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.messageBubble,
+                      isMine
+                        ? [styles.bubbleMine, { backgroundColor: colors.primary }]
+                        : [styles.bubbleOther, { backgroundColor: colors.card, borderColor: colors.border }],
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.messageText,
+                        { color: isMine ? colors.primaryForeground : colors.text },
+                      ]}
+                    >
+                      {item.content}
+                    </Text>
+                    <Text
+                      style={[
+                        styles.timestampText,
+                        {
+                          color: isMine
+                            ? "rgba(255, 255, 255, 0.7)"
+                            : colors.textMuted,
+                        },
+                      ]}
+                    >
+                      {new Date(item.createdAt).toLocaleTimeString([], {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </Text>
+                  </View>
+                </View>
+              );
+            }}
+          />
+        )}
+
+        {/* Modern WhatsApp/Insta Style Input Bar */}
+        <View
+          style={[
+            styles.inputBar,
+            { backgroundColor: colors.card, borderTopColor: colors.border },
+          ]}
+        >
+          <TextInput
+            style={[
+              styles.textInput,
+              {
+                backgroundColor: colors.secondary,
+                color: colors.text,
+                borderColor: colors.border,
+              },
+            ]}
+            placeholder={
+              activeConv?.isAnonymousChat
+                ? "Send anonymous whisper..."
+                : isPrintStationThread
+                ? "Inquire about this order..."
+                : "Message classmate..."
+            }
+            placeholderTextColor={colors.textMuted}
+            value={inputMessage}
+            onChangeText={setInputMessage}
+            multiline={true}
+            returnKeyType="send"
+            onSubmitEditing={handleSendMessage}
+          />
+
+          <TouchableOpacity
+            style={[
+              styles.sendBtn,
+              {
+                backgroundColor: inputMessage.trim() ? colors.primary : colors.secondary,
+              },
+            ]}
+            onPress={handleSendMessage}
+            disabled={!inputMessage.trim() || isSending}
+          >
+            <Ionicons
+              name="arrow-up"
+              size={18}
+              color={
+                inputMessage.trim() ? colors.primaryForeground : colors.textMuted
+              }
+            />
+          </TouchableOpacity>
+        </View>
+      </KeyboardAvoidingView>
+    );
+  }
+
+  // ==========================================
+  // CONVERSATIONS LIST VIEW
+  // ==========================================
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       {/* Top Header */}
-      <View style={[styles.header, { borderBottomColor: colors.border }]}>
+      <View style={[styles.header, { borderBottomColor: colors.border, backgroundColor: colors.card }]}>
         <TouchableOpacity
           onPress={() => navigation?.goBack()}
           style={styles.backBtn}
@@ -406,6 +715,7 @@ export function MessagesScreen({ navigation, route }: any) {
             const isPrintBot =
               !item.isAnonymousChat &&
               (item.otherParticipant?.name === "Express Print Station" ||
+                item.otherParticipant?.username === "express_print" ||
                 item.otherParticipant?.email === "printing@otiumhub.in");
 
             const participantTitle = item.isAnonymousChat
@@ -413,6 +723,14 @@ export function MessagesScreen({ navigation, route }: any) {
               : isPrintBot
               ? "Express Print Station"
               : item.otherParticipant?.name || "Campus Student";
+
+            const handleSubtitle = item.isAnonymousChat
+              ? "Anonymous Thread"
+              : isPrintBot
+              ? "Automated Print Bot"
+              : item.otherParticipant?.username
+              ? `@${item.otherParticipant.username}`
+              : item.otherParticipant?.department || "Student";
 
             const lastMsg =
               item.messages && item.messages.length > 0
@@ -475,6 +793,13 @@ export function MessagesScreen({ navigation, route }: any) {
                   </View>
 
                   <Text
+                    style={[styles.handleSubText, { color: colors.primary }]}
+                    numberOfLines={1}
+                  >
+                    {handleSubtitle}
+                  </Text>
+
+                  <Text
                     style={[styles.lastMsgText, { color: colors.textMuted }]}
                     numberOfLines={1}
                   >
@@ -489,23 +814,29 @@ export function MessagesScreen({ navigation, route }: any) {
         />
       )}
 
-      {/* Classmate Search & New Chat Modal */}
+      {/* Classmate Search & New Chat Modal with KeyboardAvoidingView */}
       <Modal
         visible={isNewChatOpen}
         animationType="slide"
         transparent={true}
         onRequestClose={() => setIsNewChatOpen(false)}
       >
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+        >
           <View style={[styles.newChatModalContent, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <View style={styles.modalHeader}>
               <View>
                 <Text style={[styles.modalTitle, { color: colors.text }]}>New Direct Message</Text>
                 <Text style={[styles.modalSubtitle, { color: colors.textMuted }]}>
-                  Find students on your campus by name
+                  Find classmates by name or @username
                 </Text>
               </View>
-              <TouchableOpacity onPress={() => setIsNewChatOpen(false)}>
+              <TouchableOpacity
+                onPress={() => setIsNewChatOpen(false)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
                 <Ionicons name="close" size={22} color={colors.textMuted} />
               </TouchableOpacity>
             </View>
@@ -514,7 +845,7 @@ export function MessagesScreen({ navigation, route }: any) {
               <Feather name="search" size={16} color={colors.textMuted} />
               <TextInput
                 style={[styles.searchInput, { color: colors.text }]}
-                placeholder="Search classmate name or email..."
+                placeholder="Search by name or @username..."
                 placeholderTextColor={colors.textMuted}
                 value={searchQuery}
                 onChangeText={searchClassmates}
@@ -530,13 +861,16 @@ export function MessagesScreen({ navigation, route }: any) {
             {isSearchingUsers ? (
               <View style={styles.searchLoading}>
                 <ActivityIndicator size="small" color={colors.primary} />
-                <Text style={[styles.searchLoadingText, { color: colors.textMuted }]}>Searching campus directory...</Text>
+                <Text style={[styles.searchLoadingText, { color: colors.textMuted }]}>
+                  Searching campus directory...
+                </Text>
               </View>
             ) : searchResults.length > 0 ? (
               <FlatList
                 data={searchResults}
                 keyExtractor={(item) => item.id}
                 style={{ maxHeight: 320 }}
+                keyboardShouldPersistTaps="handled"
                 renderItem={({ item }) => (
                   <TouchableOpacity
                     style={[styles.classmateRow, { borderBottomColor: colors.border }]}
@@ -550,9 +884,14 @@ export function MessagesScreen({ navigation, route }: any) {
                     </View>
                     <View style={{ flex: 1, marginLeft: 12 }}>
                       <Text style={[styles.classmateName, { color: colors.text }]}>{item.name}</Text>
-                      <Text style={[styles.classmateCollege, { color: colors.textMuted }]} numberOfLines={1}>
-                        {item.college?.name || item.email || "Campus Student"}
+                      <Text style={[styles.classmateUsername, { color: colors.primary }]}>
+                        {item.username ? `@${item.username}` : item.department || "Classmate"}
                       </Text>
+                      {item.college?.name && (
+                        <Text style={[styles.classmateCollege, { color: colors.textMuted }]} numberOfLines={1}>
+                          {item.college.name}
+                        </Text>
+                      )}
                     </View>
                     <Ionicons name="paper-plane-outline" size={18} color={colors.primary} />
                   </TouchableOpacity>
@@ -568,188 +907,10 @@ export function MessagesScreen({ navigation, route }: any) {
               <View style={styles.searchPrompt}>
                 <Feather name="users" size={28} color={colors.textMuted} />
                 <Text style={[styles.searchPromptText, { color: colors.textMuted }]}>
-                  Type a student name to message them directly
+                  Type a classmate's name or @username to start chatting
                 </Text>
               </View>
             )}
-          </View>
-        </View>
-      </Modal>
-
-      {/* Full-Screen Chat View Modal */}
-      <Modal
-        visible={!!activeConv}
-        animationType="slide"
-        onRequestClose={() => setActiveConv(null)}
-      >
-        <KeyboardAvoidingView
-          style={[styles.chatModalContainer, { backgroundColor: colors.background }]}
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
-          keyboardVerticalOffset={Platform.OS === "ios" ? 20 : 0}
-        >
-          {/* Chat Header */}
-          <View style={[styles.chatHeader, { borderBottomColor: colors.border }]}>
-            <TouchableOpacity
-              onPress={() => setActiveConv(null)}
-              style={styles.chatBackBtn}
-            >
-              <Ionicons name="arrow-back" size={22} color={colors.text} />
-            </TouchableOpacity>
-
-            <View style={styles.chatHeaderInfo}>
-              <Text style={[styles.chatHeaderName, { color: colors.text }]} numberOfLines={1}>
-                {activeConv?.isAnonymousChat
-                  ? activeConv?.otherParticipant?.incognitoProfile?.handle || "Anonymous Whisper"
-                  : isPrintStationThread
-                  ? "Express Print Station"
-                  : activeConv?.otherParticipant?.name || "Student"}
-              </Text>
-              <Text style={[styles.chatHeaderSub, { color: colors.textMuted }]}>
-                {activeConv?.isAnonymousChat
-                  ? "100% Secret • Cryptographic Blind Identity"
-                  : isPrintStationThread
-                  ? "Campus Automated Order Updates"
-                  : "Campus Peer Chat"}
-              </Text>
-            </View>
-
-            {isPrintStationThread && (
-              <Badge variant="success" size="sm">
-                Official
-              </Badge>
-            )}
-          </View>
-
-          {/* If Print Bot: One-Way Information Notice */}
-          {isPrintStationThread && (
-            <View
-              style={[
-                styles.oneWayNoticeBox,
-                { backgroundColor: colors.primary + "12", borderColor: colors.primary + "25" },
-              ]}
-            >
-              <Feather name="info" size={13} color={colors.primary} />
-              <Text style={[styles.oneWayNoticeText, { color: colors.text }]}>
-                This is a transactional update feed for your print orders and delivery dispatches.
-              </Text>
-            </View>
-          )}
-
-          {/* Messages List */}
-          {loadingThread ? (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="small" color={colors.primary} />
-            </View>
-          ) : (
-            <FlatList
-              ref={flatListRef}
-              data={threadMessages}
-              keyExtractor={(item) => item.id}
-              style={styles.threadList}
-              contentContainerStyle={[styles.threadContent, { flexGrow: 1 }]}
-              keyboardShouldPersistTaps="handled"
-              onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
-              onLayout={() => flatListRef.current?.scrollToEnd({ animated: true })}
-              renderItem={({ item }) => {
-                const isMine = item.isMine;
-                return (
-                  <View
-                    style={[
-                      styles.messageRow,
-                      isMine ? styles.messageRowMine : styles.messageRowOther,
-                    ]}
-                  >
-                    <View
-                      style={[
-                        styles.messageBubble,
-                        isMine
-                          ? [styles.bubbleMine, { backgroundColor: colors.primary }]
-                          : [styles.bubbleOther, { backgroundColor: colors.card, borderColor: colors.border }],
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.messageText,
-                          { color: isMine ? colors.primaryForeground : colors.text },
-                        ]}
-                      >
-                        {item.content}
-                      </Text>
-                      <Text
-                        style={[
-                          styles.timestampText,
-                          {
-                            color: isMine
-                              ? "rgba(255, 255, 255, 0.7)"
-                              : colors.textMuted,
-                          },
-                        ]}
-                      >
-                        {new Date(item.createdAt).toLocaleTimeString([], {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </Text>
-                    </View>
-                  </View>
-                );
-              }}
-            />
-          )}
-
-          {/* Input Bar */}
-          <View
-            style={[
-              styles.inputBar,
-              { backgroundColor: colors.card, borderTopColor: colors.border },
-            ]}
-          >
-            <TextInput
-              style={[
-                styles.textInput,
-                {
-                  backgroundColor: colors.secondary,
-                  color: colors.text,
-                  borderColor: colors.border,
-                },
-              ]}
-              placeholder={
-                activeConv?.isAnonymousChat
-                  ? "Send anonymous whisper..."
-                  : isPrintStationThread
-                  ? "Inquire about this print order..."
-                  : "Type your message..."
-              }
-              placeholderTextColor={colors.textMuted}
-              value={inputMessage}
-              onChangeText={setInputMessage}
-              onFocus={() => {
-                setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
-                setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 250);
-              }}
-              multiline={false}
-              returnKeyType="send"
-              onSubmitEditing={handleSendMessage}
-            />
-
-            <TouchableOpacity
-              style={[
-                styles.sendBtn,
-                {
-                  backgroundColor: inputMessage.trim() ? colors.primary : colors.secondary,
-                },
-              ]}
-              onPress={handleSendMessage}
-              disabled={!inputMessage.trim() || isSending}
-            >
-              <Ionicons
-                name="arrow-up"
-                size={18}
-                color={
-                  inputMessage.trim() ? colors.primaryForeground : colors.textMuted
-                }
-              />
-            </TouchableOpacity>
           </View>
         </KeyboardAvoidingView>
       </Modal>
@@ -843,6 +1004,11 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     flexShrink: 1,
   },
+  handleSubText: {
+    fontSize: 11,
+    fontWeight: "600",
+    marginTop: 1,
+  },
   convTime: {
     fontSize: 10,
   },
@@ -874,9 +1040,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     textAlign: "center",
     lineHeight: 18,
-  },
-  chatModalContainer: {
-    flex: 1,
   },
   threadList: {
     flex: 1,
@@ -916,7 +1079,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     flex: 1,
   },
-  threadContent: {
+  threadContentInverted: {
     paddingHorizontal: 16,
     paddingVertical: 12,
     gap: 10,
@@ -968,7 +1131,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 8,
     fontSize: 13,
-    maxHeight: 90,
+    maxHeight: 100,
   },
   sendBtn: {
     width: 36,
@@ -1055,6 +1218,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "700",
   },
+  classmateUsername: {
+    fontSize: 12,
+    fontWeight: "600",
+    marginTop: 1,
+  },
   classmateCollege: {
     fontSize: 11,
     marginTop: 2,
@@ -1076,3 +1244,4 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
 });
+

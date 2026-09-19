@@ -32,6 +32,7 @@ export default function ProfilePage() {
 
   // Profile form
   const [name, setName] = useState("");
+  const [username, setUsername] = useState("");
   const [bio, setBio] = useState("");
   const [phone, setPhone] = useState("");
   const [department, setDepartment] = useState("");
@@ -45,6 +46,7 @@ export default function ProfilePage() {
   useEffect(() => {
     if (user) {
       setName(user.name || "");
+      setUsername(user.username || "");
       setBio(user.bio || "");
       setPhone(user.phone ? user.phone.replace(/\D/g, "").slice(0, 10) : "");
       setDepartment(user.department || "");
@@ -69,10 +71,19 @@ export default function ProfilePage() {
       return;
     }
 
+    if (username.trim()) {
+      const uRegex = /^[a-zA-Z0-9_]{3,20}$/;
+      if (!uRegex.test(username.trim())) {
+        toast.error("Username must be 3-20 characters long and contain only letters, numbers, or underscores.");
+        return;
+      }
+    }
+
     setSavingProfile(true);
     const res = await updateUserProfile({
       userId: user.id,
       name: name.trim(),
+      username: username.trim().toLowerCase() || null,
       bio: bio.trim(),
       phone: phone.trim(),
       department: department.trim(),
@@ -149,6 +160,18 @@ export default function ProfilePage() {
                   onChange={(e) => setName(e.target.value)}
                   required
                 />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-foreground">Public Username (@handle)</label>
+                <Input
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value.replace(/[^a-zA-Z0-9_]/g, "").toLowerCase())}
+                  placeholder="e.g. alex_campus"
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Used for classmate direct messages and campus searches without exposing your university email address.
+                </p>
               </div>
 
               <div className="space-y-1.5">

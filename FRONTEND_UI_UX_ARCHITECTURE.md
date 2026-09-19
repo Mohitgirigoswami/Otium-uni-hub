@@ -512,20 +512,34 @@ Otium uses physics-based spring transitions rather than linear CSS fades:
 
 ---
 
-## 7. Agent Maintenance Checklist & Updating Rules
+---
 
-Whenever you make frontend changes, work through this checklist before concluding your turn:
+## 8. Mobile & Web Realtime Messaging & Keyboard Architecture (v2.4 Overhaul)
 
-- [ ] **No Hardcoded Hex Colors**: Are all styles referencing CSS semantic tokens (`bg-background`, `text-foreground`, etc.) or Mobile `colors`?
-- [ ] **Naming Consistency**: Are there zero legacy references to "hostel print" or "incognito"?
-- [ ] **Web Build Check**: Did you run `npx next build` or `npx tsc --noEmit` on web with 0 errors?
-- [ ] **Mobile Type Check**: Did you run `npx tsc --noEmit` inside `mobile/` with 0 errors?
-- [ ] **Mobile Bundle Test**: Did you verify `npx expo export --platform android` bundles cleanly?
-- [ ] **DOCUMENT SYNCHRONIZATION**: Did you update this file (`FRONTEND_UI_UX_ARCHITECTURE.md`) with:
-  - Any new screen paths or routes added?
-  - Any new components or component variants introduced?
-  - Any theme token adjustments?
-  - Any workflow or button state modifications?
+### 8.1 Android Soft Keyboard Layout & Window Resizing
+- **Root Manifest Setting**: Configured `"softwareKeyboardLayoutMode": "resize"` in `mobile/app.json` under `android`. This binds native Android `windowSoftInputMode="adjustResize"` to the main Activity.
+- **In-Place Chat Rendering (Modal Purge)**: In `mobile/src/screens/MessagesScreen.tsx`, active chat conversations are rendered directly in-place within the screen view hierarchy when `activeConv !== null` rather than wrapped in a React Native `<Modal>`. On Android, rendering in a modal spawns a detached Dialog window that bypasses the parent Activity's window resize mechanics, causing the text input to be obscured by the keyboard.
+- **Behavior Rule**: Across modals containing text inputs, use `behavior={Platform.OS === "ios" ? "padding" : undefined}` so Android leverages native `adjustResize` with zero jumpiness.
+
+### 8.2 WhatsApp & Instagram Message Feed Architecture
+- **Inverted Lazy Stream**: Both Mobile and Web use lazy message loading (`take: 25`).
+  - Mobile: `inverted={true}` on `<FlatList>` with `data={threadMessages}` ordered descending (`messages[0]` is latest). Sending a message instantly unshifts to index 0. Scrolling up triggers `onEndReached`, loading older messages with `cursor=${oldestMsg.id}`.
+  - Web: Inverted scroll container with scroll-up listener, preserving scroll offsets upon prepending older batches.
+- **Realtime WebSockets (Socket.io)**: Replaced Supabase Realtime with standalone Socket.io (`socket-client.ts` on Web and `socketClient.ts` on Mobile) running on Render / Koyeb with room partitioning (`conversation_${id}`).
+- **Infinite Auto-Reconnect & Cold-Start Resilience**: Configured `reconnectionAttempts: Infinity`, `reconnectionDelay: 1000`, `reconnectionDelayMax: 5000`, and `timeout: 30000`. On the `connect` event, the client automatically re-emits `join_conversation` for the active conversation room. If the server was spinning up from an idle cold start, the client reconnects and syncs effortlessly without user intervention.
+- **Zero-Downtime Delta Sync**: Every 2.5s, active chat threads execute a smart background delta fetch: `GET /api/chat/[id]/messages?after=${latestTimestamp}` to ensure 100% packet reliability even while a free-tier WebSocket instance is booting.
+
+### 8.3 Student Privacy & Public Usernames (`@username`)
+- **Zero Email Exposure**: University student emails are strictly classified as private credentials. Email has been permanently removed from campus student directory search queries, search results, and chat previews.
+- **Public Handles**: Every student user has an optional customizable `@username` handle (3–20 chars, alphanumeric & underscores). Search operates exclusively across `name`, `@username`, and `department`.
+
+### 8.4 Full Module Web-Mobile Parity Map
+- **Messages**: Web `/messages` provides Dual-Inbox tabs (Direct & Print vs Whisper DMs), New Message classmate search modal (`@username`), and Socket.io realtime.
+- **Whisper Wall**: Web `/incognito` DM button links directly to `/messages?id=${conversationId}&initialTab=whisper`.
+- **Express Print Station**: Web `/print-station` includes manual Page Count Stepper `[-] [ N ] [+]`, strict ₹5 order floor minimum (`Math.max(500, totalPaise)`), and default UPI fallback `8307798816@upi`.
+- **Attendance Guardrail**: Web `/attendance` features clean action buttons (`+ Present`, `+ Absent`), weightage next to course title, threshold target stepper `[-] [ 75% ] [+]`, and instant local cache hydration.
+- **Profile**: Web `/profile` and Mobile `ProfileScreen` provide `@username` inspection and live editing.
 
 ---
 *Document maintained by Antigravity AI Engineering Suite.*
+

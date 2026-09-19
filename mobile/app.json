@@ -18,6 +18,7 @@
     "android": {
       "package": "com.otium.unihub",
       "versionCode": 2,
+      "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0A0F1D"

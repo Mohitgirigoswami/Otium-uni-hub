@@ -676,7 +676,35 @@ Logged actions include:
 
 ---
 
-## 8. Agent Maintenance Checklist & Updating Rules
+---
+
+## 9. Realtime WebSockets, Student Privacy & Chat Backend (v2.4 Overhaul)
+
+### Standalone Socket.io Microservice Architecture (`server/socket-server.js`)
+- **Transport**: Persistent WebSockets with HTTP polling fallback (`transports: ["websocket", "polling"]`).
+- **Free-Tier Host Strategy**: Optimized for deployment on Render.com / Koyeb (Docker or Node.js web service) with a lightweight `GET /health` endpoint for 10-minute keep-alive pings.
+- **Client Auto-Reconnect & Room Re-Joining**: Socket clients configure `reconnectionAttempts: Infinity` with exponential backoff (1s-5s) and a 30s timeout. Upon completing connection after a Render cold-start, the client automatically re-emits `join_conversation` for the active room without needing user refresh or navigation.
+- **Socket Rooms**:
+  - `join_conversation({ conversationId })`: Subscribes socket to room `conversation_${conversationId}`.
+  - `leave_conversation({ conversationId })`: Unsubscribes socket from room.
+  - `send_message({ conversationId, message })`: Broadcasts payload to all room participants via `io.to(...).emit("receive_message", ...)`.
+  - `typing_start` / `typing_stop`: Broadcasts peer typing notifications.
+- **Client Delta-Sync Guarantee**: Both Web and Mobile run periodic delta-sync queries (`GET /api/chat/[id]/messages?after=${timestamp}`) every 2.5s to provide 100% message delivery even during free-tier cold starts or socket disconnects.
+
+### Student Privacy & Public Usernames (`@username`)
+- **Schema**: Added `username String? @unique` to `model User`. Validated: `3-20` alphanumeric characters or underscores (`/^[a-zA-Z0-9_]{3,20}$/`).
+- **Zero Email Search Leakage**: `GET /api/users?search=...` queries exclusively `name`, `username`, and `department`. The `email` field has been completely removed from search filters and select clauses, ensuring student emails cannot be harvested.
+- **Whisper Wall DM Author Resolution**: `getOrCreateConversation` automatically resolves `targetProfileId` whether passed as an `IncognitoProfile.id` or `User.id`, preserving Cryptographic Blind IDs and Zero-Knowledge anonymity.
+
+### Cursor & Delta Message Pagination (`getConversationMessages`)
+- **Ordering**: Messages are queried `orderBy: { createdAt: "desc" }`, matching inverted mobile lists.
+- **Parameters**:
+  - `limit`: Default `25`, max `50`.
+  - `cursor`: Paginated older message fetching (`cursor: { id: cursor }, skip: 1`).
+  - `after`: Delta synchronization (`where: { createdAt: { gt: new Date(after) } }, orderBy: { createdAt: "asc" }`).
+
+---
+## 10. Agent Maintenance Checklist & Updating Rules
 
 Whenever you perform backend engineering work on Otium Uni Hub, execute this checklist:
 
@@ -689,3 +717,4 @@ Whenever you perform backend engineering work on Otium Uni Hub, execute this che
 - [ ] **Run TypeScript Validation**: Execute `npx tsc --noEmit` in root and `mobile/` to confirm 0 compilation errors.
 - [ ] **Run Prisma Validation**: Execute `npx prisma validate` to confirm schema integrity.
 - [ ] **Synchronize This Document**: Update `BACKEND_ARCHITECTURE.md` to document your new routes, actions, or data models.
+

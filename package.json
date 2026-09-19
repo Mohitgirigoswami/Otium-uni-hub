@@ -39,6 +39,8 @@
     "pdf-lib": "^1.17.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "socket.io": "^4.8.3",
+    "socket.io-client": "^4.8.3",
     "sonner": "^1.7.4",
     "tailwind-merge": "^2.6.0"
   },

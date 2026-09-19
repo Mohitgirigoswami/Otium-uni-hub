@@ -28,7 +28,16 @@ export async function GET(
       );
     }
 
-    const result = await getConversationMessages(conversationId, auth.user.id);
+    const { searchParams } = new URL(req.url);
+    const cursor = searchParams.get("cursor") || undefined;
+    const limit = searchParams.get("limit") ? parseInt(searchParams.get("limit")!, 10) : undefined;
+    const after = searchParams.get("after") || undefined;
+
+    const result = await getConversationMessages(conversationId, auth.user.id, {
+      cursor,
+      limit,
+      after,
+    });
     if (!result.success) {
       return NextResponse.json(
         { success: false, error: result.error || "Failed to fetch messages." },
@@ -39,6 +48,7 @@ export async function GET(
     return NextResponse.json({
       success: true,
       data: result.data || [],
+      nextCursor: (result.data as any)?.nextCursor || null,
     });
   } catch (error: any) {
     console.error("[GET /api/chat/[id]/messages Error]:", error);

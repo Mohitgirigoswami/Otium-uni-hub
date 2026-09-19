@@ -114,10 +114,25 @@ export default function AttendancePage() {
 
   const fetchSubjectsList = async () => {
     if (!user) return;
-    setLoading(true);
+    // 1. Instant local restore (zero waiting)
+    try {
+      const cached = localStorage.getItem("otium_cached_subjects");
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setSubjects(parsed);
+          setLoading(false);
+        }
+      }
+    } catch {}
+
+    // 2. Fresh server sync
     const res = await getSubjects(user.id);
     if (res.success && res.data) {
       setSubjects(res.data);
+      try {
+        localStorage.setItem("otium_cached_subjects", JSON.stringify(res.data));
+      } catch {}
     } else {
       toast.error(res.error || "Failed to load subjects.");
     }
@@ -318,10 +333,32 @@ export default function AttendancePage() {
 
           <div className="pt-4 space-y-3">
             <div className="flex justify-between items-center text-xs font-semibold text-foreground">
-              <span className="text-muted-foreground">Threshold Gauge:</span>
-              <span className="font-heading text-lg font-extrabold text-primary">
-                {targetPercentage}%
-              </span>
+              <span className="text-muted-foreground">Threshold Target Stepper:</span>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleTargetChange(targetPercentage - 5)}
+                  disabled={targetPercentage <= 50}
+                  className="h-7 w-7 p-0"
+                >
+                  -
+                </Button>
+                <span className="font-heading text-lg font-extrabold text-primary min-w-[50px] text-center">
+                  {targetPercentage}%
+                </span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleTargetChange(targetPercentage + 5)}
+                  disabled={targetPercentage >= 95}
+                  className="h-7 w-7 p-0"
+                >
+                  +
+                </Button>
+              </div>
             </div>
 
             <LiquidSlider
@@ -545,7 +582,7 @@ export default function AttendancePage() {
                         </div>
                       </div>
 
-                      {/* Log Buttons */}
+                      {/* Clean Log Buttons (Weightage displayed next to subject name above) */}
                       <div className="flex items-center gap-2">
                         <Button
                           type="button"
@@ -561,7 +598,7 @@ export default function AttendancePage() {
                           }
                           className="flex-1 font-semibold"
                         >
-                          + Present ({getSessionWeight(sub.id, sub.periodWeight)}h)
+                          + Present
                         </Button>
                         <Button
                           type="button"
@@ -577,7 +614,7 @@ export default function AttendancePage() {
                           }
                           className="flex-1 text-destructive hover:text-destructive hover:bg-destructive/10"
                         >
-                          + Absent ({getSessionWeight(sub.id, sub.periodWeight)}h)
+                          + Absent
                         </Button>
                       </div>
                     </div>
