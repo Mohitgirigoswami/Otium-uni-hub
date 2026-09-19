@@ -33,6 +33,7 @@ export const authOptions: NextAuthOptions = {
         token.id = user.id;
         token.role = (user as any).role || "STUDENT";
         token.collegeId = (user as any).collegeId || null;
+        token.username = (user as any).username || null;
       }
 
       // If user ID is in token, verify/sync from database
@@ -47,6 +48,24 @@ export const authOptions: NextAuthOptions = {
             token.role = dbUser.role;
             token.collegeId = dbUser.collegeId || null;
             token.isBanned = dbUser.isBanned || false;
+            token.username = dbUser.username || null;
+
+            // Auto-provision public username if not present
+            if (!dbUser.username) {
+              const baseName = (dbUser.name || "student")
+                .toLowerCase()
+                .replace(/[^a-z0-9_]/g, "")
+                .slice(0, 14);
+              const randomSuffix = Math.floor(100 + Math.random() * 900);
+              const autoUsername = `${baseName || "student"}_${randomSuffix}`;
+              try {
+                const updated = await prisma.user.update({
+                  where: { id: dbUser.id },
+                  data: { username: autoUsername },
+                });
+                token.username = updated.username;
+              } catch {}
+            }
 
             // Auto-provision incognito profile if not present
             if (!dbUser.incognitoProfile) {
@@ -76,6 +95,7 @@ export const authOptions: NextAuthOptions = {
         if (session.collegeId !== undefined) token.collegeId = session.collegeId;
         if (session.role) token.role = session.role;
         if (session.isBanned !== undefined) token.isBanned = session.isBanned;
+        if (session.username !== undefined) token.username = session.username;
       }
 
       return token;
@@ -86,6 +106,7 @@ export const authOptions: NextAuthOptions = {
         session.user.role = (token.role as any) || "STUDENT";
         session.user.collegeId = (token.collegeId as string | null) || null;
         (session.user as any).isBanned = (token.isBanned as boolean) || false;
+        (session.user as any).username = (token.username as string | null) || null;
       }
       return session;
     },

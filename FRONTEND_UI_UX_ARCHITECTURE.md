@@ -532,6 +532,7 @@ Otium uses physics-based spring transitions rather than linear CSS fades:
 ### 8.3 Student Privacy & Public Usernames (`@username`)
 - **Zero Email Exposure**: University student emails are strictly classified as private credentials. Email has been permanently removed from campus student directory search queries, search results, and chat previews.
 - **Public Handles**: Every student user has an optional customizable `@username` handle (3–20 chars, alphanumeric & underscores). Search operates exclusively across `name`, `@username`, and `department`.
+- **Pre-filled Active Handle Display**: Both Web `/profile` and Mobile `ProfileScreen` pre-fill the student's existing `@username` with an `@` prefix, displaying a prominent current handle badge so students always see their active username rather than a blank creation prompt.
 
 ### 8.4 Full Module Web-Mobile Parity Map
 - **Messages**: Web `/messages` provides Dual-Inbox tabs (Direct & Print vs Whisper DMs), New Message classmate search modal (`@username`), and Socket.io realtime.

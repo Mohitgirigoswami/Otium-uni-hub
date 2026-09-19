@@ -12,7 +12,7 @@ import { authOptions } from "@/lib/auth";
 export async function getDevSuperAdminUser(): Promise<ActionResponse<any>> {
   try {
     const user = await prisma.user.findFirst({
-      where: { email: "mohtigiri3021@gmail.com" },
+      where: { email: "mohitgiri3021@gmail.com" },
       include: {
         incognitoProfile: true,
         college: true,

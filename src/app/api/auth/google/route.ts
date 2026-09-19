@@ -178,6 +178,27 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Ensure public username exists
+    if (!user.username) {
+      const baseName = (user.name || email.split("@")[0] || "student")
+        .toLowerCase()
+        .replace(/[^a-z0-9_]/g, "")
+        .slice(0, 14);
+      const randomSuffix = Math.floor(100 + Math.random() * 900);
+      const autoUsername = `${baseName || "student"}_${randomSuffix}`;
+      try {
+        user = await prisma.user.update({
+          where: { id: user.id },
+          data: { username: autoUsername },
+          include: {
+            college: {
+              select: { id: true, name: true, city: true },
+            },
+          },
+        });
+      } catch {}
+    }
+
     // Ensure incognitoProfile exists for whisper wall
     const existingIncognito = await prisma.incognitoProfile.findUnique({
       where: { userId: user.id },
@@ -214,6 +235,7 @@ export async function POST(req: NextRequest) {
       token: {
         id: user.id,
         name: user.name,
+        username: user.username || null,
         email: user.email,
         picture: user.image,
         role: user.role,
@@ -231,6 +253,7 @@ export async function POST(req: NextRequest) {
       user: {
         id: user.id,
         name: user.name,
+        username: user.username || null,
         email: user.email,
         role: user.role,
         image: user.image,

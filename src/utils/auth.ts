@@ -72,6 +72,7 @@ export async function verifyAuth(request: Request): Promise<{
     const user = await prisma.user.findUnique({
       where: { id: decoded.userId },
       include: {
+        incognitoProfile: true,
         college: {
           select: { id: true, name: true, city: true },
         },

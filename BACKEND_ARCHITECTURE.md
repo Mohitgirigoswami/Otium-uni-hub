@@ -693,6 +693,8 @@ Logged actions include:
 
 ### Student Privacy & Public Usernames (`@username`)
 - **Schema**: Added `username String? @unique` to `model User`. Validated: `3-20` alphanumeric characters or underscores (`/^[a-zA-Z0-9_]{3,20}$/`).
+- **Session & Auth Pipeline Parity**: The `username` field is fully synchronized across NextAuth JWT callbacks (`token.username`), session tokens (`session.user.username`), Google OAuth logins (`POST /api/auth/google`), and current user introspection (`GET /api/auth/me`).
+- **Auto-Provisioning**: If a student registers or logs in without a pre-existing username, a clean, collision-free default handle (`name_suffix`) is automatically provisioned.
 - **Zero Email Search Leakage**: `GET /api/users?search=...` queries exclusively `name`, `username`, and `department`. The `email` field has been completely removed from search filters and select clauses, ensuring student emails cannot be harvested.
 - **Whisper Wall DM Author Resolution**: `getOrCreateConversation` automatically resolves `targetProfileId` whether passed as an `IncognitoProfile.id` or `User.id`, preserving Cryptographic Blind IDs and Zero-Knowledge anonymity.
 

@@ -21,6 +21,7 @@ export async function GET(req: NextRequest) {
       user: {
         id: auth.user.id,
         name: auth.user.name,
+        username: auth.user.username || null,
         email: auth.user.email,
         role: auth.user.role,
         phone: auth.user.phone,
@@ -30,6 +31,7 @@ export async function GET(req: NextRequest) {
         college: auth.user.college,
         image: auth.user.image,
         isBanned: auth.user.isBanned,
+        incognitoProfile: auth.user.incognitoProfile || null,
       },
     });
   } catch (error: any) {

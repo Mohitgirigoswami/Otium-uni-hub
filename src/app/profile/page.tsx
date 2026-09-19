@@ -53,6 +53,22 @@ export default function ProfilePage() {
       setYear(user.year || 3);
       setIncognitoHandle(user.incognitoProfile?.handle || "");
 
+      // Directly fetch fresh profile from DB to guarantee latest username & attributes
+      fetch(`/api/profile?userId=${user.id}`)
+        .then((r) => r.json())
+        .then((res) => {
+          if (res.success && res.data) {
+            if (res.data.name) setName(res.data.name);
+            if (res.data.username) setUsername(res.data.username);
+            if (res.data.bio) setBio(res.data.bio);
+            if (res.data.phone) setPhone(res.data.phone.replace(/\D/g, "").slice(0, 10));
+            if (res.data.department) setDepartment(res.data.department);
+            if (res.data.year) setYear(res.data.year);
+            if (res.data.incognitoProfile?.handle) setIncognitoHandle(res.data.incognitoProfile.handle);
+          }
+        })
+        .catch(() => {});
+
       getUserDashboardStats(user.id).then((res) => {
         if (res.success && res.data) {
           setStatsData(res.data.stats);
@@ -95,6 +111,9 @@ export default function ProfilePage() {
       toast.error(res.error);
     } else {
       toast.success("Profile updated successfully.");
+      if (res.data?.username) {
+        setUsername(res.data.username);
+      }
       refreshUser();
     }
   };
@@ -130,9 +149,16 @@ export default function ProfilePage() {
           <UserIcon className="w-3.5 h-3.5 text-primary" />
           <span>Student Account Management</span>
         </div>
-        <h1 className="font-heading text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground">
-          Profile & Preferences
-        </h1>
+        <div className="flex flex-wrap items-center gap-3">
+          <h1 className="font-heading text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground">
+            Profile & Preferences
+          </h1>
+          {username ? (
+            <Badge variant="primary" size="sm" className="font-mono text-xs font-bold">
+              @{username}
+            </Badge>
+          ) : null}
+        </div>
         <p className="text-xs sm:text-sm text-muted-foreground">
           Manage your verified campus details, delivery contact, and pseudonymous Whisper Wall handle.
         </p>
@@ -163,12 +189,25 @@ export default function ProfilePage() {
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-xs font-semibold text-foreground">Public Username (@handle)</label>
-                <Input
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value.replace(/[^a-zA-Z0-9_]/g, "").toLowerCase())}
-                  placeholder="e.g. alex_campus"
-                />
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-foreground">Public Username (@handle)</label>
+                  {username ? (
+                    <span className="text-[11px] font-mono font-bold text-primary">
+                      Current: @{username}
+                    </span>
+                  ) : (
+                    <span className="text-[11px] text-amber-500 font-medium">Create your username</span>
+                  )}
+                </div>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-primary font-bold text-sm">@</span>
+                  <Input
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value.replace(/[^a-zA-Z0-9_]/g, "").toLowerCase())}
+                    placeholder="alex_campus"
+                    className="pl-8 font-mono text-sm"
+                  />
+                </div>
                 <p className="text-[11px] text-muted-foreground">
                   Used for classmate direct messages and campus searches without exposing your university email address.
                 </p>

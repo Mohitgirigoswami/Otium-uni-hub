@@ -565,26 +565,39 @@ export function ProfileScreen() {
               </View>
 
               <View style={styles.formGroup}>
-                <Text style={[styles.formLabel, { color: colors.textMuted }]}>
-                  Public Username (@handle)
-                </Text>
-                <TextInput
-                  value={editUsername}
-                  onChangeText={(t) => setEditUsername(t.replace(/[^a-zA-Z0-9_]/g, "").toLowerCase())}
-                  placeholder="e.g. rohit_campus"
-                  placeholderTextColor={colors.textMuted}
-                  autoCapitalize="none"
-                  style={[
-                    styles.input,
-                    {
-                      backgroundColor: colors.cardSecondary,
-                      borderColor: colors.border,
-                      color: colors.text,
-                    },
-                  ]}
-                />
+                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                  <Text style={[styles.formLabel, { color: colors.textMuted, marginBottom: 0 }]}>
+                    Public Username (@handle)
+                  </Text>
+                  {currentUser.username ? (
+                    <Text style={{ fontSize: 11, color: colors.primary, fontWeight: "700" }}>
+                      Current: @{currentUser.username}
+                    </Text>
+                  ) : null}
+                </View>
+                <View style={{ position: "relative", justifyContent: "center" }}>
+                  <Text style={{ position: "absolute", left: 12, zIndex: 1, color: colors.primary, fontWeight: "700", fontSize: 14 }}>
+                    @
+                  </Text>
+                  <TextInput
+                    value={editUsername}
+                    onChangeText={(t) => setEditUsername(t.replace(/[^a-zA-Z0-9_]/g, "").toLowerCase())}
+                    placeholder="rohit_campus"
+                    placeholderTextColor={colors.textMuted}
+                    autoCapitalize="none"
+                    style={[
+                      styles.input,
+                      {
+                        backgroundColor: colors.cardSecondary,
+                        borderColor: colors.border,
+                        color: colors.text,
+                        paddingLeft: 28,
+                      },
+                    ]}
+                  />
+                </View>
                 <Text style={{ fontSize: 11, color: colors.textMuted, marginTop: 3 }}>
-                  Classmates can search and chat with you via @{editUsername || "username"} without ever seeing your email.
+                  Classmates can search and chat with you via @{editUsername || currentUser.username || "username"} without ever seeing your email.
                 </Text>
               </View>
 
