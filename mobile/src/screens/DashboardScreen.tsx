@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -9,7 +9,7 @@ import {
   Image,
   Platform,
 } from "react-native";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { Ionicons, Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useTheme } from "../context/ThemeContext";
 import { Card } from "../components/ui/Card";
@@ -37,8 +37,33 @@ export function DashboardScreen() {
   const [openTasksCount, setOpenTasksCount] = useState<number>(0);
   const [activeListingsCount, setActiveListingsCount] = useState<number>(0);
   const [recentWhisper, setRecentWhisper] = useState<any | null>(null);
+  const [unreadWhispersCount, setUnreadWhispersCount] = useState<number>(0);
 
   const STORAGE_KEY_DASHBOARD_SNAPSHOT = "@otium_cached_dashboard_snapshot";
+
+  const calculateUnreadWhispers = async (conversationsList?: any[]) => {
+    try {
+      let list = conversationsList;
+      if (!list) {
+        const cachedRaw = await AsyncStorage.getItem("@otium_cached_conversations");
+        if (cachedRaw) list = JSON.parse(cachedRaw);
+      }
+      if (!Array.isArray(list)) return;
+
+      const readRaw = await AsyncStorage.getItem("@otium_read_whispers");
+      const readMap = readRaw ? JSON.parse(readRaw) : {};
+
+      const unreadCount = list.filter((c: any) => {
+        if (!c.isAnonymousChat) return false;
+        const latestMsg = c.messages?.[0];
+        if (!latestMsg || latestMsg.isMine) return false;
+        const lastRead = readMap[c.id] || 0;
+        return new Date(latestMsg.createdAt).getTime() > lastRead;
+      }).length;
+
+      setUnreadWhispersCount(unreadCount);
+    } catch {}
+  };
 
   const loadDashboardData = async () => {
     // 0. Load cached dashboard snapshot for immediate offline render
@@ -55,6 +80,8 @@ export function DashboardScreen() {
         }
       }
     } catch {}
+
+    calculateUnreadWhispers();
 
     // 1. Attendance cached & live fetch
     let latestAttendance = attendanceData;
@@ -99,7 +126,7 @@ export function DashboardScreen() {
       }
     } catch {}
 
-    // 3. Print orders count (using correct singular endpoint /print/order)
+    // 3. Print orders count
     let printsCount = activePrintsCount;
     try {
       const printUrl = user?.id ? `/print/order?userId=${encodeURIComponent(user.id)}` : "/print/order";
@@ -140,6 +167,15 @@ export function DashboardScreen() {
       }
     } catch {}
 
+    // 7. Check unread conversations
+    try {
+      const convRes = await apiClient.get("/chat");
+      if (convRes.success && Array.isArray(convRes.data)) {
+        await AsyncStorage.setItem("@otium_cached_conversations", JSON.stringify(convRes.data));
+        calculateUnreadWhispers(convRes.data);
+      }
+    } catch {}
+
     // Save full snapshot for offline instant load
     try {
       await AsyncStorage.setItem(
@@ -158,6 +194,12 @@ export function DashboardScreen() {
   useEffect(() => {
     loadDashboardData();
   }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      calculateUnreadWhispers();
+    }, [])
+  );
 
   const onRefresh = async () => {
     setIsRefreshing(true);
@@ -182,6 +224,49 @@ export function DashboardScreen() {
         />
       }
     >
+      {/* Top Header Row with Whisper DMs on the TOP LEFT SIDE with Unread Marker */}
+      <View style={styles.topBarRow}>
+        <TouchableOpacity
+          activeOpacity={0.8}
+          onPress={() => navigation.navigate("Messages", { initialTab: "whisper" })}
+          style={[
+            styles.topWhisperDmBtn,
+            {
+              backgroundColor: colors.card,
+              borderColor: unreadWhispersCount > 0 ? colors.primary : colors.border,
+            },
+          ]}
+        >
+          <View style={[styles.whisperIconBadge, { backgroundColor: colors.primary + "18" }]}>
+            <Ionicons name="eye-off" size={15} color={colors.primary} />
+          </View>
+          <Text style={[styles.topWhisperDmText, { color: colors.text }]}>Whisper DMs</Text>
+          {unreadWhispersCount > 0 ? (
+            <View style={[styles.unreadBadgePill, { backgroundColor: colors.destructive }]}>
+              <Text style={styles.unreadBadgePillText}>{unreadWhispersCount}</Text>
+            </View>
+          ) : (
+            <View style={[styles.liveDotMarker, { backgroundColor: colors.success }]} />
+          )}
+        </TouchableOpacity>
+
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <Badge variant="primary" size="sm">
+            {campusName}
+          </Badge>
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={() => navigation.navigate("Messages", { initialTab: "direct" })}
+            style={[
+              styles.heroMsgBtn,
+              { backgroundColor: colors.secondary, borderColor: colors.border },
+            ]}
+          >
+            <Feather name="message-square" size={15} color={colors.primary} />
+          </TouchableOpacity>
+        </View>
+      </View>
+
       {/* 1. Header Greeting Card */}
       <Card style={styles.heroCard}>
         <View style={styles.heroTopRow}>
@@ -194,21 +279,6 @@ export function DashboardScreen() {
             <Text style={[styles.heroBadgeText, { color: colors.textSecondary }]}>
               Otium Uni Hub
             </Text>
-          </View>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-            <Badge variant="primary" size="sm">
-              {campusName}
-            </Badge>
-            <TouchableOpacity
-              activeOpacity={0.7}
-              onPress={() => navigation.navigate("Messages")}
-              style={[
-                styles.heroMsgBtn,
-                { backgroundColor: colors.secondary, borderColor: colors.border },
-              ]}
-            >
-              <Feather name="message-square" size={15} color={colors.primary} />
-            </TouchableOpacity>
           </View>
         </View>
 
@@ -542,7 +612,57 @@ const styles = StyleSheet.create({
   contentContainer: {
     padding: 16,
     paddingBottom: 36,
-    gap: 16,
+    gap: 14,
+  },
+  topBarRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingTop: Platform.OS === "ios" ? 44 : 28,
+  },
+  topWhisperDmBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  whisperIconBadge: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  topWhisperDmText: {
+    fontSize: 12,
+    fontWeight: "800",
+    letterSpacing: -0.2,
+  },
+  unreadBadgePill: {
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    paddingHorizontal: 5,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  unreadBadgePillText: {
+    color: "#FFFFFF",
+    fontSize: 10,
+    fontWeight: "900",
+  },
+  liveDotMarker: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
   },
   heroCard: {
     padding: 18,

@@ -109,35 +109,68 @@ export function ClientServiceGuard({ serviceKey, children }: ClientServiceGuardP
     reason: string;
   }>({ isEnabled: true, reason: "" });
 
+  const normalizedKey = serviceKey === "CAMPUS_GIGS" ? "GIG_HUB" : serviceKey;
+  const meta = SERVICE_META[serviceKey] || SERVICE_META[normalizedKey] || SERVICE_META.PRINT_STATION;
+
+  // Immediate cache restoration on mount
+  useEffect(() => {
+    const hydrateCache = async () => {
+      try {
+        const collegeId = user?.collegeId || user?.college?.id || "default";
+        const keys = [`@otium_cached_services_${collegeId}`, "@otium_cached_services_default", "@otium_cached_services"];
+        for (const k of keys) {
+          const cached = await AsyncStorage.getItem(k);
+          if (cached) {
+            const parsed = JSON.parse(cached);
+            if (Array.isArray(parsed)) {
+              const found = parsed.find((s: any) => s.serviceKey === normalizedKey || s.serviceKey === serviceKey);
+              if (found && found.isEnabled === false) {
+                setServiceStatus({
+                  isEnabled: false,
+                  reason: found.maintenanceMessage || meta.defaultReason,
+                });
+                break;
+              }
+            }
+          }
+        }
+      } catch {}
+    };
+    hydrateCache();
+  }, [normalizedKey, user?.collegeId]);
+
   const checkService = async (isManualPing = false) => {
     if (isManualPing) setIsPinging(true);
-    else setIsChecking(true);
 
     try {
-      const collegeId = user?.collegeId || user?.college?.id || "default";
-      const res = await apiClient.get(`/services?campusId=${encodeURIComponent(collegeId)}`);
+      const collegeId = user?.collegeId || user?.college?.id;
+      const endpoint = collegeId ? `/services?campusId=${encodeURIComponent(collegeId)}` : "/services";
+      const res = await apiClient.get(endpoint);
 
       if (res.success && Array.isArray(res.data)) {
-        AsyncStorage.setItem(`@otium_cached_services_${collegeId}`, JSON.stringify(res.data)).catch(() => {});
-        const found = res.data.find((s: any) => s.serviceKey === serviceKey);
+        AsyncStorage.setItem("@otium_cached_services", JSON.stringify(res.data)).catch(() => {});
+        if (collegeId) {
+          AsyncStorage.setItem(`@otium_cached_services_${collegeId}`, JSON.stringify(res.data)).catch(() => {});
+        }
+        const found = res.data.find((s: any) => s.serviceKey === normalizedKey || s.serviceKey === serviceKey);
         if (found && found.isEnabled === false) {
           setServiceStatus({
             isEnabled: false,
-            reason: found.maintenanceMessage || SERVICE_META[serviceKey].defaultReason,
+            reason: found.maintenanceMessage || meta.defaultReason,
           });
         } else {
           setServiceStatus({ isEnabled: true, reason: "" });
         }
       } else {
         // Read cached status if offline or endpoint unreachable
-        const cached = await AsyncStorage.getItem(`@otium_cached_services_${collegeId}`).catch(() => null);
+        const cached = await AsyncStorage.getItem("@otium_cached_services").catch(() => null);
         if (cached) {
           const parsed = JSON.parse(cached);
-          const found = parsed.find((s: any) => s.serviceKey === serviceKey);
+          const found = parsed.find((s: any) => s.serviceKey === normalizedKey || s.serviceKey === serviceKey);
           if (found && found.isEnabled === false) {
             setServiceStatus({
               isEnabled: false,
-              reason: found.maintenanceMessage || SERVICE_META[serviceKey].defaultReason,
+              reason: found.maintenanceMessage || meta.defaultReason,
             });
             return;
           }
@@ -145,7 +178,7 @@ export function ClientServiceGuard({ serviceKey, children }: ClientServiceGuardP
         setServiceStatus({ isEnabled: true, reason: "" });
       }
     } catch {
-      setServiceStatus({ isEnabled: true, reason: "" });
+      // Retain existing status if network ping failed
     } finally {
       setIsChecking(false);
       setIsPinging(false);
@@ -154,7 +187,7 @@ export function ClientServiceGuard({ serviceKey, children }: ClientServiceGuardP
 
   useEffect(() => {
     checkService();
-  }, [serviceKey, user?.collegeId]);
+  }, [normalizedKey, user?.collegeId]);
 
   if (isChecking) {
     return <>{children}</>;

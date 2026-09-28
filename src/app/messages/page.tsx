@@ -65,6 +65,7 @@ function MessagesContent() {
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [hasMoreOlder, setHasMoreOlder] = useState(true);
   const [isSending, setIsSending] = useState(false);
+  const [convFilterQuery, setConvFilterQuery] = useState("");
 
   // Classmate Search Modal
   const [isSearchOpen, setIsSearchOpen] = useState(false);
@@ -77,7 +78,12 @@ function MessagesContent() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = (behavior: ScrollBehavior = "smooth") => {
-    messagesEndRef.current?.scrollIntoView({ behavior });
+    if (messagesContainerRef.current) {
+      messagesContainerRef.current.scrollTo({
+        top: messagesContainerRef.current.scrollHeight,
+        behavior,
+      });
+    }
   };
 
   const fetchConversations = async () => {
@@ -226,15 +232,15 @@ function MessagesContent() {
     }
   };
 
-  const handleSendMessage = async (e: React.FormEvent) => {
+  const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || !activeConversationId || !inputMessage.trim() || isSending) return;
+    if (!user || !activeConversationId || !inputMessage.trim()) return;
 
     const text = inputMessage.trim();
     setInputMessage("");
 
-    // Optimistic message
-    const tempId = `temp-${Date.now()}`;
+    // Optimistic message with globally unique temp ID
+    const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const optimisticMsg: ChatMessage = {
       id: tempId,
       conversationId: activeConversationId,
@@ -246,38 +252,56 @@ function MessagesContent() {
     };
 
     setMessages((prev) => [...prev, optimisticMsg]);
-    scrollToBottom("smooth");
+    setTimeout(() => scrollToBottom("smooth"), 30);
 
-    // Broadcast through socket
+    // Broadcast through socket immediately
     broadcastSocketMessage({
       conversationId: activeConversationId,
       message: optimisticMsg,
     });
 
-    setIsSending(true);
-    const res = await sendMessage({
+    // Update conversation list preview optimistically
+    setConversations((prev) =>
+      prev.map((c) =>
+        c.id === activeConversationId
+          ? { ...c, messages: [optimisticMsg], updatedAt: new Date().toISOString() }
+          : c
+      )
+    );
+
+    // Asynchronous non-blocking background dispatch - zero delay for consecutive back-to-back messages
+    sendMessage({
       conversationId: activeConversationId,
       senderId: user.id,
       content: text,
-    });
-    setIsSending(false);
-
-    if (res.error) {
-      toast.error(res.error);
-      setMessages((prev) => prev.filter((m) => m.id !== tempId));
-    } else if (res.data) {
-      setMessages((prev) =>
-        prev.map((m) => (m.id === tempId ? { ...res.data, isMine: true } : m))
-      );
-      // Update preview in conversation list
-      setConversations((prev) =>
-        prev.map((c) =>
-          c.id === activeConversationId
-            ? { ...c, messages: [res.data], updatedAt: new Date().toISOString() }
-            : c
-        )
-      );
-    }
+    })
+      .then((res) => {
+        if (res.error) {
+          toast.error(res.error);
+          setMessages((prev) =>
+            prev.map((m) => (m.id === tempId ? { ...m, status: "failed" } : m))
+          );
+        } else if (res.data) {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === tempId ? { ...res.data, isMine: true, status: "sent" } : m
+            )
+          );
+          setConversations((prev) =>
+            prev.map((c) =>
+              c.id === activeConversationId
+                ? { ...c, messages: [res.data], updatedAt: new Date().toISOString() }
+                : c
+            )
+          );
+        }
+      })
+      .catch(() => {
+        toast.error("Failed to deliver message");
+        setMessages((prev) =>
+          prev.map((m) => (m.id === tempId ? { ...m, status: "failed" } : m))
+        );
+      });
   };
 
   // Classmate search by name or @username (zero emails)
@@ -327,9 +351,22 @@ function MessagesContent() {
     }
   };
 
-  const filteredConversations = conversations.filter((c) =>
-    activeTab === "whisper" ? c.isAnonymousChat : !c.isAnonymousChat
-  );
+  const filteredConversations = conversations.filter((c) => {
+    const tabMatch = activeTab === "whisper" ? c.isAnonymousChat : !c.isAnonymousChat;
+    if (!tabMatch) return false;
+    if (!convFilterQuery.trim()) return true;
+    const q = convFilterQuery.toLowerCase();
+    const otherName = (c.otherParticipant?.name || "").toLowerCase();
+    const otherUser = (c.otherParticipant?.username || "").toLowerCase();
+    const otherHandle = (c.otherParticipant?.incognitoProfile?.handle || "").toLowerCase();
+    const lastMsg = (c.messages?.[0]?.content || "").toLowerCase();
+    return (
+      otherName.includes(q) ||
+      otherUser.includes(q) ||
+      otherHandle.includes(q) ||
+      lastMsg.includes(q)
+    );
+  });
 
   const activeConv = conversations.find((c) => c.id === activeConversationId);
 
@@ -388,7 +425,7 @@ function MessagesContent() {
           }`}
         >
           {/* Dual Inbox Tab Switcher */}
-          <div className="p-3 border-b border-border bg-card">
+          <div className="p-3 border-b border-border bg-card space-y-2">
             <div className="grid grid-cols-2 gap-1.5 p-1 rounded-lg bg-secondary border border-border">
               <button
                 onClick={() => setActiveTab("direct")}
@@ -412,6 +449,17 @@ function MessagesContent() {
                 <EyeOff className="w-3.5 h-3.5 text-primary" />
                 <span>Whisper DMs</span>
               </button>
+            </div>
+
+            {/* Quick in-window search bar */}
+            <div className="relative">
+              <Search className="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-muted-foreground" />
+              <Input
+                placeholder="Search conversations..."
+                value={convFilterQuery}
+                onChange={(e) => setConvFilterQuery(e.target.value)}
+                className="pl-8 h-8 text-xs rounded-md bg-secondary/50 border-border"
+              />
             </div>
           </div>
 
@@ -640,11 +688,16 @@ function MessagesContent() {
                         >
                           <p className="whitespace-pre-wrap break-words">{msg.content}</p>
                           <div
-                            className={`text-[9px] mt-1 text-right ${
+                            className={`text-[9px] mt-1 text-right flex items-center justify-end gap-1.5 ${
                               isMine ? "text-primary-foreground/75" : "text-muted-foreground"
                             }`}
                           >
-                            {formatDate(msg.createdAt)}
+                            <span>{formatDate(msg.createdAt)}</span>
+                            {isMine && (
+                              <span className={`text-[10px] font-bold ${msg.status === "failed" ? "text-destructive" : ""}`}>
+                                {msg.status === "sending" ? "⏱" : msg.status === "failed" ? "!" : "✓✓"}
+                              </span>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -674,7 +727,7 @@ function MessagesContent() {
                 <Button
                   type="submit"
                   size="md"
-                  disabled={!inputMessage.trim() || isSending}
+                  disabled={!inputMessage.trim()}
                   className="rounded-full w-10 h-10 p-0 flex items-center justify-center flex-shrink-0"
                 >
                   <Send className="w-4 h-4" />

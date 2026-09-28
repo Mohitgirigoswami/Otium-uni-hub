@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCampusServices } from "@/actions/admin.actions";
 import { verifyAuth } from "@/utils/auth";
+import { prisma } from "@/lib/prisma";
 
 export async function OPTIONS() {
   return new NextResponse(null, { status: 204 });
@@ -15,10 +16,15 @@ export async function GET(req: NextRequest) {
     const auth = await verifyAuth(req);
     const { searchParams } = new URL(req.url);
 
-    const campusId =
-      searchParams.get("campusId") ||
-      auth.user?.collegeId ||
-      "default";
+    let campusId = searchParams.get("campusId");
+    if (!campusId || campusId === "default" || campusId === "null" || campusId === "undefined") {
+      campusId = auth.user?.collegeId || null;
+    }
+
+    if (!campusId || campusId === "default") {
+      const defaultCollege = await prisma.college.findFirst({ select: { id: true } });
+      campusId = defaultCollege?.id || "default";
+    }
 
     const res = await getCampusServices(campusId);
     return NextResponse.json(res);

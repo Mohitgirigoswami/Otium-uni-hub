@@ -409,13 +409,30 @@ Otium maintains a strict 1:1 component design equivalence between shadcn/ui on W
 ### 7. In-App Messaging & Express Print In-App Updates
 * **Web**: `src/app/messages/page.tsx`
 * **Mobile**: `mobile/src/screens/MessagesScreen.tsx`
-* **UX Principles & Classmate Search**:
-  - **Live Chat Engine**: Connected to `GET /api/chat`, `POST /api/chat`, and `/api/users`.
-  - **Universal Classmate Search**: Debounced search in `MessagesScreen` queries across name, email, department, and campus-wide fallback if college match has 0 results.
+* **UX Principles & Realtime Architecture**:
+  - **Live Chat Engine**: Dual real-time connection with WebSockets (`Socket.io`) and a 2.5s delta sync fallback (`?after=timestamp`).
+  - **Zero-Lock Non-Blocking Optimistic Dispatch**:
+    - Purged artificial `isSending` locks and send button disabling across both Web and Mobile.
+    - Generates cryptographically unique optimistic message IDs (`temp-${Date.now()}-${random}`) and unshifts/appends them instantly.
+    - Enables users to fire consecutive back-to-back messages without delay or network lockout.
+  - **WhatsApp / Instagram Style Delivery Indicators**:
+    - Every message bubble renders a delivery state indicator: `⏱` for in-flight sending, `✓✓` for confirmed server receipt, and `!` with destructive highlighting for failed dispatches.
+  - **In-Window Conversation Filtering & Search**:
+    - Added an in-window search bar right below the dual-inbox tab switcher on both Web and Mobile.
+    - Instantly filters conversations by student name, `@username`, anonymous alias, or message content without opening secondary modals.
+  - **Universal Classmate Search Modal**: Debounced modal querying `@username`, student name, and department with **ZERO email exposure**.
+  - **Web Scoped Container Scrolling**:
+    - Replaced `scrollIntoView()` with `messagesContainerRef.current.scrollTo({ top: scrollHeight, behavior })`.
+    - Guarantees the browser window/page never jumps down to the footer when sending or receiving messages.
+  - **Mobile Soft Keyboard & Enter-to-Send UX**:
+    - Configured `TextInput` with `multiline={false}`, `returnKeyType="send"`, `blurOnSubmit={false}`, and `onSubmitEditing={(e) => handleSendMessage(e.nativeEvent?.text)}`.
+    - Tapping the soft keyboard Enter / Return / Send key immediately fires the message while keeping the keyboard focused for typing the next message.
+  - **Mobile Dynamic Insets & Full-Screen In-Place Thread**:
+    - Chat is rendered full-screen in-place with `navigation.setOptions({ tabBarStyle: { display: "none" } })` and `tabBarHideOnKeyboard: true`.
+    - Listens to native `keyboardDidShow` / `keyboardDidHide` events to dynamically drop bottom inset padding from `Math.max(insets.bottom, 10)` down to `6px` when the keyboard is open, preventing the input bar from floating or occluding behind the navigation bar.
+    - Android hardware `BackHandler` cleanly exits the active chat and restores the bottom tab bar.
   - **Route Tab Synchronization**: Deep-linking with `initialTab: "whisper"` or `initialTab: "direct"` automatically focuses the corresponding inbox tab.
   - **Dashboard Portal Launcher**: Quick tile in `DashboardScreen` launches directly into `Messages`.
-  - **Android 3-Button Navigation Bar Clearance**: `TabNavigator` computes `bottomInset = Math.max(insets.bottom, Platform.OS === "android" ? 14 : 16)` and overall height `60 + bottomInset`, ensuring the Android 48px software navigation bar (Back, Home, Recents) never overlaps or covers tab bar icons.
-  - **Mobile Keyboard & Feed Positioning (Android & iOS)**: Full-screen chat modal uses `KeyboardAvoidingView` with `behavior={Platform.OS === "ios" ? "padding" : "height"}` and `keyboardVerticalOffset={Platform.OS === "ios" ? 20 : 0}`, `FlatList` with `style={{ flex: 1 }}`, `contentContainerStyle={[styles.threadContent, { flexGrow: 1 }]}`, `keyboardShouldPersistTaps="handled"`, and dynamic `keyboardDidShow` / `keyboardWillShow` listener alongside multi-stage `onFocus` timeouts to guarantee the message text feed always pushes up cleanly above the on-screen keyboard on Android.
   - **Whisper Wall Direct DM Fallback**: When initiating a DM from an anonymous whisper post, the client creates a responsive local whisper conversation session with tab auto-selection even if the remote backend endpoint is in transit.
 
 ---
@@ -540,6 +557,23 @@ Otium uses physics-based spring transitions rather than linear CSS fades:
 - **Express Print Station**: Web `/print-station` includes manual Page Count Stepper `[-] [ N ] [+]`, strict ₹5 order floor minimum (`Math.max(500, totalPaise)`), and default UPI fallback `8307798816@upi`.
 - **Attendance Guardrail**: Web `/attendance` features clean action buttons (`+ Present`, `+ Absent`), weightage next to course title, threshold target stepper `[-] [ 75% ] [+]`, and instant local cache hydration.
 - **Profile**: Web `/profile` and Mobile `ProfileScreen` provide `@username` inspection and live editing.
+
+### 8.5 Mobile Diagnostics & Tooling
+- **Expo Doctor Verification**: Registered `"doctor": "npx -y expo-doctor"` in `mobile/package.json` (and `"mobile:doctor": "cd mobile && npx -y expo-doctor"` in root `package.json`). Run to execute the 18-point Expo environment, dependency compatibility, native plugin configuration, and manifest check (`18/18 checks passed. No issues detected!`).
+
+### 8.6 Mobile v1.0.1 (Build 3) Whisper Wall & Service Architecture Overhaul
+- **Soft Keyboard Safe In-Place Overlays**: Replaced native React Native `<Modal>` Dialog wrappers for Whisper compose, comments, and full view with in-place absolute overlays (`StyleSheet.absoluteFillObject` + `KeyboardAvoidingView`). Because these overlays exist within the primary Activity hierarchy, Android's native `windowSoftInputMode="adjustResize"` dynamically recalculates available height, preventing keyboard occlusion of text inputs and action buttons.
+- **Deferred Image Uploading Pipeline**: Document picker captures local asset URIs with zero network latency on pick (`0ms`). Remote storage upload (`/upload`) is deferred until the user taps "Post Whisper". Print Station PDF uploads remain untouched to preserve page count calculation and pricing estimation.
+- **Anonymous Comments Thread & Quick Reply**: Whisper posts include comment counter buttons (`💬 {commentCount}`). Tapping opens an in-place comments sheet rendering anonymous bot avatars (`DiceBear bottts`), timestamps, and thread replies, backed by a docked reply input bar with 0ms optimistic rendering.
+- **Whisper Post Deletion**: Posts authored by the active student (`authorId === user.id`) or Super Admins display a delete trash button with a confirmation dialog triggering `DELETE /api/incognito?postId=...`.
+- **Zero-Flicker Campus Service Guard**: `ClientServiceGuard` hydrates disabled service state from `@otium_cached_services` immediately on mount, normalizes service keys (`CAMPUS_GIGS` ➔ `GIG_HUB`), and queries `/api/services` with automatic fallback to primary campus records, preventing disabled services from flashing or remaining active.
+
+### 8.7 Offline-First Whisper DMs & WhatsApp/Instagram Chat Engine (Build 3)
+- **Top-Left Whisper DMs Button with Unread Marker**: Placed directly on the Hub/Dashboard top navigation row (`topBarRow`), displaying an unread badge marker (`[N]` red pill when unread > 0, or live green pulse dot when 0). Tapping routes directly to `Messages` (`initialTab: "whisper"`).
+- **Whisper Tab Header Cleanup**: Removed the DMs button from the Whisper Wall header, making Whisper Wall dedicated to campus posts and comments.
+- **Zero-Blocking Chat Initialization**: Chat threads open with `0ms` latency from local `AsyncStorage` cache (`@otium_thread_${conv.id}`) or conversation metadata. The full-screen "Connecting to chat..." blocking spinner has been eliminated. The input bar is immediately interactive and background WebSockets/delta-sync run asynchronously.
+- **Local-First Message Storage**: Messages are persisted to `AsyncStorage` on every dispatch, socket packet, and background fetch, guaranteeing chats are retained on-device across app restarts and cold starts.
+- **Instagram & WhatsApp "Seen" Receipts**: Displays `Seen ✓✓` in sky blue (`#7dd3fc`) when the peer has replied or viewed the message, `✓✓` upon delivery, `✓` upon sent confirmation, and `⏱` during optimistic sending.
 
 ---
 *Document maintained by Antigravity AI Engineering Suite.*

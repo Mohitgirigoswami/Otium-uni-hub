@@ -212,7 +212,7 @@ export function GigsScreen({ navigation }: any) {
   };
 
   return (
-    <ClientServiceGuard serviceKey="CAMPUS_GIGS" navigation={navigation}>
+    <ClientServiceGuard serviceKey="GIG_HUB" navigation={navigation}>
       <View style={[styles.container, { backgroundColor: colors.background }]}>
         {/* Top Header */}
         <View style={[styles.header, { borderBottomColor: colors.border }]}>

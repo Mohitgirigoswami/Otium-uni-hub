@@ -510,3 +510,51 @@ export async function getIncognitoComments(
     };
   }
 }
+
+/**
+ * Delete an incognito post (author or super admin only)
+ */
+export async function deleteIncognitoPost(
+  postId: string,
+  userId: string
+): Promise<ActionResponse<{ id: string }>> {
+  try {
+    if (!postId || !userId) {
+      return { success: false, error: "Post ID and User ID are required." };
+    }
+
+    const post = await prisma.incognitoPost.findUnique({
+      where: { id: postId },
+      include: { profile: true },
+    });
+
+    if (!post) {
+      return { success: false, error: "Post not found." };
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { role: true },
+    });
+
+    // Check ownership or super admin privilege
+    if (post.profile.userId !== userId && user?.role !== "SUPER_ADMIN") {
+      return { success: false, error: "You are not authorized to delete this whisper." };
+    }
+
+    await prisma.incognitoPost.delete({
+      where: { id: postId },
+    });
+
+    return {
+      success: true,
+      data: { id: postId },
+    };
+  } catch (error: any) {
+    console.error("Error in deleteIncognitoPost:", error);
+    return {
+      success: false,
+      error: error?.message || "Failed to delete whisper post.",
+    };
+  }
+}

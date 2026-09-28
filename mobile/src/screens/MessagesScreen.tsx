@@ -16,7 +16,9 @@ import {
   BackHandler,
 } from "react-native";
 import { Ionicons, Feather } from "@expo/vector-icons";
+import { useFocusEffect } from "@react-navigation/native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "../context/ThemeContext";
 import { useUser } from "../context/UserContext";
 import { apiClient } from "../services/apiClient";
@@ -42,6 +44,7 @@ export interface ConversationItem {
 const STORAGE_KEY_CONVERSATIONS = "@otium_cached_conversations";
 
 export function MessagesScreen({ navigation, route }: any) {
+  const insets = useSafeAreaInsets();
   const { colors, isDark } = useTheme();
   const { user } = useUser();
 
@@ -63,12 +66,31 @@ export function MessagesScreen({ navigation, route }: any) {
   const [activeConv, setActiveConv] = useState<ConversationItem | null>(null);
   const [threadMessages, setThreadMessages] = useState<any[]>([]);
   const [loadingThread, setLoadingThread] = useState(false);
+  const [isSyncingLive, setIsSyncingLive] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [hasMoreMessages, setHasMoreMessages] = useState(true);
   const [inputMessage, setInputMessage] = useState("");
   const [isSending, setIsSending] = useState(false);
+  const [convFilter, setConvFilter] = useState("");
+  const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
 
   const flatListRef = useRef<FlatList>(null);
+
+  // Keyboard state listener
+  useEffect(() => {
+    const showSub = Keyboard.addListener(
+      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow",
+      () => setIsKeyboardOpen(true)
+    );
+    const hideSub = Keyboard.addListener(
+      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide",
+      () => setIsKeyboardOpen(false)
+    );
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   // Hardware back button handler for Android
   useEffect(() => {
@@ -166,6 +188,13 @@ export function MessagesScreen({ navigation, route }: any) {
     return () => clearInterval(interval);
   }, [user?.id]);
 
+  // Refresh conversation inbox whenever Messages screen is focused
+  useFocusEffect(
+    useCallback(() => {
+      fetchConversations(false);
+    }, [user?.id])
+  );
+
   useEffect(() => {
     if (route?.params?.initialTab) {
       setActiveTab(route.params.initialTab === "whisper" ? "whisper" : "direct");
@@ -180,57 +209,93 @@ export function MessagesScreen({ navigation, route }: any) {
       if (found) {
         openChat(found);
       } else {
-        apiClient.get(`/chat/${convId}/messages?limit=25`).then((res) => {
-          if (res.success) {
-            const stub: ConversationItem = {
-              id: convId,
-              isAnonymousChat: route?.params?.initialTab === "whisper",
-              otherParticipant: {
-                id: "peer",
-                name: route?.params?.initialTab === "whisper" ? "Anonymous Whisperer" : "Campus Student",
-              },
-              messages: Array.isArray(res.data) ? res.data : [],
-              updatedAt: new Date().toISOString(),
-              createdAt: new Date().toISOString(),
-            };
-            openChat(stub);
-            fetchConversations();
-          }
-        });
+        // Instant stub open: 0ms delay, never blocks user on connecting spinner
+        const isWhisper = route?.params?.initialTab === "whisper";
+        const stub: ConversationItem = {
+          id: convId,
+          isAnonymousChat: isWhisper,
+          otherParticipant: {
+            id: "peer",
+            name: isWhisper ? "Anonymous Peer" : "Campus Classmate",
+            incognitoProfile: {
+              handle: "Anonymous Peer",
+              avatarUrl: `https://api.dicebear.com/9.x/bottts/png?seed=${encodeURIComponent(convId)}&size=80`,
+            },
+          },
+          messages: [],
+          updatedAt: new Date().toISOString(),
+          createdAt: new Date().toISOString(),
+        };
+        openChat(stub);
+        fetchConversations();
       }
     }
-  }, [route?.params?.conversationId]);
+  }, [route?.params?.conversationId, conversations.length]);
 
-  // Open chat: enter room, load latest 25 messages descending
+  // Helper to persist thread messages to local storage
+  const saveThreadLocally = (convId: string, msgs: any[]) => {
+    AsyncStorage.setItem(`@otium_thread_${convId}`, JSON.stringify(msgs)).catch(() => {});
+  };
+
+  // Open chat: enter room, load local cache immediately with 0ms lag, sync fresh messages in background
   const openChat = async (conv: ConversationItem) => {
     setActiveConv(conv);
-    setLoadingThread(true);
+    setIsSyncingLive(true);
     setHasMoreMessages(true);
-
-    joinMobileSocketConversation(conv.id);
+    setLoadingThread(false); // NEVER BLOCK THE SCREEN!
 
     const threadCacheKey = `@otium_thread_${conv.id}`;
+    let loaded: any[] = [];
+
+    // 1. Instant local render: check conversation object's messages or AsyncStorage
+    if (Array.isArray(conv.messages) && conv.messages.length > 0) {
+      loaded = conv.messages;
+    }
+
     try {
       const cached = await AsyncStorage.getItem(threadCacheKey);
       if (cached) {
         const parsed = JSON.parse(cached);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          setThreadMessages(parsed);
+          loaded = parsed;
         }
       }
+    } catch {}
 
-      // Fetch fresh 25 messages (ordered descending from backend: newest at index 0)
-      const res = await apiClient.get(`/chat/${conv.id}/messages?limit=25`);
-      if (res.success && Array.isArray(res.data)) {
-        setThreadMessages(res.data);
-        setHasMoreMessages(res.data.length >= 25);
-        AsyncStorage.setItem(threadCacheKey, JSON.stringify(res.data)).catch(() => {});
-      }
-    } catch {
-      console.log("[Open Chat Note]: Operating in offline cached thread mode");
-    } finally {
-      setLoadingThread(false);
-    }
+    setThreadMessages(loaded);
+
+    // 2. Mark this conversation as read locally immediately
+    try {
+      const readRaw = await AsyncStorage.getItem("@otium_read_whispers");
+      const readMap = readRaw ? JSON.parse(readRaw) : {};
+      readMap[conv.id] = Date.now();
+      await AsyncStorage.setItem("@otium_read_whispers", JSON.stringify(readMap));
+    } catch {}
+
+    // 3. Connect to WebSockets room
+    joinMobileSocketConversation(conv.id);
+
+    // 4. Background fetch latest messages (non-blocking, merges seamlessly)
+    apiClient
+      .get(`/chat/${conv.id}/messages?limit=25`)
+      .then((res) => {
+        if (res.success && Array.isArray(res.data)) {
+          setThreadMessages((prev) => {
+            const pending = prev.filter((m) => m.status === "sending" || m.status === "failed");
+            const fresh = res.data;
+            const merged = [...pending, ...fresh];
+            saveThreadLocally(conv.id, merged);
+            return merged;
+          });
+          setHasMoreMessages(res.data.length >= 25);
+        }
+      })
+      .catch((err) => {
+        console.log("[Background Messages Sync Note]:", err?.message);
+      })
+      .finally(() => {
+        setIsSyncingLive(false);
+      });
   };
 
   const closeChat = () => {
@@ -240,7 +305,31 @@ export function MessagesScreen({ navigation, route }: any) {
     setActiveConv(null);
     setThreadMessages([]);
     setInputMessage("");
+    setIsSyncingLive(false);
   };
+
+  // Dynamically hide bottom tab bar when inside an active conversation
+  useEffect(() => {
+    const tabStyle = activeConv ? { display: "none" as const } : undefined;
+    navigation.setOptions({ tabBarStyle: tabStyle });
+    navigation.getParent()?.setOptions({ tabBarStyle: tabStyle });
+    return () => {
+      navigation.setOptions({ tabBarStyle: undefined });
+      navigation.getParent()?.setOptions({ tabBarStyle: undefined });
+    };
+  }, [activeConv, navigation]);
+
+  // Handle hardware back press on Android to cleanly exit active chat
+  useEffect(() => {
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (activeConv) {
+        closeChat();
+        return true;
+      }
+      return false;
+    });
+    return () => sub.remove();
+  }, [activeConv]);
 
   // Realtime WebSockets listener + Delta Sync fallback
   useEffect(() => {
@@ -253,7 +342,9 @@ export function MessagesScreen({ navigation, route }: any) {
         setThreadMessages((prev) => {
           if (prev.some((m) => m.id === incoming.id)) return prev;
           const isMine = incoming.senderId === user?.id;
-          return [{ ...incoming, isMine }, ...prev];
+          const updated = [{ ...incoming, isMine }, ...prev];
+          saveThreadLocally(activeConv.id, updated);
+          return updated;
         });
       }
     });
@@ -274,7 +365,9 @@ export function MessagesScreen({ navigation, route }: any) {
             const fresh = res.data.filter((m: any) => !existingIds.has(m.id));
             if (fresh.length === 0) return prev;
             // Fresh items are ordered asc by after filter, reverse so newest is first
-            return [...fresh.reverse(), ...prev];
+            const updated = [...fresh.reverse(), ...prev];
+            saveThreadLocally(activeConv.id, updated);
+            return updated;
           });
         }
       } catch {}
@@ -305,7 +398,9 @@ export function MessagesScreen({ navigation, route }: any) {
         setThreadMessages((prev) => {
           const existingIds = new Set(prev.map((m) => m.id));
           const fresh = res.data.filter((m: any) => !existingIds.has(m.id));
-          return [...prev, ...fresh];
+          const updated = [...prev, ...fresh];
+          saveThreadLocally(activeConv.id, updated);
+          return updated;
         });
       } else {
         setHasMoreMessages(false);
@@ -317,14 +412,15 @@ export function MessagesScreen({ navigation, route }: any) {
     }
   };
 
-  const handleSendMessage = async () => {
-    if (!activeConv || !inputMessage.trim() || isSending) return;
+  const handleSendMessage = (textOverride?: string) => {
+    const rawText = typeof textOverride === "string" ? textOverride : inputMessage;
+    if (!activeConv || !rawText.trim()) return;
 
-    const content = inputMessage.trim();
+    const content = rawText.trim();
     setInputMessage("");
 
-    // WhatsApp-style optimistic instant bubble at index 0 (top of inverted list)
-    const tempId = `temp-${Date.now()}`;
+    // WhatsApp/Instagram style optimistic instant bubble at index 0 (top of inverted list)
+    const tempId = `temp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     const optimistic = {
       id: tempId,
       conversationId: activeConv.id,
@@ -332,9 +428,14 @@ export function MessagesScreen({ navigation, route }: any) {
       isMine: true,
       senderId: user?.id,
       createdAt: new Date().toISOString(),
+      status: "sending",
     };
 
-    setThreadMessages((prev) => [optimistic, ...prev]);
+    setThreadMessages((prev) => {
+      const updated = [optimistic, ...prev];
+      saveThreadLocally(activeConv.id, updated);
+      return updated;
+    });
 
     // Broadcast through socket
     broadcastMobileSocketMessage({
@@ -342,38 +443,69 @@ export function MessagesScreen({ navigation, route }: any) {
       message: optimistic,
     });
 
-    setIsSending(true);
-    try {
-      const res = await apiClient.post(`/chat/${activeConv.id}/messages`, {
-        content,
+    // Update conversation list preview optimistically
+    setConversations((prev) =>
+      prev.map((c) =>
+        c.id === activeConv.id
+          ? {
+              ...c,
+              messages: [optimistic],
+              updatedAt: new Date().toISOString(),
+            }
+          : c
+      )
+    );
+
+    // Asynchronous background dispatch - NO LOCKING isSending flag!
+    apiClient
+      .post(`/chat/${activeConv.id}/messages`, { content })
+      .then((res) => {
+        if (res.success && res.data) {
+          setThreadMessages((prev) => {
+            const updated = prev.map((m) =>
+              m.id === tempId ? { ...res.data, isMine: true, status: "sent" } : m
+            );
+            saveThreadLocally(activeConv.id, updated);
+            return updated;
+          });
+        } else {
+          setThreadMessages((prev) => {
+            const updated = prev.map((m) =>
+              m.id === tempId ? { ...m, status: "failed" } : m
+            );
+            saveThreadLocally(activeConv.id, updated);
+            return updated;
+          });
+        }
+      })
+      .catch((err) => {
+        console.error("[Send Message Error]:", err);
+        setThreadMessages((prev) => {
+          const updated = prev.map((m) =>
+            m.id === tempId ? { ...m, status: "failed" } : m
+          );
+          saveThreadLocally(activeConv.id, updated);
+          return updated;
+        });
       });
-      if (res.success && res.data) {
-        setThreadMessages((prev) =>
-          prev.map((m) => (m.id === tempId ? { ...res.data, isMine: true } : m))
-        );
-        // Also update latest message in conversations list preview
-        setConversations((prev) =>
-          prev.map((c) =>
-            c.id === activeConv.id
-              ? {
-                  ...c,
-                  messages: [res.data],
-                  updatedAt: new Date().toISOString(),
-                }
-              : c
-          )
-        );
-      }
-    } catch (err) {
-      console.error("[Send Message Error]:", err);
-    } finally {
-      setIsSending(false);
-    }
   };
 
-  const filteredConversations = conversations.filter((c) =>
-    activeTab === "whisper" ? c.isAnonymousChat : !c.isAnonymousChat
-  );
+  const filteredConversations = conversations.filter((c) => {
+    const tabMatch = activeTab === "whisper" ? c.isAnonymousChat : !c.isAnonymousChat;
+    if (!tabMatch) return false;
+    if (!convFilter.trim()) return true;
+    const q = convFilter.toLowerCase();
+    const otherName = (c.otherParticipant?.name || "").toLowerCase();
+    const otherUser = (c.otherParticipant?.username || "").toLowerCase();
+    const otherHandle = (c.otherParticipant?.incognitoProfile?.handle || "").toLowerCase();
+    const lastMsg = (c.messages?.[0]?.content || "").toLowerCase();
+    return (
+      otherName.includes(q) ||
+      otherUser.includes(q) ||
+      otherHandle.includes(q) ||
+      lastMsg.includes(q)
+    );
+  });
 
   const isPrintStationThread =
     activeConv &&
@@ -422,7 +554,7 @@ export function MessagesScreen({ navigation, route }: any) {
               {participantTitle}
             </Text>
             <Text style={[styles.chatHeaderSub, { color: colors.textMuted }]} numberOfLines={1}>
-              {participantHandle}
+              {isSyncingLive ? "Syncing live..." : participantHandle}
             </Text>
           </View>
 
@@ -448,62 +580,80 @@ export function MessagesScreen({ navigation, route }: any) {
           </View>
         )}
 
-        {/* WhatsApp-Style Inverted Lazy Messages Feed */}
-        {loadingThread ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="small" color={colors.primary} />
-            <Text style={[styles.loadingText, { color: colors.textMuted }]}>Connecting to chat...</Text>
-          </View>
-        ) : (
-          <FlatList
-            ref={flatListRef}
-            data={threadMessages}
-            inverted={true}
-            keyExtractor={(item) => item.id}
-            style={styles.threadList}
-            contentContainerStyle={styles.threadContentInverted}
-            keyboardShouldPersistTaps="handled"
-            onEndReached={loadOlderMessages}
-            onEndReachedThreshold={0.2}
-            ListFooterComponent={
-              loadingOlder ? (
-                <View style={{ paddingVertical: 12, alignItems: "center" }}>
-                  <ActivityIndicator size="small" color={colors.primary} />
-                </View>
-              ) : null
-            }
-            renderItem={({ item }) => {
-              const isMine = item.isMine;
-              return (
+        {/* WhatsApp & Instagram Inverted Messages Feed (Never blocks UI) */}
+        <FlatList
+          ref={flatListRef}
+          data={threadMessages}
+          inverted={true}
+          keyExtractor={(item) => item.id}
+          style={styles.threadList}
+          contentContainerStyle={styles.threadContentInverted}
+          keyboardShouldPersistTaps="handled"
+          onEndReached={loadOlderMessages}
+          onEndReachedThreshold={0.2}
+          ListEmptyComponent={
+            <View style={styles.emptyThreadWrap}>
+              <Ionicons
+                name={activeConv.isAnonymousChat ? "eye-off-outline" : "chatbubble-ellipses-outline"}
+                size={40}
+                color={colors.textMuted}
+              />
+              <Text style={[styles.emptyThreadTitle, { color: colors.text }]}>
+                {activeConv.isAnonymousChat ? "Anonymous Whisper DM" : "Classmate Message"}
+              </Text>
+              <Text style={[styles.emptyThreadText, { color: colors.textMuted }]}>
+                {activeConv.isAnonymousChat
+                  ? "Identity protected with cryptographic blind IDs. Say hello anonymously!"
+                  : "No messages yet. Send a message to start chatting!"}
+              </Text>
+            </View>
+          }
+          ListFooterComponent={
+            loadingOlder ? (
+              <View style={{ paddingVertical: 12, alignItems: "center" }}>
+                <ActivityIndicator size="small" color={colors.primary} />
+              </View>
+            ) : null
+          }
+          renderItem={({ item }) => {
+            const isMine = item.isMine;
+            const otherRepliedLater = threadMessages.some(
+              (m) => !m.isMine && new Date(m.createdAt).getTime() >= new Date(item.createdAt).getTime()
+            );
+            const isSeen = item.status === "seen" || otherRepliedLater;
+
+            return (
+              <View
+                style={[
+                  styles.messageRow,
+                  isMine ? styles.messageRowMine : styles.messageRowOther,
+                ]}
+              >
                 <View
                   style={[
-                    styles.messageRow,
-                    isMine ? styles.messageRowMine : styles.messageRowOther,
+                    styles.messageBubble,
+                    isMine
+                      ? [styles.bubbleMine, { backgroundColor: colors.primary }]
+                      : [styles.bubbleOther, { backgroundColor: colors.card, borderColor: colors.border }],
                   ]}
                 >
-                  <View
+                  <Text
                     style={[
-                      styles.messageBubble,
-                      isMine
-                        ? [styles.bubbleMine, { backgroundColor: colors.primary }]
-                        : [styles.bubbleOther, { backgroundColor: colors.card, borderColor: colors.border }],
+                      styles.messageText,
+                      { color: isMine ? colors.primaryForeground : colors.text },
                     ]}
                   >
-                    <Text
-                      style={[
-                        styles.messageText,
-                        { color: isMine ? colors.primaryForeground : colors.text },
-                      ]}
-                    >
-                      {item.content}
-                    </Text>
+                    {item.content}
+                  </Text>
+                  <View style={{ flexDirection: "row", alignItems: "center", alignSelf: "flex-end", marginTop: 3, gap: 4 }}>
                     <Text
                       style={[
                         styles.timestampText,
                         {
                           color: isMine
-                            ? "rgba(255, 255, 255, 0.7)"
+                            ? "rgba(255, 255, 255, 0.75)"
                             : colors.textMuted,
+                          marginTop: 0,
                         },
                       ]}
                     >
@@ -512,18 +662,42 @@ export function MessagesScreen({ navigation, route }: any) {
                         minute: "2-digit",
                       })}
                     </Text>
+                    {isMine && (
+                      <View style={{ flexDirection: "row", alignItems: "center" }}>
+                        {item.status === "sending" ? (
+                          <Text style={{ fontSize: 10, color: "rgba(255, 255, 255, 0.7)" }}>⏱</Text>
+                        ) : item.status === "failed" ? (
+                          <Text style={{ fontSize: 10, color: "#f87171", fontWeight: "700" }}>!</Text>
+                        ) : isSeen ? (
+                          <View style={{ flexDirection: "row", alignItems: "center", gap: 2 }}>
+                            <Text style={{ fontSize: 10, color: "#7dd3fc", fontWeight: "700" }}>Seen</Text>
+                            <Ionicons name="checkmark-done" size={13} color="#7dd3fc" />
+                          </View>
+                        ) : item.status === "delivered" ? (
+                          <Ionicons name="checkmark-done" size={12} color="rgba(255, 255, 255, 0.85)" />
+                        ) : (
+                          <Ionicons name="checkmark" size={12} color="rgba(255, 255, 255, 0.85)" />
+                        )}
+                      </View>
+                    )}
                   </View>
                 </View>
-              );
-            }}
-          />
-        )}
+              </View>
+            );
+          }}
+        />
 
         {/* Modern WhatsApp/Insta Style Input Bar */}
         <View
           style={[
             styles.inputBar,
-            { backgroundColor: colors.card, borderTopColor: colors.border },
+            {
+              backgroundColor: colors.card,
+              borderTopColor: colors.border,
+              paddingBottom: isKeyboardOpen
+                ? (Platform.OS === "ios" ? 8 : 6)
+                : Math.max(insets.bottom, 10),
+            },
           ]}
         >
           <TextInput
@@ -545,9 +719,14 @@ export function MessagesScreen({ navigation, route }: any) {
             placeholderTextColor={colors.textMuted}
             value={inputMessage}
             onChangeText={setInputMessage}
-            multiline={true}
+            multiline={false}
             returnKeyType="send"
-            onSubmitEditing={handleSendMessage}
+            blurOnSubmit={false}
+            onSubmitEditing={(e) => {
+              const val = e.nativeEvent?.text || inputMessage;
+              handleSendMessage(val);
+            }}
+            autoCorrect={false}
           />
 
           <TouchableOpacity
@@ -557,8 +736,9 @@ export function MessagesScreen({ navigation, route }: any) {
                 backgroundColor: inputMessage.trim() ? colors.primary : colors.secondary,
               },
             ]}
-            onPress={handleSendMessage}
-            disabled={!inputMessage.trim() || isSending}
+            onPress={() => handleSendMessage()}
+            disabled={!inputMessage.trim()}
+            activeOpacity={0.8}
           >
             <Ionicons
               name="arrow-up"
@@ -663,6 +843,39 @@ export function MessagesScreen({ navigation, route }: any) {
             Whisper DMs
           </Text>
         </TouchableOpacity>
+      </View>
+
+      {/* In-Window Conversations Search Filter */}
+      <View
+        style={[
+          styles.convSearchBar,
+          {
+            backgroundColor: colors.card,
+            borderColor: colors.border,
+          },
+        ]}
+      >
+        <Feather name="search" size={14} color={colors.textMuted} />
+        <TextInput
+          style={[styles.convSearchInput, { color: colors.text }]}
+          placeholder={
+            activeTab === "whisper"
+              ? "Filter anonymous whispers..."
+              : "Filter chats or classmates..."
+          }
+          placeholderTextColor={colors.textMuted}
+          value={convFilter}
+          onChangeText={setConvFilter}
+          autoCorrect={false}
+        />
+        {convFilter.length > 0 && (
+          <TouchableOpacity
+            onPress={() => setConvFilter("")}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Ionicons name="close-circle" size={16} color={colors.textMuted} />
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Conversation Feed */}
@@ -944,9 +1157,26 @@ const styles = StyleSheet.create({
   tabsContainer: {
     flexDirection: "row",
     marginHorizontal: 16,
-    marginVertical: 10,
+    marginTop: 10,
+    marginBottom: 8,
     padding: 4,
     borderRadius: 12,
+  },
+  convSearchBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginHorizontal: 16,
+    marginBottom: 10,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    height: 38,
+    gap: 8,
+  },
+  convSearchInput: {
+    flex: 1,
+    fontSize: 13,
+    paddingVertical: 0,
   },
   tabItem: {
     flex: 1,
@@ -1126,17 +1356,17 @@ const styles = StyleSheet.create({
   },
   textInput: {
     flex: 1,
-    borderRadius: 20,
+    borderRadius: 22,
     borderWidth: 1,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    fontSize: 13,
-    maxHeight: 100,
+    paddingHorizontal: 16,
+    paddingVertical: Platform.OS === "ios" ? 10 : 8,
+    fontSize: 14,
+    minHeight: 40,
   },
   sendBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -1242,6 +1472,24 @@ const styles = StyleSheet.create({
   },
   searchPromptText: {
     fontSize: 12,
+  },
+  emptyThreadWrap: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 32,
+    paddingVertical: 64,
+    gap: 8,
+    transform: [{ scaleY: -1 }], // Counteracts inverted FlatList orientation
+  },
+  emptyThreadTitle: {
+    fontSize: 15,
+    fontWeight: "700",
+    marginTop: 4,
+  },
+  emptyThreadText: {
+    fontSize: 12,
+    textAlign: "center",
+    lineHeight: 18,
   },
 });
 

@@ -44,6 +44,7 @@ export function TabNavigator() {
       initialRouteName="Dashboard"
       screenOptions={{
         headerShown: false,
+        tabBarHideOnKeyboard: true,
         tabBarStyle: [
           styles.tabBar,
           {

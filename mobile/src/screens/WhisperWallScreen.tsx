@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -6,7 +6,6 @@ import {
   FlatList,
   TouchableOpacity,
   TextInput,
-  Modal,
   Alert,
   ActivityIndicator,
   RefreshControl,
@@ -17,6 +16,7 @@ import {
   KeyboardAvoidingView,
 } from "react-native";
 import { Ionicons, Feather } from "@expo/vector-icons";
+import { useFocusEffect } from "@react-navigation/native";
 import * as DocumentPicker from "expo-document-picker";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useTheme } from "../context/ThemeContext";
@@ -25,7 +25,6 @@ import { apiClient } from "../services/apiClient";
 import { Card } from "../components/ui/Card";
 import { Badge } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
-import { Input } from "../components/ui/Input";
 import { ClientServiceGuard } from "../components/ClientServiceGuard";
 
 interface WhisperPost {
@@ -46,6 +45,19 @@ interface WhisperPost {
   authorId?: string;
 }
 
+interface WhisperComment {
+  id: string;
+  postId: string;
+  content: string;
+  createdAt: string;
+  profile?: {
+    id?: string;
+    handle?: string;
+    avatarUrl?: string;
+    userId?: string;
+  };
+}
+
 const CATEGORIES = [
   { label: "All Whispers", value: "ALL" },
   { label: "Confessions", value: "CONFESSION" },
@@ -58,7 +70,9 @@ const STORAGE_KEY_WHISPERS = "@otium_cached_whispers";
 
 export const resolveMediaUri = (uri?: string) => {
   if (!uri) return "";
-  if (uri.startsWith("http://") || uri.startsWith("https://")) return uri;
+  if (uri.startsWith("http://") || uri.startsWith("https://") || uri.startsWith("file://") || uri.startsWith("content://")) {
+    return uri;
+  }
   if (uri.startsWith("/uploads/")) {
     return `http://192.168.31.146:3000${uri}`;
   }
@@ -68,10 +82,10 @@ export const resolveMediaUri = (uri?: string) => {
   return uri;
 };
 
-const SCREEN_WIDTH = Dimensions.get("window").width;
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 
 export function WhisperWallScreen({ navigation }: any) {
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
   const { user } = useUser();
 
   const [posts, setPosts] = useState<WhisperPost[]>([]);
@@ -80,19 +94,26 @@ export function WhisperWallScreen({ navigation }: any) {
   const [activeCategory, setActiveCategory] = useState<string>("ALL");
   const [scope, setScope] = useState<"CAMPUS" | "GLOBAL">("CAMPUS");
 
-  // Compose Modal State (Supports Multi-Image)
+  // Compose State (Supports Deferred Multi-Image Upload)
   const [isComposeOpen, setIsComposeOpen] = useState(false);
   const [composeContent, setComposeContent] = useState("");
   const [composeCategory, setComposeCategory] = useState<string>("CONFESSION");
   const [composeImages, setComposeImages] = useState<string[]>([]);
   const [composeUrlInput, setComposeUrlInput] = useState("");
-  const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Full-screen post modal & read more
   const [expandedPostIds, setExpandedPostIds] = useState<Set<string>>(new Set());
   const [activeModalPost, setActiveModalPost] = useState<WhisperPost | null>(null);
 
+  // Comments Bottom Sheet State
+  const [commentsModalPost, setCommentsModalPost] = useState<WhisperPost | null>(null);
+  const [postComments, setPostComments] = useState<WhisperComment[]>([]);
+  const [isLoadingComments, setIsLoadingComments] = useState(false);
+  const [commentInput, setCommentInput] = useState("");
+  const [isPostingComment, setIsPostingComment] = useState(false);
+
+  // 1. Instant Image Picker (Deferred upload - stores local URI with 0ms network latency)
   const handlePickImage = async () => {
     if (composeImages.length >= 4) {
       Alert.alert("Limit Reached", "You can upload a maximum of 4 photos per whisper.");
@@ -107,36 +128,10 @@ export function WhisperWallScreen({ navigation }: any) {
 
       if (result.canceled || !result.assets || result.assets.length === 0) return;
 
-      setIsUploadingImage(true);
-
-      const uploadedUrls: string[] = [];
-      for (const asset of result.assets) {
-        if (composeImages.length + uploadedUrls.length >= 4) break;
-        try {
-          const formData = new FormData();
-          formData.append("file", {
-            uri: asset.uri,
-            name: asset.name || "whisper_image.jpg",
-            type: asset.mimeType || "image/jpeg",
-          } as any);
-          formData.append("folder", "otium_wall_memes");
-
-          const uploadRes = await apiClient.post("/upload", formData);
-          if (uploadRes.success && uploadRes.data?.url) {
-            uploadedUrls.push(uploadRes.data.url);
-          } else {
-            uploadedUrls.push(asset.uri);
-          }
-        } catch {
-          uploadedUrls.push(asset.uri);
-        }
-      }
-
-      setComposeImages((prev) => [...prev, ...uploadedUrls].slice(0, 4));
+      const pickedUris = result.assets.map((a) => a.uri);
+      setComposeImages((prev) => [...prev, ...pickedUris].slice(0, 4));
     } catch {
       Alert.alert("Picker Error", "Could not select the image.");
-    } finally {
-      setIsUploadingImage(false);
     }
   };
 
@@ -227,9 +222,16 @@ export function WhisperWallScreen({ navigation }: any) {
     }
   };
 
-  useEffect(() => {
-    fetchPosts();
-  }, [activeCategory, scope]);
+  // Auto-fetch on screen focus + continuous 15s background polling for real-time posts
+  useFocusEffect(
+    useCallback(() => {
+      fetchPosts(false);
+      const pollTimer = setInterval(() => {
+        fetchPosts(false);
+      }, 15000);
+      return () => clearInterval(pollTimer);
+    }, [activeCategory, scope, user?.collegeId])
+  );
 
   const toggleExpandPost = (id: string) => {
     setExpandedPostIds((prev) => {
@@ -286,6 +288,7 @@ export function WhisperWallScreen({ navigation }: any) {
     }
   };
 
+  // 2. Deferred Upload on Post Submit (Uploads picked photos right before posting)
   const handleCreateWhisper = async () => {
     if (!composeContent.trim() || isSubmitting) {
       Alert.alert("Empty Post", "Please write your anonymous whisper before posting.");
@@ -293,30 +296,41 @@ export function WhisperWallScreen({ navigation }: any) {
     }
 
     setIsSubmitting(true);
-    const localPost: WhisperPost = {
-      id: Date.now().toString(),
-      handle: user?.name ? `Anon_${user.name.split(" ")[0]}` : "Anonymous Student",
-      avatarSeed: `Seed_${Date.now()}`,
-      campus: scope === "CAMPUS" ? (user?.college?.name || "JCBOSEUST, YMCA") : "Global Feed",
-      category: composeCategory,
-      content: composeContent.trim(),
-      mediaUrls: composeImages,
-      imageUrl: composeImages[0] || undefined,
-      createdAt: new Date().toISOString(),
-      upvotes: 1,
-      downvotes: 0,
-      commentCount: 0,
-      userVote: "UP",
-      authorId: user?.id,
-    };
 
     try {
+      // Upload any local image files to the server right before posting
+      const finalMediaUrls: string[] = [];
+      for (const uri of composeImages) {
+        if (uri.startsWith("http://") || uri.startsWith("https://")) {
+          finalMediaUrls.push(uri);
+        } else {
+          try {
+            const formData = new FormData();
+            formData.append("file", {
+              uri,
+              name: "whisper_photo.jpg",
+              type: "image/jpeg",
+            } as any);
+            formData.append("folder", "otium_wall_memes");
+
+            const uploadRes = await apiClient.post("/upload", formData);
+            if (uploadRes.success && uploadRes.data?.url) {
+              finalMediaUrls.push(uploadRes.data.url);
+            } else {
+              finalMediaUrls.push(uri);
+            }
+          } catch {
+            finalMediaUrls.push(uri);
+          }
+        }
+      }
+
       const res = await apiClient.post("/incognito", {
         content: composeContent.trim(),
         feedType: composeCategory,
         category: composeCategory,
-        mediaUrl: composeImages[0] || undefined,
-        mediaUrls: composeImages,
+        mediaUrl: finalMediaUrls[0] || undefined,
+        mediaUrls: finalMediaUrls,
         scope,
         collegeId: user?.collegeId,
       });
@@ -329,7 +343,23 @@ export function WhisperWallScreen({ navigation }: any) {
         setComposeUrlInput("");
         fetchPosts();
       } else {
-        // Save locally
+        // Fallback local save
+        const localPost: WhisperPost = {
+          id: Date.now().toString(),
+          handle: user?.name ? `Anon_${user.name.split(" ")[0]}` : "Anonymous Student",
+          avatarSeed: `Seed_${Date.now()}`,
+          campus: scope === "CAMPUS" ? (user?.college?.name || "JCBOSEUST, YMCA") : "Global Feed",
+          category: composeCategory,
+          content: composeContent.trim(),
+          mediaUrls: finalMediaUrls,
+          imageUrl: finalMediaUrls[0] || undefined,
+          createdAt: new Date().toISOString(),
+          upvotes: 1,
+          downvotes: 0,
+          commentCount: 0,
+          userVote: "UP",
+          authorId: user?.id,
+        };
         const updated = [localPost, ...posts];
         setPosts(updated);
         AsyncStorage.setItem(STORAGE_KEY_WHISPERS, JSON.stringify(updated)).catch(() => {});
@@ -340,6 +370,22 @@ export function WhisperWallScreen({ navigation }: any) {
         setComposeUrlInput("");
       }
     } catch {
+      const localPost: WhisperPost = {
+        id: Date.now().toString(),
+        handle: user?.name ? `Anon_${user.name.split(" ")[0]}` : "Anonymous Student",
+        avatarSeed: `Seed_${Date.now()}`,
+        campus: scope === "CAMPUS" ? (user?.college?.name || "JCBOSEUST, YMCA") : "Global Feed",
+        category: composeCategory,
+        content: composeContent.trim(),
+        mediaUrls: composeImages,
+        imageUrl: composeImages[0] || undefined,
+        createdAt: new Date().toISOString(),
+        upvotes: 1,
+        downvotes: 0,
+        commentCount: 0,
+        userVote: "UP",
+        authorId: user?.id,
+      };
       const updated = [localPost, ...posts];
       setPosts(updated);
       AsyncStorage.setItem(STORAGE_KEY_WHISPERS, JSON.stringify(updated)).catch(() => {});
@@ -350,6 +396,108 @@ export function WhisperWallScreen({ navigation }: any) {
       setComposeUrlInput("");
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  // 3. Post Deletion (Author or Super Admin)
+  const handleDeletePost = (postId: string) => {
+    Alert.alert(
+      "Delete Whisper",
+      "Are you sure you want to permanently delete this whisper? This cannot be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            // Optimistic removal
+            setPosts((prev) => prev.filter((p) => p.id !== postId));
+            if (activeModalPost?.id === postId) setActiveModalPost(null);
+            if (commentsModalPost?.id === postId) setCommentsModalPost(null);
+
+            try {
+              const res = await apiClient.delete(`/incognito?postId=${postId}`);
+              if (!res.success) {
+                console.warn("Delete post warning:", res.error);
+              }
+            } catch (err) {
+              console.error("Error deleting whisper post:", err);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  // 4. Comments Handlers
+  const handleOpenComments = async (post: WhisperPost) => {
+    setCommentsModalPost(post);
+    setPostComments([]);
+    setIsLoadingComments(true);
+
+    try {
+      const res = await apiClient.get(`/incognito?postId=${post.id}&comments=true`);
+      if (res.success && Array.isArray(res.data)) {
+        setPostComments(res.data);
+      }
+    } catch {
+      console.log("[Comments Note]: Failed to load comments");
+    } finally {
+      setIsLoadingComments(false);
+    }
+  };
+
+  const handleSendComment = async () => {
+    if (!commentInput.trim() || !commentsModalPost || isPostingComment) return;
+
+    const trimmed = commentInput.trim();
+    const targetPostId = commentsModalPost.id;
+    setCommentInput("");
+    setIsPostingComment(true);
+
+    const tempId = `temp_${Date.now()}`;
+    const optimisticComment: WhisperComment = {
+      id: tempId,
+      postId: targetPostId,
+      content: trimmed,
+      createdAt: new Date().toISOString(),
+      profile: {
+        id: "me",
+        handle: user?.name ? `Anon_${user.name.split(" ")[0]}` : "Anonymous Student",
+        avatarUrl: `https://api.dicebear.com/9.x/bottts/png?seed=${encodeURIComponent(user?.name || "me")}&size=80`,
+        userId: user?.id,
+      },
+    };
+
+    // Instant optimistic update
+    setPostComments((prev) => [...prev, optimisticComment]);
+    setPosts((prev) =>
+      prev.map((p) =>
+        p.id === targetPostId ? { ...p, commentCount: (p.commentCount || 0) + 1 } : p
+      )
+    );
+    if (activeModalPost?.id === targetPostId) {
+      setActiveModalPost((prev) =>
+        prev ? { ...prev, commentCount: (prev.commentCount || 0) + 1 } : null
+      );
+    }
+
+    try {
+      const res = await apiClient.post("/incognito", {
+        action: "COMMENT",
+        postId: targetPostId,
+        content: trimmed,
+      });
+
+      if (res.success && res.data) {
+        setPostComments((prev) =>
+          prev.map((c) => (c.id === tempId ? res.data : c))
+        );
+      }
+    } catch {
+      // keep optimistic
+    } finally {
+      setIsPostingComment(false);
     }
   };
 
@@ -376,19 +524,10 @@ export function WhisperWallScreen({ navigation }: any) {
           initialTab: "whisper",
         });
       } else {
-        // Fallback session to prevent blocking user if server deployment is still completing
-        const fallbackConvId = `whisper_${post.authorId || post.id}`;
-        navigation?.navigate("Messages", {
-          conversationId: fallbackConvId,
-          initialTab: "whisper",
-        });
+        Alert.alert("Unable to Start Chat", res.error || "Could not initialize anonymous whisper conversation.");
       }
-    } catch {
-      const fallbackConvId = `whisper_${post.authorId || post.id}`;
-      navigation?.navigate("Messages", {
-        conversationId: fallbackConvId,
-        initialTab: "whisper",
-      });
+    } catch (err: any) {
+      Alert.alert("Connection Error", err?.message || "Please check your network and try again.");
     }
   };
 
@@ -405,18 +544,6 @@ export function WhisperWallScreen({ navigation }: any) {
           </View>
 
           <View style={styles.headerActions}>
-            {/* Quick 1-tap Whisper DMs navigation */}
-            <TouchableOpacity
-              onPress={() => navigation?.navigate("Messages", { initialTab: "whisper" })}
-              style={[
-                styles.headerDmBtn,
-                { backgroundColor: colors.secondary, borderColor: colors.border },
-              ]}
-            >
-              <Ionicons name="chatbubbles-outline" size={15} color={colors.primary} />
-              <Text style={[styles.headerDmBtnText, { color: colors.text }]}>DMs</Text>
-            </TouchableOpacity>
-
             {/* Compose button */}
             <TouchableOpacity
               onPress={() => setIsComposeOpen(true)}
@@ -541,6 +668,10 @@ export function WhisperWallScreen({ navigation }: any) {
           <FlatList
             data={posts}
             keyExtractor={(item) => item.id}
+            initialNumToRender={8}
+            maxToRenderPerBatch={8}
+            windowSize={5}
+            removeClippedSubviews={Platform.OS === "android"}
             refreshControl={
               <RefreshControl
                 refreshing={refreshing}
@@ -556,6 +687,7 @@ export function WhisperWallScreen({ navigation }: any) {
               const avatarUri = `https://api.dicebear.com/9.x/bottts/png?seed=${encodeURIComponent(seed)}&size=80`;
               const mediaList = item.mediaUrls && item.mediaUrls.length > 0 ? item.mediaUrls : item.imageUrl ? [item.imageUrl] : [];
               const isLiked = item.userVote === "UP";
+              const isAuthor = (item.authorId && user?.id && item.authorId === user.id) || (user?.role === "SUPER_ADMIN");
 
               return (
                 <Card style={styles.postCard}>
@@ -573,9 +705,21 @@ export function WhisperWallScreen({ navigation }: any) {
                       </View>
                     </View>
 
-                    <Badge variant="outline" size="sm">
-                      {item.category || "CONFESSION"}
-                    </Badge>
+                    <View style={styles.postAuthorRight}>
+                      <Badge variant="outline" size="sm">
+                        {item.category || "CONFESSION"}
+                      </Badge>
+                      {/* Author delete button */}
+                      {isAuthor && (
+                        <TouchableOpacity
+                          onPress={() => handleDeletePost(item.id)}
+                          style={[styles.deleteBtn, { backgroundColor: colors.destructive + "15", borderColor: colors.destructive + "30" }]}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <Ionicons name="trash-outline" size={13} color={colors.destructive} />
+                        </TouchableOpacity>
+                      )}
+                    </View>
                   </View>
 
                   {/* Content */}
@@ -632,35 +776,60 @@ export function WhisperWallScreen({ navigation }: any) {
                     </View>
                   ) : null}
 
-                  {/* Footer Controls: Heart Like, Full View, Whisper DM */}
+                  {/* Footer Controls: Heart Like, Comments, Full View, Whisper DM */}
                   <View style={[styles.postFooter, { borderTopColor: colors.border }]}>
-                    {/* Responsive Heart Like Button (0ms Lag-Free) */}
-                    <TouchableOpacity
-                      onPress={() => handleToggleLike(item)}
-                      style={[
-                        styles.likeBtn,
-                        {
-                          backgroundColor: isLiked ? colors.destructive + "15" : colors.secondary,
-                          borderColor: isLiked ? colors.destructive + "40" : colors.border,
-                        },
-                      ]}
-                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                      activeOpacity={0.7}
-                    >
-                      <Ionicons
-                        name={isLiked ? "heart" : "heart-outline"}
-                        size={17}
-                        color={isLiked ? colors.destructive : colors.textMuted}
-                      />
-                      <Text
+                    <View style={styles.footerLeftActions}>
+                      {/* Responsive Heart Like Button (0ms Lag-Free) */}
+                      <TouchableOpacity
+                        onPress={() => handleToggleLike(item)}
                         style={[
-                          styles.likeCount,
-                          { color: isLiked ? colors.destructive : colors.text },
+                          styles.likeBtn,
+                          {
+                            backgroundColor: isLiked ? colors.destructive + "15" : colors.secondary,
+                            borderColor: isLiked ? colors.destructive + "40" : colors.border,
+                          },
                         ]}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        activeOpacity={0.7}
                       >
-                        {item.upvotes || 0}
-                      </Text>
-                    </TouchableOpacity>
+                        <Ionicons
+                          name={isLiked ? "heart" : "heart-outline"}
+                          size={16}
+                          color={isLiked ? colors.destructive : colors.textMuted}
+                        />
+                        <Text
+                          style={[
+                            styles.likeCount,
+                            { color: isLiked ? colors.destructive : colors.text },
+                          ]}
+                        >
+                          {item.upvotes || 0}
+                        </Text>
+                      </TouchableOpacity>
+
+                      {/* Comments Button */}
+                      <TouchableOpacity
+                        onPress={() => handleOpenComments(item)}
+                        style={[
+                          styles.commentBtn,
+                          {
+                            backgroundColor: colors.secondary,
+                            borderColor: colors.border,
+                          },
+                        ]}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        activeOpacity={0.7}
+                      >
+                        <Ionicons
+                          name="chatbubble-outline"
+                          size={15}
+                          color={colors.textMuted}
+                        />
+                        <Text style={[styles.commentCount, { color: colors.text }]}>
+                          {item.commentCount || 0}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
 
                     {/* Right side controls */}
                     <View style={styles.postControlsRight}>
@@ -691,297 +860,457 @@ export function WhisperWallScreen({ navigation }: any) {
           />
         )}
 
-        {/* 4. Compose Whisper Bottom Sheet Modal */}
-        <Modal
-          visible={isComposeOpen}
-          animationType="slide"
-          transparent={true}
-          onRequestClose={() => setIsComposeOpen(false)}
-        >
-          <KeyboardAvoidingView
-            style={styles.modalOverlay}
-            behavior={Platform.OS === "ios" ? "padding" : undefined}
-          >
-            <View
-              style={[
-                styles.modalContent,
-                { backgroundColor: colors.card, borderColor: colors.border },
-              ]}
+        {/* 4. In-Place Compose Whisper Bottom Sheet (No Android Modal Glitches, Soft Keyboard Safe) */}
+        {isComposeOpen && (
+          <View style={styles.inPlaceOverlay}>
+            <TouchableOpacity
+              style={styles.inPlaceBackdrop}
+              activeOpacity={1}
+              onPress={() => !isSubmitting && setIsComposeOpen(false)}
+            />
+            <KeyboardAvoidingView
+              behavior={Platform.OS === "ios" ? "padding" : undefined}
+              style={styles.sheetWrapper}
             >
-              <View style={styles.modalHeader}>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.modalTitle, { color: colors.text }]}>Post Anonymous Whisper</Text>
-                  <Text style={[styles.modalSubtitle, { color: colors.textMuted }]}>
-                    Identity protected by cryptographic alias & robot avatar
-                  </Text>
+              <View
+                style={[
+                  styles.modalContent,
+                  { backgroundColor: colors.card, borderColor: colors.border },
+                ]}
+              >
+                <View style={styles.modalHeader}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.modalTitle, { color: colors.text }]}>Post Anonymous Whisper</Text>
+                    <Text style={[styles.modalSubtitle, { color: colors.textMuted }]}>
+                      Identity protected by cryptographic alias & robot avatar
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => !isSubmitting && setIsComposeOpen(false)}
+                    style={{ padding: 4 }}
+                  >
+                    <Ionicons name="close" size={22} color={colors.textMuted} />
+                  </TouchableOpacity>
                 </View>
-                <TouchableOpacity onPress={() => setIsComposeOpen(false)} style={{ padding: 4 }}>
-                  <Ionicons name="close" size={22} color={colors.textMuted} />
-                </TouchableOpacity>
-              </View>
 
-              <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 420 }}>
-                {/* Category Selection */}
-                <View style={styles.formGroup}>
-                  <Text style={[styles.formLabel, { color: colors.text }]}>Category</Text>
-                  <View style={styles.categoryPillsWrap}>
-                    {CATEGORIES.filter((c) => c.value !== "ALL").map((cat) => (
-                      <TouchableOpacity
-                        key={cat.value}
-                        onPress={() => setComposeCategory(cat.value)}
-                        style={[
-                          styles.modalCategoryChip,
-                          {
-                            backgroundColor:
-                              composeCategory === cat.value ? colors.primary + "18" : colors.secondary,
-                            borderColor:
-                              composeCategory === cat.value ? colors.primary : colors.border,
-                          },
-                        ]}
-                      >
-                        <Text
+                <ScrollView
+                  showsVerticalScrollIndicator={false}
+                  keyboardShouldPersistTaps="handled"
+                  style={{ maxHeight: SCREEN_HEIGHT * 0.52 }}
+                  contentContainerStyle={{ paddingBottom: 12 }}
+                >
+                  {/* Category Selection */}
+                  <View style={styles.formGroup}>
+                    <Text style={[styles.formLabel, { color: colors.text }]}>Category</Text>
+                    <View style={styles.categoryPillsWrap}>
+                      {CATEGORIES.filter((c) => c.value !== "ALL").map((cat) => (
+                        <TouchableOpacity
+                          key={cat.value}
+                          onPress={() => setComposeCategory(cat.value)}
                           style={[
-                            styles.modalCategoryChipText,
+                            styles.modalCategoryChip,
                             {
-                              color: composeCategory === cat.value ? colors.primary : colors.textMuted,
-                              fontWeight: composeCategory === cat.value ? "700" : "500",
+                              backgroundColor:
+                                composeCategory === cat.value ? colors.primary + "18" : colors.secondary,
+                              borderColor:
+                                composeCategory === cat.value ? colors.primary : colors.border,
                             },
                           ]}
                         >
-                          {cat.label}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
+                          <Text
+                            style={[
+                              styles.modalCategoryChipText,
+                              {
+                                color: composeCategory === cat.value ? colors.primary : colors.textMuted,
+                                fontWeight: composeCategory === cat.value ? "700" : "500",
+                              },
+                            ]}
+                          >
+                            {cat.label}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
                   </View>
-                </View>
 
-                {/* Text Content */}
-                <View style={[styles.formGroup, { marginTop: 12 }]}>
-                  <Text style={[styles.formLabel, { color: colors.text }]}>Whisper Content *</Text>
-                  <TextInput
-                    style={[
-                      styles.composeTextarea,
-                      { color: colors.text, borderColor: colors.border, backgroundColor: colors.secondary + "40" },
-                    ]}
-                    placeholder="Share your campus secret, question, confession, or funny moment..."
-                    placeholderTextColor={colors.textMuted}
-                    value={composeContent}
-                    onChangeText={setComposeContent}
-                    multiline
-                    numberOfLines={4}
-                  />
-                </View>
+                  {/* Text Content */}
+                  <View style={[styles.formGroup, { marginTop: 12 }]}>
+                    <Text style={[styles.formLabel, { color: colors.text }]}>Whisper Content *</Text>
+                    <TextInput
+                      style={[
+                        styles.composeTextarea,
+                        { color: colors.text, borderColor: colors.border, backgroundColor: colors.secondary + "40" },
+                      ]}
+                      placeholder="Share your campus secret, question, confession, or funny moment..."
+                      placeholderTextColor={colors.textMuted}
+                      value={composeContent}
+                      onChangeText={setComposeContent}
+                      multiline
+                      numberOfLines={4}
+                    />
+                  </View>
 
-                {/* Multi-Image Attachment */}
-                <View style={[styles.formGroup, { marginTop: 12 }]}>
-                  <View style={styles.mediaLabelRow}>
-                    <Text style={[styles.formLabel, { color: colors.text }]}>
-                      Attached Photos / Memes ({composeImages.length}/4)
-                    </Text>
-                    {composeImages.length < 4 && (
+                  {/* Multi-Image Attachment */}
+                  <View style={[styles.formGroup, { marginTop: 12 }]}>
+                    <View style={styles.mediaLabelRow}>
+                      <Text style={[styles.formLabel, { color: colors.text }]}>
+                        Attached Photos / Memes ({composeImages.length}/4)
+                      </Text>
+                      {composeImages.length < 4 && (
+                        <TouchableOpacity
+                          onPress={handlePickImage}
+                          style={[styles.addPhotoChip, { backgroundColor: colors.primary + "15", borderColor: colors.primary + "30" }]}
+                        >
+                          <Feather name="plus" size={13} color={colors.primary} />
+                          <Text style={[styles.addPhotoChipText, { color: colors.primary }]}>Add Image</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+
+                    {/* Thumbnail Previews */}
+                    {composeImages.length > 0 && (
+                      <ScrollView
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        contentContainerStyle={styles.thumbScrollRow}
+                      >
+                        {composeImages.map((uri, idx) => (
+                          <View key={idx} style={styles.thumbWrap}>
+                            <Image source={{ uri: resolveMediaUri(uri) }} style={styles.thumbImage} />
+                            <TouchableOpacity
+                              onPress={() => handleRemoveComposeImage(idx)}
+                              style={styles.thumbDeleteBadge}
+                            >
+                              <Ionicons name="close" size={13} color="#FFF" />
+                            </TouchableOpacity>
+                          </View>
+                        ))}
+                      </ScrollView>
+                    )}
+
+                    {/* Pick Button if 0 photos */}
+                    {composeImages.length === 0 && (
                       <TouchableOpacity
                         onPress={handlePickImage}
-                        disabled={isUploadingImage}
-                        style={[styles.addPhotoChip, { backgroundColor: colors.primary + "15", borderColor: colors.primary + "30" }]}
-                      >
-                        <Feather name="plus" size={13} color={colors.primary} />
-                        <Text style={[styles.addPhotoChipText, { color: colors.primary }]}>Add Image</Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
-
-                  {/* Thumbnail Previews */}
-                  {composeImages.length > 0 && (
-                    <ScrollView
-                      horizontal
-                      showsHorizontalScrollIndicator={false}
-                      contentContainerStyle={styles.thumbScrollRow}
-                    >
-                      {composeImages.map((uri, idx) => (
-                        <View key={idx} style={styles.thumbWrap}>
-                          <Image source={{ uri: resolveMediaUri(uri) }} style={styles.thumbImage} />
-                          <TouchableOpacity
-                            onPress={() => handleRemoveComposeImage(idx)}
-                            style={styles.thumbDeleteBadge}
-                          >
-                            <Ionicons name="close" size={13} color="#FFF" />
-                          </TouchableOpacity>
-                        </View>
-                      ))}
-                    </ScrollView>
-                  )}
-
-                  {/* Pick Button if 0 photos */}
-                  {composeImages.length === 0 && (
-                    <TouchableOpacity
-                      onPress={handlePickImage}
-                      disabled={isUploadingImage}
-                      style={[
-                        styles.uploadImageBtn,
-                        { borderColor: colors.border, backgroundColor: colors.secondary + "30" },
-                      ]}
-                    >
-                      {isUploadingImage ? (
-                        <ActivityIndicator size="small" color={colors.primary} />
-                      ) : (
-                        <>
-                          <Ionicons name="images-outline" size={20} color={colors.primary} />
-                          <Text style={[styles.uploadImageText, { color: colors.text }]}>
-                            Select Photos or Memes (up to 4)
-                          </Text>
-                        </>
-                      )}
-                    </TouchableOpacity>
-                  )}
-
-                  {/* Quick URL paste */}
-                  {composeImages.length < 4 && (
-                    <View style={styles.urlInputRow}>
-                      <TextInput
-                        style={[styles.urlInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.secondary + "30" }]}
-                        placeholder="Or paste image URL link..."
-                        placeholderTextColor={colors.textMuted}
-                        value={composeUrlInput}
-                        onChangeText={setComposeUrlInput}
-                        autoCapitalize="none"
-                      />
-                      <TouchableOpacity
-                        onPress={handleAddUrlImage}
-                        disabled={!composeUrlInput.trim()}
                         style={[
-                          styles.urlAddBtn,
-                          { backgroundColor: composeUrlInput.trim() ? colors.primary : colors.secondary },
+                          styles.uploadImageBtn,
+                          { borderColor: colors.border, backgroundColor: colors.secondary + "30" },
                         ]}
                       >
-                        <Text style={[styles.urlAddBtnText, { color: composeUrlInput.trim() ? colors.primaryForeground : colors.textMuted }]}>
-                          + Add
+                        <Ionicons name="images-outline" size={20} color={colors.primary} />
+                        <Text style={[styles.uploadImageText, { color: colors.text }]}>
+                          Select Photos or Memes (up to 4)
                         </Text>
                       </TouchableOpacity>
-                    </View>
-                  )}
+                    )}
+
+                    {/* Quick URL paste */}
+                    {composeImages.length < 4 && (
+                      <View style={styles.urlInputRow}>
+                        <TextInput
+                          style={[styles.urlInput, { color: colors.text, borderColor: colors.border, backgroundColor: colors.secondary + "30" }]}
+                          placeholder="Or paste image URL link..."
+                          placeholderTextColor={colors.textMuted}
+                          value={composeUrlInput}
+                          onChangeText={setComposeUrlInput}
+                          autoCapitalize="none"
+                        />
+                        <TouchableOpacity
+                          onPress={handleAddUrlImage}
+                          disabled={!composeUrlInput.trim()}
+                          style={[
+                            styles.urlAddBtn,
+                            { backgroundColor: composeUrlInput.trim() ? colors.primary : colors.secondary },
+                          ]}
+                        >
+                          <Text style={[styles.urlAddBtnText, { color: composeUrlInput.trim() ? colors.primaryForeground : colors.textMuted }]}>
+                            + Add
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                  </View>
+                </ScrollView>
+
+                <View style={styles.modalFooter}>
+                  <Button
+                    title="Cancel"
+                    variant="outline"
+                    size="sm"
+                    onPress={() => setIsComposeOpen(false)}
+                    disabled={isSubmitting}
+                  />
+                  <Button
+                    title={isSubmitting ? "Posting..." : "Post Whisper"}
+                    variant="default"
+                    size="sm"
+                    onPress={handleCreateWhisper}
+                    disabled={isSubmitting}
+                  />
                 </View>
-              </ScrollView>
-
-              <View style={styles.modalFooter}>
-                <Button
-                  title="Cancel"
-                  variant="outline"
-                  size="sm"
-                  onPress={() => setIsComposeOpen(false)}
-                />
-                <Button
-                  title={isSubmitting ? "Posting..." : "Post Whisper"}
-                  variant="default"
-                  size="sm"
-                  onPress={handleCreateWhisper}
-                  disabled={isSubmitting}
-                />
               </View>
-            </View>
-          </KeyboardAvoidingView>
-        </Modal>
+            </KeyboardAvoidingView>
+          </View>
+        )}
 
-        {/* 5. Dedicated Full-Screen Post Modal */}
-        <Modal
-          visible={!!activeModalPost}
-          animationType="fade"
-          transparent={true}
-          onRequestClose={() => setActiveModalPost(null)}
-        >
-          <View style={styles.modalOverlay}>
-            <View
-              style={[
-                styles.fullViewContent,
-                { backgroundColor: colors.card, borderColor: colors.border },
-              ]}
+        {/* 5. In-Place Comments Bottom Sheet (Soft Keyboard Safe) */}
+        {commentsModalPost && (
+          <View style={styles.inPlaceOverlay}>
+            <TouchableOpacity
+              style={styles.inPlaceBackdrop}
+              activeOpacity={1}
+              onPress={() => setCommentsModalPost(null)}
+            />
+            <KeyboardAvoidingView
+              behavior={Platform.OS === "ios" ? "padding" : undefined}
+              style={styles.sheetWrapper}
             >
-              <View style={styles.modalHeader}>
-                <View style={styles.authorLeft}>
-                  <Image
-                    source={{
-                      uri: `https://api.dicebear.com/9.x/bottts/png?seed=${encodeURIComponent(activeModalPost?.avatarSeed || activeModalPost?.handle || "bot")}&size=80`,
-                    }}
-                    style={styles.botAvatar}
-                  />
-                  <View style={{ marginLeft: 8 }}>
-                    <Text style={[styles.authorHandle, { color: colors.text }]}>
-                      {activeModalPost?.handle || "Anonymous Student"}
-                    </Text>
-                    <Text style={[styles.timeAgo, { color: colors.textMuted }]}>
-                      {activeModalPost?.category || "CONFESSION"} • {activeModalPost?.campus || "Campus"}
+              <View
+                style={[
+                  styles.modalContent,
+                  { backgroundColor: colors.card, borderColor: colors.border },
+                ]}
+              >
+                <View style={styles.modalHeader}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.modalTitle, { color: colors.text }]}>Whisper Replies</Text>
+                    <Text style={[styles.modalSubtitle, { color: colors.textMuted }]} numberOfLines={1}>
+                      Replying to {commentsModalPost.handle}: "{commentsModalPost.content.slice(0, 45)}..."
                     </Text>
                   </View>
+                  <TouchableOpacity onPress={() => setCommentsModalPost(null)} style={{ padding: 4 }}>
+                    <Ionicons name="close" size={22} color={colors.textMuted} />
+                  </TouchableOpacity>
                 </View>
-                <TouchableOpacity onPress={() => setActiveModalPost(null)} style={{ padding: 4 }}>
-                  <Ionicons name="close" size={22} color={colors.textMuted} />
-                </TouchableOpacity>
-              </View>
 
-              <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 340 }}>
-                <Text style={[styles.fullViewText, { color: colors.text }]}>
-                  {activeModalPost?.content}
-                </Text>
-                
-                {/* Images list in Full View */}
-                {activeModalPost?.mediaUrls && activeModalPost.mediaUrls.length > 0 ? (
-                  <View style={{ marginTop: 12, gap: 10 }}>
-                    {activeModalPost.mediaUrls.map((uri, i) => (
-                      <Image
-                        key={i}
-                        source={{ uri: resolveMediaUri(uri) }}
-                        style={styles.modalFullImage}
-                        resizeMode="cover"
-                      />
-                    ))}
-                  </View>
-                ) : activeModalPost?.imageUrl ? (
-                  <Image
-                    source={{ uri: resolveMediaUri(activeModalPost.imageUrl) }}
-                    style={styles.modalFullImage}
-                    resizeMode="cover"
-                  />
-                ) : null}
-              </ScrollView>
+                {/* Comments List */}
+                <ScrollView
+                  showsVerticalScrollIndicator={false}
+                  keyboardShouldPersistTaps="handled"
+                  style={{ maxHeight: SCREEN_HEIGHT * 0.42 }}
+                  contentContainerStyle={{ gap: 10, paddingVertical: 6 }}
+                >
+                  {isLoadingComments ? (
+                    <View style={{ paddingVertical: 24, alignItems: "center" }}>
+                      <ActivityIndicator size="small" color={colors.primary} />
+                      <Text style={{ fontSize: 12, color: colors.textMuted, marginTop: 8 }}>
+                        Decrypting whisper replies...
+                      </Text>
+                    </View>
+                  ) : postComments.length === 0 ? (
+                    <View style={{ paddingVertical: 24, alignItems: "center", gap: 6 }}>
+                      <Ionicons name="chatbubbles-outline" size={32} color={colors.textMuted} />
+                      <Text style={{ fontSize: 13, fontWeight: "600", color: colors.text }}>No replies yet</Text>
+                      <Text style={{ fontSize: 11, color: colors.textMuted, textAlign: "center" }}>
+                        Be the first anonymous peer to reply to this whisper!
+                      </Text>
+                    </View>
+                  ) : (
+                    postComments.map((comment) => {
+                      const cHandle = comment.profile?.handle || "Anonymous Student";
+                      const cAvatar = `https://api.dicebear.com/9.x/bottts/png?seed=${encodeURIComponent(cHandle)}&size=80`;
+                      return (
+                        <View
+                          key={comment.id}
+                          style={[
+                            styles.commentItem,
+                            { backgroundColor: colors.secondary + "40", borderColor: colors.border },
+                          ]}
+                        >
+                          <View style={styles.commentHeaderRow}>
+                            <View style={styles.authorLeft}>
+                              <Image source={{ uri: cAvatar }} style={styles.commentAvatar} />
+                              <Text style={[styles.commentHandle, { color: colors.text }]}>
+                                {cHandle}
+                              </Text>
+                            </View>
+                            <Text style={[styles.commentTime, { color: colors.textMuted }]}>
+                              {comment.createdAt ? new Date(comment.createdAt).toLocaleDateString([], { month: "short", day: "numeric" }) : "Just now"}
+                            </Text>
+                          </View>
+                          <Text style={[styles.commentBody, { color: colors.text }]}>
+                            {comment.content}
+                          </Text>
+                        </View>
+                      );
+                    })
+                  )}
+                </ScrollView>
 
-              <View style={[styles.fullViewFooter, { borderTopColor: colors.border }]}>
-                {activeModalPost && (
-                  <TouchableOpacity
-                    onPress={() => handleToggleLike(activeModalPost)}
+                {/* Docked Reply Input Bar */}
+                <View style={[styles.commentInputRow, { borderTopColor: colors.border }]}>
+                  <TextInput
                     style={[
-                      styles.likeBtn,
+                      styles.commentTextInput,
+                      { color: colors.text, borderColor: colors.border, backgroundColor: colors.secondary + "50" },
+                    ]}
+                    placeholder="Whisper a reply anonymously..."
+                    placeholderTextColor={colors.textMuted}
+                    value={commentInput}
+                    onChangeText={setCommentInput}
+                    multiline
+                    maxLength={500}
+                  />
+                  <TouchableOpacity
+                    onPress={handleSendComment}
+                    disabled={!commentInput.trim() || isPostingComment}
+                    style={[
+                      styles.commentSendBtn,
                       {
-                        backgroundColor: activeModalPost.userVote === "UP" ? colors.destructive + "15" : colors.secondary,
-                        borderColor: activeModalPost.userVote === "UP" ? colors.destructive + "40" : colors.border,
+                        backgroundColor: commentInput.trim() ? colors.primary : colors.secondary,
                       },
                     ]}
                   >
-                    <Ionicons
-                      name={activeModalPost.userVote === "UP" ? "heart" : "heart-outline"}
-                      size={17}
-                      color={activeModalPost.userVote === "UP" ? colors.destructive : colors.textMuted}
+                    {isPostingComment ? (
+                      <ActivityIndicator size="small" color={colors.primaryForeground} />
+                    ) : (
+                      <Ionicons
+                        name="send"
+                        size={15}
+                        color={commentInput.trim() ? colors.primaryForeground : colors.textMuted}
+                      />
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </KeyboardAvoidingView>
+          </View>
+        )}
+
+        {/* 6. In-Place Full-Screen Post View */}
+        {activeModalPost && (
+          <View style={styles.inPlaceOverlay}>
+            <TouchableOpacity
+              style={styles.inPlaceBackdrop}
+              activeOpacity={1}
+              onPress={() => setActiveModalPost(null)}
+            />
+            <View style={styles.sheetWrapper}>
+              <View
+                style={[
+                  styles.fullViewContent,
+                  { backgroundColor: colors.card, borderColor: colors.border },
+                ]}
+              >
+                <View style={styles.modalHeader}>
+                  <View style={styles.authorLeft}>
+                    <Image
+                      source={{
+                        uri: `https://api.dicebear.com/9.x/bottts/png?seed=${encodeURIComponent(activeModalPost?.avatarSeed || activeModalPost?.handle || "bot")}&size=80`,
+                      }}
+                      style={styles.botAvatar}
                     />
-                    <Text
+                    <View style={{ marginLeft: 8 }}>
+                      <Text style={[styles.authorHandle, { color: colors.text }]}>
+                        {activeModalPost?.handle || "Anonymous Student"}
+                      </Text>
+                      <Text style={[styles.timeAgo, { color: colors.textMuted }]}>
+                        {activeModalPost?.category || "CONFESSION"} • {activeModalPost?.campus || "Campus"}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    {((activeModalPost.authorId && user?.id && activeModalPost.authorId === user.id) || (user?.role === "SUPER_ADMIN")) && (
+                      <TouchableOpacity
+                        onPress={() => handleDeletePost(activeModalPost.id)}
+                        style={[styles.deleteBtn, { backgroundColor: colors.destructive + "15", borderColor: colors.destructive + "30" }]}
+                      >
+                        <Ionicons name="trash-outline" size={14} color={colors.destructive} />
+                      </TouchableOpacity>
+                    )}
+                    <TouchableOpacity onPress={() => setActiveModalPost(null)} style={{ padding: 4 }}>
+                      <Ionicons name="close" size={22} color={colors.textMuted} />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: SCREEN_HEIGHT * 0.45 }}>
+                  <Text style={[styles.fullViewText, { color: colors.text }]}>
+                    {activeModalPost?.content}
+                  </Text>
+
+                  {/* Images list in Full View */}
+                  {activeModalPost?.mediaUrls && activeModalPost.mediaUrls.length > 0 ? (
+                    <View style={{ marginTop: 12, gap: 10 }}>
+                      {activeModalPost.mediaUrls.map((uri, i) => (
+                        <Image
+                          key={i}
+                          source={{ uri: resolveMediaUri(uri) }}
+                          style={styles.modalFullImage}
+                          resizeMode="cover"
+                        />
+                      ))}
+                    </View>
+                  ) : activeModalPost?.imageUrl ? (
+                    <Image
+                      source={{ uri: resolveMediaUri(activeModalPost.imageUrl) }}
+                      style={styles.modalFullImage}
+                      resizeMode="cover"
+                    />
+                  ) : null}
+                </ScrollView>
+
+                <View style={[styles.fullViewFooter, { borderTopColor: colors.border }]}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    <TouchableOpacity
+                      onPress={() => handleToggleLike(activeModalPost)}
                       style={[
-                        styles.likeCount,
-                        { color: activeModalPost.userVote === "UP" ? colors.destructive : colors.text },
+                        styles.likeBtn,
+                        {
+                          backgroundColor: activeModalPost.userVote === "UP" ? colors.destructive + "15" : colors.secondary,
+                          borderColor: activeModalPost.userVote === "UP" ? colors.destructive + "40" : colors.border,
+                        },
                       ]}
                     >
-                      {activeModalPost.upvotes || 0}
-                    </Text>
-                  </TouchableOpacity>
-                )}
+                      <Ionicons
+                        name={activeModalPost.userVote === "UP" ? "heart" : "heart-outline"}
+                        size={17}
+                        color={activeModalPost.userVote === "UP" ? colors.destructive : colors.textMuted}
+                      />
+                      <Text
+                        style={[
+                          styles.likeCount,
+                          { color: activeModalPost.userVote === "UP" ? colors.destructive : colors.text },
+                        ]}
+                      >
+                        {activeModalPost.upvotes || 0}
+                      </Text>
+                    </TouchableOpacity>
 
-                <Button
-                  title="Start Whisper DM"
-                  variant="default"
-                  size="sm"
-                  onPress={() => activeModalPost && handleStartWhisperChat(activeModalPost)}
-                  leftIcon={<Ionicons name="chatbubble-ellipses-outline" size={14} color={colors.primaryForeground} />}
-                />
+                    <TouchableOpacity
+                      onPress={() => {
+                        const target = activeModalPost;
+                        setActiveModalPost(null);
+                        handleOpenComments(target);
+                      }}
+                      style={[
+                        styles.commentBtn,
+                        {
+                          backgroundColor: colors.secondary,
+                          borderColor: colors.border,
+                        },
+                      ]}
+                    >
+                      <Ionicons name="chatbubble-outline" size={15} color={colors.textMuted} />
+                      <Text style={[styles.commentCount, { color: colors.text }]}>
+                        {activeModalPost.commentCount || 0}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  <Button
+                    title="Start Whisper DM"
+                    variant="default"
+                    size="sm"
+                    onPress={() => handleStartWhisperChat(activeModalPost)}
+                    leftIcon={<Ionicons name="chatbubble-ellipses-outline" size={14} color={colors.primaryForeground} />}
+                  />
+                </View>
               </View>
             </View>
           </View>
-        </Modal>
+        )}
       </View>
     </ClientServiceGuard>
   );
@@ -1121,6 +1450,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
   },
+  postAuthorRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
   botAvatar: {
     width: 32,
     height: 32,
@@ -1133,6 +1467,13 @@ const styles = StyleSheet.create({
   timeAgo: {
     fontSize: 10,
     marginTop: 1,
+  },
+  deleteBtn: {
+    padding: 5,
+    borderRadius: 6,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
   },
   postContent: {
     fontSize: 13,
@@ -1184,16 +1525,34 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     borderTopWidth: StyleSheet.hairlineWidth,
   },
+  footerLeftActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
   likeBtn: {
     flexDirection: "row",
     alignItems: "center",
     gap: 5,
-    paddingHorizontal: 10,
+    paddingHorizontal: 9,
     paddingVertical: 5,
     borderRadius: 14,
     borderWidth: 1,
   },
   likeCount: {
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  commentBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  commentCount: {
     fontSize: 12,
     fontWeight: "700",
   },
@@ -1227,17 +1586,27 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "700",
   },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.65)",
+  /* In-Place Overlay Styles (Replacing Modal to eliminate Android Soft Keyboard bugs) */
+  inPlaceOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 9999,
+    elevation: 9999,
+    justifyContent: "flex-end",
+  },
+  inPlaceBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.6)",
+  },
+  sheetWrapper: {
+    width: "100%",
     justifyContent: "flex-end",
   },
   modalContent: {
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     borderTopWidth: 1,
-    padding: 20,
-    paddingBottom: 36,
+    padding: 18,
+    paddingBottom: Platform.OS === "ios" ? 36 : 24,
     gap: 12,
   },
   modalHeader: {
@@ -1285,8 +1654,8 @@ const styles = StyleSheet.create({
   },
   thumbWrap: {
     position: "relative",
-    width: 72,
-    height: 72,
+    width: 68,
+    height: 68,
     borderRadius: 8,
     overflow: "hidden",
   },
@@ -1300,9 +1669,9 @@ const styles = StyleSheet.create({
     top: 4,
     right: 4,
     backgroundColor: "rgba(0,0,0,0.75)",
-    width: 20,
-    height: 20,
-    borderRadius: 10,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -1350,7 +1719,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 12,
     fontSize: 13,
-    minHeight: 90,
+    minHeight: 85,
     textAlignVertical: "top",
   },
   modalFooter: {
@@ -1358,14 +1727,68 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "flex-end",
     gap: 10,
-    marginTop: 10,
+    marginTop: 6,
   },
+  /* Comments Sheet Styles */
+  commentItem: {
+    padding: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    gap: 4,
+  },
+  commentHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  commentAvatar: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+  },
+  commentHandle: {
+    fontSize: 12,
+    fontWeight: "700",
+    marginLeft: 6,
+  },
+  commentTime: {
+    fontSize: 10,
+  },
+  commentBody: {
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  commentInputRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingTop: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  commentTextInput: {
+    flex: 1,
+    minHeight: 38,
+    maxHeight: 80,
+    borderRadius: 19,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    fontSize: 12,
+  },
+  commentSendBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  /* Full View Styles */
   fullViewContent: {
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     borderTopWidth: 1,
     padding: 20,
-    paddingBottom: 36,
+    paddingBottom: Platform.OS === "ios" ? 36 : 24,
     gap: 14,
   },
   fullViewText: {

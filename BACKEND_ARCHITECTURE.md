@@ -704,6 +704,18 @@ Logged actions include:
   - `limit`: Default `25`, max `50`.
   - `cursor`: Paginated older message fetching (`cursor: { id: cursor }, skip: 1`).
   - `after`: Delta synchronization (`where: { createdAt: { gt: new Date(after) } }, orderBy: { createdAt: "asc" }`).
+- **Non-Blocking Client Dispatch**: The frontend dispatches messages asynchronously with optimistic temporary IDs, eliminating `isSending` bottlenecks and enabling consecutive messages to be fired back-to-back with zero network delay.
+
+### 9.4 Whisper Wall Comments, Post Deletion & Campus Service API Updates
+- **Comments Endpoint**:
+  - `GET /api/incognito?postId=[id]&comments=true`: Retrieves chronological comment stream for a post including author handles (`IncognitoProfile`) and DiceBear bot avatars.
+  - `POST /api/incognito` with `{ action: "COMMENT", postId, content }`: Creates an anonymous comment, automatically provisioning an `IncognitoProfile` if needed, with rate-limiting validation.
+- **Post Deletion (`DELETE /api/incognito?postId=[id]`)**:
+  - Validates author ownership (`post.profile.userId === userId`) or Super Admin privileges (`user.role === 'SUPER_ADMIN'`).
+  - Safely deletes associated comments, likes, and the post within a database transaction.
+- **Campus Service Kill-Switch Resolution (`GET /api/services`)**:
+  - Solved mobile default campus resolution bug. If `campusId` is `"default"`, null, or omitted by a client, the route automatically resolves to `auth.user?.collegeId` or queries `prisma.college.findFirst()`.
+  - Ensures disabled services (`CAB_SPLIT`, `LOST_AND_FOUND`, `MARKETPLACE`, `GIG_HUB`) are reliably transmitted to mobile clients and enforced without client-side bypass.
 
 ---
 ## 10. Agent Maintenance Checklist & Updating Rules

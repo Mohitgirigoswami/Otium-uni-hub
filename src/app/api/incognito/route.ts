@@ -1,5 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getIncognitoPosts, createIncognitoPost, toggleLikeIncognitoPost } from "@/actions/incognito.actions";
+import {
+  getIncognitoPosts,
+  createIncognitoPost,
+  toggleLikeIncognitoPost,
+  createIncognitoComment,
+  getIncognitoComments,
+  deleteIncognitoPost,
+} from "@/actions/incognito.actions";
 import { verifyAuth } from "@/utils/auth";
 
 export async function OPTIONS() {
@@ -9,6 +16,16 @@ export async function OPTIONS() {
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
+    const postId = searchParams.get("postId");
+    const isComments = searchParams.get("comments") === "true" || searchParams.get("action") === "COMMENTS";
+
+    // 1. Fetch comments for a specific post
+    if (postId && isComments) {
+      const res = await getIncognitoComments(postId);
+      return NextResponse.json(res);
+    }
+
+    // 2. Otherwise fetch posts feed
     const feedType = searchParams.get("feedType") || undefined;
     const scope = (searchParams.get("scope") as "CAMPUS" | "GLOBAL") || "GLOBAL";
     const collegeId = searchParams.get("collegeId") || undefined;
@@ -51,7 +68,25 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(res);
     }
 
-    // 2. Otherwise create new anonymous whisper
+    // 2. Handle Comment creation action
+    if (body.action === "COMMENT") {
+      const { postId, content } = body;
+      if (!postId || !content?.trim()) {
+        return NextResponse.json(
+          { success: false, error: "Post ID and comment content are required." },
+          { status: 400 }
+        );
+      }
+
+      const res = await createIncognitoComment({
+        userId,
+        postId,
+        content: content.trim(),
+      });
+      return NextResponse.json(res);
+    }
+
+    // 3. Otherwise create new anonymous whisper
     const { content, feedType, mediaUrl, mediaUrls, collegeId } = body;
 
     const res = await createIncognitoPost({
@@ -77,6 +112,47 @@ export async function POST(req: NextRequest) {
     });
   } catch (error: any) {
     console.error("[POST /api/incognito Error]:", error);
+    return NextResponse.json(
+      { success: false, error: error?.message || "Internal server error." },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(req: NextRequest) {
+  try {
+    const auth = await verifyAuth(req);
+    const { searchParams } = new URL(req.url);
+
+    let postId = searchParams.get("postId");
+    let userId = auth.authenticated && auth.user ? auth.user.id : null;
+
+    if (!userId) {
+      try {
+        const body = await req.json();
+        userId = body.userId || userId;
+        postId = postId || body.postId;
+      } catch {}
+    }
+
+    if (!userId) {
+      return NextResponse.json(
+        { success: false, error: "Authentication required to delete whisper." },
+        { status: 401 }
+      );
+    }
+
+    if (!postId) {
+      return NextResponse.json(
+        { success: false, error: "Post ID is required." },
+        { status: 400 }
+      );
+    }
+
+    const res = await deleteIncognitoPost(postId, userId);
+    return NextResponse.json(res);
+  } catch (error: any) {
+    console.error("[DELETE /api/incognito Error]:", error);
     return NextResponse.json(
       { success: false, error: error?.message || "Internal server error." },
       { status: 500 }
