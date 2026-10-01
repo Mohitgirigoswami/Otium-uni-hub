@@ -591,6 +591,10 @@ Otium uses physics-based spring transitions rather than linear CSS fades:
 - **Local-First Message Storage**: Messages are persisted to `AsyncStorage` on every dispatch, socket packet, and background fetch, guaranteeing chats are retained on-device across app restarts and cold starts.
 - **Instagram & WhatsApp "Seen" Receipts**: Displays `Seen ✓✓` in sky blue (`#7dd3fc`) when the peer has replied or viewed the message, `✓✓` upon delivery, `✓` upon sent confirmation, and `⏱` during optimistic sending.
 
+### 8.8 Cloud Production Bundling & Asset Resolution Hardening
+- **Metro Bundler Asset Path Resolution**: Verified all nested screen components under `mobile/src/features/*` employ relative imports (`../../../assets/logo.png`) that accurately navigate 3 directory levels to the root `mobile/assets/` directory. This resolves EAS cloud build failures (`Unable to resolve module ../../assets/logo.png`) and guarantees Android/iOS standalone APK compilation parity.
+
 ---
 *Document maintained by Antigravity AI Engineering Suite.*
+
 

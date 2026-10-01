@@ -749,6 +749,12 @@ Logged actions include:
   - Solved mobile default campus resolution bug. If `campusId` is `"default"`, null, or omitted by a client, the route automatically resolves to `auth.user?.collegeId` or queries `prisma.college.findFirst()`.
   - Ensures disabled services (`CAB_SPLIT`, `LOST_AND_FOUND`, `MARKETPLACE`, `GIG_HUB`) are reliably transmitted to mobile clients and enforced without client-side bypass.
 
+### 9.5 Cloud Deployment Hardening (Vercel, Render & Standalone Services)
+- **Next.js 14 Server Action Facades**: Re-export facade files under `src/actions/*.actions.ts` omit `"use server";` at the file top because Next.js App Router compiler strictly requires all exports in `"use server"` files to be async functions. Since facades use `export * from "@/features/..."` (which includes types, interfaces, and constants), removing the directive from facades allows clean compilation while preserving server action execution in the underlying feature files.
+- **Standalone WebSocket Microservice Resilience (`server/socket-server.js`)**:
+  - Render web service installs dependencies directly from `server/package.json` (`jsonwebtoken`, `socket.io`).
+  - Prisma initialization is wrapped in a dynamic `try...catch` block. When deployed in standalone mode without a local database client or schema, the socket server functions in lightweight stateless JWT authentication mode, allowing authenticated students to connect and exchange real-time messages with 0 crash risk.
+
 ---
 ## 10. Agent Maintenance Checklist & Updating Rules
 

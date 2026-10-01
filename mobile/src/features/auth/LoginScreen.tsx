@@ -228,7 +228,7 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
         <View style={styles.heroSection}>
           <View style={[styles.logoBadge, { shadowColor: colors.primary }]}>
             <Image
-              source={require("../../assets/logo.png")}
+              source={require("../../../assets/logo.png")}
               style={styles.logoImg}
               resizeMode="contain"
             />

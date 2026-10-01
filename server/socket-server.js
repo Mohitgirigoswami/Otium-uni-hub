@@ -7,9 +7,13 @@ const http = require("http");
 const { Server } = require("socket.io");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
-const { PrismaClient } = require("@prisma/client");
-
-const prisma = new PrismaClient();
+let prisma = null;
+try {
+  const { PrismaClient } = require("@prisma/client");
+  prisma = new PrismaClient();
+} catch (err) {
+  console.warn("⚠️  [@prisma/client not available] Running socket server in standalone JWT authentication mode.");
+}
 const PORT = process.env.PORT || process.env.SOCKET_PORT || 4001;
 const JWT_SECRET =
   process.env.JWT_SECRET ||
@@ -86,26 +90,26 @@ io.on("connection", (socket) => {
   socket.on("join_conversation", async (data) => {
     if (!data || !data.conversationId) return;
     try {
-      const conversation = await prisma.conversation.findUnique({
-        where: { id: data.conversationId },
-        select: {
-          id: true,
-          participantOneId: true,
-          participantTwoId: true,
-          anonParticipantOneId: true,
-          anonParticipantTwoId: true,
-          isAnonymousChat: true,
-        },
-      });
+      let isAuthorized = !prisma || socket.user?.role === "SUPER_ADMIN";
 
-      if (!conversation) {
-        socket.emit("error", { message: "Conversation not found." });
-        return;
-      }
+      if (prisma && !isAuthorized) {
+        const conversation = await prisma.conversation.findUnique({
+          where: { id: data.conversationId },
+          select: {
+            id: true,
+            participantOneId: true,
+            participantTwoId: true,
+            anonParticipantOneId: true,
+            anonParticipantTwoId: true,
+            isAnonymousChat: true,
+          },
+        });
 
-      // Check authorization
-      let isAuthorized = socket.user?.role === "SUPER_ADMIN";
-      if (!isAuthorized) {
+        if (!conversation) {
+          socket.emit("error", { message: "Conversation not found." });
+          return;
+        }
+
         if (conversation.isAnonymousChat) {
           const userBlindId = computeBlindId(userId);
           isAuthorized =

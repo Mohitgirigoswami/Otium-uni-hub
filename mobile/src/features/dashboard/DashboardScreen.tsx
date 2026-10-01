@@ -272,7 +272,7 @@ export function DashboardScreen() {
         <View style={styles.heroTopRow}>
           <View style={styles.heroBadge}>
             <Image
-              source={require("../../assets/logo.png")}
+              source={require("../../../assets/logo.png")}
               style={styles.heroLogo}
               resizeMode="contain"
             />
