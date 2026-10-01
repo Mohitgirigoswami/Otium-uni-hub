@@ -12,6 +12,7 @@ import {
   RefreshControl,
   Platform,
   ScrollView,
+  KeyboardAvoidingView,
 } from "react-native";
 import { Ionicons, Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useTheme } from "../../context/ThemeContext";
@@ -423,7 +424,10 @@ export function GigsScreen({ navigation }: any) {
         transparent={true}
         onRequestClose={() => setIsPostModalOpen(false)}
       >
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+        >
           <View
             style={[
               styles.modalContent,
@@ -533,7 +537,7 @@ export function GigsScreen({ navigation }: any) {
               />
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
       </View>
     </ClientServiceGuard>

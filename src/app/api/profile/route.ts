@@ -10,15 +10,14 @@ export async function OPTIONS() {
 export async function GET(req: NextRequest) {
   try {
     const auth = await verifyAuth(req);
-    const { searchParams } = new URL(req.url);
-    const userId = auth.authenticated && auth.user ? auth.user.id : searchParams.get("userId");
-
-    if (!userId) {
+    if (!auth.authenticated || !auth.user) {
       return NextResponse.json(
-        { success: false, error: "Authentication or User ID required." },
+        { success: false, error: auth.error || "Authentication required." },
         { status: 401 }
       );
     }
+
+    const userId = auth.user.id;
 
     const user = await prisma.user.findUnique({
       where: { id: userId },
@@ -77,15 +76,15 @@ export async function GET(req: NextRequest) {
 export async function PATCH(req: NextRequest) {
   try {
     const auth = await verifyAuth(req);
-    const body = await req.json();
-
-    const userId = auth.authenticated && auth.user ? auth.user.id : body.userId;
-    if (!userId) {
+    if (!auth.authenticated || !auth.user) {
       return NextResponse.json(
-        { success: false, error: "Authentication required." },
+        { success: false, error: auth.error || "Authentication required." },
         { status: 401 }
       );
     }
+
+    const userId = auth.user.id;
+    const body = await req.json();
 
     const rateCheck = await checkRateLimit(userId);
     if (!rateCheck.success) {

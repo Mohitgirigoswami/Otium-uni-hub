@@ -14,8 +14,9 @@ export async function GET(req: NextRequest) {
     const condition = searchParams.get("condition") || undefined;
     const status = searchParams.get("status") || undefined;
     const search = searchParams.get("search") || undefined;
+    const collegeId = searchParams.get("collegeId") || undefined;
 
-    const result = await getMarketplaceItems({ category, condition, status, search });
+    const result = await getMarketplaceItems({ category, condition, status, search, collegeId });
     if (!result.success) {
       return NextResponse.json(
         { success: false, error: result.error || "Failed to load marketplace items." },
@@ -39,15 +40,15 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const auth = await verifyAuth(req);
-    const body = await req.json();
-
-    const userId = auth.authenticated && auth.user ? auth.user.id : body.userId;
-    if (!userId) {
+    if (!auth.authenticated || !auth.user) {
       return NextResponse.json(
-        { success: false, error: auth.error || "Authentication required." },
+        { success: false, error: auth.error || "Unauthorized" },
         { status: 401 }
       );
     }
+
+    const userId = auth.user.id;
+    const body = await req.json();
 
     // Handle actions: MARK_SOLD, DELETE
     if (body.action === "MARK_SOLD") {
@@ -92,6 +93,7 @@ export async function POST(req: NextRequest) {
       condition,
       images: Array.isArray(images) ? images : [],
       sellerPhone: sellerPhone ? String(sellerPhone).trim() : undefined,
+      collegeId: collegeId || auth.user.collegeId || null,
     });
 
     if (!createResult.success) {

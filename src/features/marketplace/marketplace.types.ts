@@ -5,6 +5,7 @@ export interface MarketplaceFilters {
   condition?: string;
   status?: string;
   search?: string;
+  collegeId?: string | null;
   limit?: number;
 }
 
@@ -17,4 +18,5 @@ export interface CreateMarketplaceItemParams {
   condition: ItemConditionType;
   images: string[];
   sellerPhone?: string;
+  collegeId?: string | null;
 }

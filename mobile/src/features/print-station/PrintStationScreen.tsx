@@ -15,6 +15,7 @@ import {
   RefreshControl,
   Animated,
   Easing,
+  KeyboardAvoidingView,
 } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
 import * as Clipboard from "expo-clipboard";
@@ -965,7 +966,10 @@ export function PrintStationScreen({ navigation }: any) {
           transparent={true}
           onRequestClose={() => setIsCheckoutModalOpen(false)}
         >
-          <View style={styles.modalOverlay}>
+          <KeyboardAvoidingView
+            style={styles.modalOverlay}
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+          >
             <View style={[styles.checkoutModalContent, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <View style={styles.modalHeader}>
                 <View style={{ flex: 1 }}>
@@ -1096,7 +1100,7 @@ export function PrintStationScreen({ navigation }: any) {
                 />
               </View>
             </View>
-          </View>
+          </KeyboardAvoidingView>
         </Modal>
 
         {/* 8. Report Problem Modal */}
@@ -1106,7 +1110,10 @@ export function PrintStationScreen({ navigation }: any) {
           animationType="slide"
           onRequestClose={() => setReportingOrder(null)}
         >
-          <View style={styles.modalOverlay}>
+          <KeyboardAvoidingView
+            style={styles.modalOverlay}
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+          >
             <View style={[styles.modalContent, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <View style={styles.modalHeader}>
                 <View>
@@ -1183,7 +1190,7 @@ export function PrintStationScreen({ navigation }: any) {
                 />
               </View>
             </View>
-          </View>
+          </KeyboardAvoidingView>
         </Modal>
       </ScrollView>
     </ClientServiceGuard>

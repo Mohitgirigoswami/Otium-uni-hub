@@ -10,17 +10,15 @@ export async function POST(req: NextRequest) {
   try {
     // 1. Verify JWT Authentication
     const auth = await verifyAuth(req);
-    const body = await req.json();
-
-    let userId = auth.authenticated && auth.user ? auth.user.id : body.userId;
-
-    // If neither JWT nor userId is present, reject
-    if (!userId) {
+    if (!auth.authenticated || !auth.user) {
       return NextResponse.json(
-        { success: false, error: auth.error || "Authentication required to place print orders. Please log in." },
+        { success: false, error: auth.error || "Unauthorized" },
         { status: 401 }
       );
     }
+
+    const userId = auth.user.id;
+    const body = await req.json();
 
     const {
       fileName,
@@ -107,18 +105,14 @@ export async function POST(req: NextRequest) {
 export async function GET(req: NextRequest) {
   try {
     const auth = await verifyAuth(req);
-    const { searchParams } = new URL(req.url);
-    const userId =
-      (auth.authenticated && auth.user ? auth.user.id : null) ||
-      searchParams.get("userId");
-
-    if (!userId) {
+    if (!auth.authenticated || !auth.user) {
       return NextResponse.json(
-        { success: false, error: "Authentication required or missing userId parameter." },
+        { success: false, error: auth.error || "Unauthorized" },
         { status: 401 }
       );
     }
 
+    const userId = auth.user.id;
     const res = await getPrintOrders(userId);
     return NextResponse.json(res);
   } catch (error: any) {

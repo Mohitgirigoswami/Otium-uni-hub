@@ -13,6 +13,7 @@ import {
   Platform,
   ScrollView,
   Image,
+  KeyboardAvoidingView,
 } from "react-native";
 import { Ionicons, Feather } from "@expo/vector-icons";
 import { useTheme } from "../../context/ThemeContext";
@@ -391,7 +392,10 @@ export function LostAndFoundScreen({ navigation }: any) {
         transparent={true}
         onRequestClose={() => setIsReportModalOpen(false)}
       >
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+        >
           <View
             style={[
               styles.modalContent,
@@ -499,7 +503,7 @@ export function LostAndFoundScreen({ navigation }: any) {
               />
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
       </View>
     </ClientServiceGuard>

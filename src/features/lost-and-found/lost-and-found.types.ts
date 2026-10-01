@@ -2,6 +2,7 @@ export interface LostItemFilters {
   status?: string;
   search?: string;
   category?: string;
+  collegeId?: string | null;
 }
 
 export interface CreateLostItemParams {
@@ -12,4 +13,5 @@ export interface CreateLostItemParams {
   dateFound: string;
   imageUrl: string;
   category?: string;
+  collegeId?: string | null;
 }

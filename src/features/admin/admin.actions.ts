@@ -79,11 +79,12 @@ export async function getAllPrintOrdersAdmin(
 
     // Role-based campus segregation
     const where: any = {};
-    if (session.user.role === "PRINT_MANAGER" && session.user.collegeId) {
+    if (session.user.role !== "SUPER_ADMIN" && session.user.collegeId) {
       where.collegeId = session.user.collegeId;
     }
 
     const orders = await prisma.printOrder.findMany({
+      where,
       include: {
         user: {
           select: {
@@ -154,6 +155,15 @@ export async function updatePrintOrderStatus(data: {
 
     if (!existing) {
       return { success: false, error: "Print order not found." };
+    }
+
+    if (
+      session.user.role !== "SUPER_ADMIN" &&
+      session.user.collegeId &&
+      existing.collegeId &&
+      existing.collegeId !== session.user.collegeId
+    ) {
+      return { success: false, error: "Unauthorized: Cross-campus order modification is strictly forbidden." };
     }
 
     let updatedLocation = existing.deliveryLocation;

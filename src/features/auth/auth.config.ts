@@ -89,13 +89,11 @@ export const authOptions: NextAuthOptions = {
       }
 
       // Handle explicit session update triggers (e.g. from update() on client)
+      // SECURITY FIX [C1]: Strictly forbid client-triggered updates to role, isBanned, or collegeId.
+      // Role, ban status, collegeId, and username must ONLY be read from the verified database record above.
       if (trigger === "update" && session) {
         if (session.name) token.name = session.name;
         if (session.picture) token.picture = session.picture;
-        if (session.collegeId !== undefined) token.collegeId = session.collegeId;
-        if (session.role) token.role = session.role;
-        if (session.isBanned !== undefined) token.isBanned = session.isBanned;
-        if (session.username !== undefined) token.username = session.username;
       }
 
       return token;

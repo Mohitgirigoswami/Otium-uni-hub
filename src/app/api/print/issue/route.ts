@@ -9,16 +9,15 @@ import { reportPrintOrderIssue } from "@/actions/print.actions";
 export async function POST(req: NextRequest) {
   try {
     const auth = await verifyAuth(req);
-    const body = await req.json();
-
-    const userId = auth.authenticated && auth.user ? auth.user.id : body.userId;
-
-    if (!userId) {
+    if (!auth.authenticated || !auth.user) {
       return NextResponse.json(
         { success: false, error: auth.error || "Authentication required to report issues." },
         { status: 401 }
       );
     }
+
+    const userId = auth.user.id;
+    const body = await req.json();
 
     const { orderId, reason, category } = body;
 

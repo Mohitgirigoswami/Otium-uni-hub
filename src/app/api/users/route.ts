@@ -13,9 +13,14 @@ export async function OPTIONS() {
 export async function GET(req: NextRequest) {
   try {
     const auth = await verifyAuth(req);
+    if (!auth.authenticated || !auth.user) {
+      return NextResponse.json(
+        { success: false, error: auth.error || "Authentication required." },
+        { status: 401 }
+      );
+    }
+    const currentUserId = auth.user.id;
     const { searchParams } = new URL(req.url);
-    const fallbackUserId = searchParams.get("userId")?.trim() || "";
-    const currentUserId = auth.authenticated && auth.user ? auth.user.id : fallbackUserId;
 
     const rawQuery = searchParams.get("search")?.trim() || "";
     const cleanQuery = rawQuery.replace(/^@/, "");

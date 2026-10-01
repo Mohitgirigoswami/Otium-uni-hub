@@ -106,6 +106,8 @@ export async function getIncognitoPosts(params?: GetPostsParams | string): Promi
       where.collegeId = collegeId;
     }
 
+    const currentUserId = typeof params === "object" ? params?.userId : undefined;
+
     const posts = await prisma.incognitoPost.findMany({
       where,
       take: limit,
@@ -115,7 +117,6 @@ export async function getIncognitoPosts(params?: GetPostsParams | string): Promi
             id: true,
             handle: true,
             avatarUrl: true,
-            userId: true,
           },
         },
         college: {
@@ -125,11 +126,15 @@ export async function getIncognitoPosts(params?: GetPostsParams | string): Promi
             city: true,
           },
         },
-        likes: {
-          select: {
-            userId: true,
-          },
-        },
+        likes: currentUserId
+          ? {
+              where: { userId: currentUserId },
+              select: { userId: true },
+            }
+          : {
+              take: 0,
+              select: { userId: true },
+            },
         _count: {
           select: {
             comments: true,
@@ -170,7 +175,6 @@ export async function getIncognitoPostById(
             id: true,
             handle: true,
             avatarUrl: true,
-            userId: true,
           },
         },
         college: {
@@ -180,11 +184,15 @@ export async function getIncognitoPostById(
             city: true,
           },
         },
-        likes: {
-          select: {
-            userId: true,
-          },
-        },
+        likes: userId
+          ? {
+              where: { userId },
+              select: { userId: true },
+            }
+          : {
+              take: 0,
+              select: { userId: true },
+            },
         comments: {
           include: {
             profile: {
@@ -192,7 +200,6 @@ export async function getIncognitoPostById(
                 id: true,
                 handle: true,
                 avatarUrl: true,
-                userId: true,
               },
             },
           },
@@ -282,7 +289,13 @@ export async function createIncognitoPost(data: CreatePostParams): Promise<Actio
         collegeId: activeCollegeId,
       },
       include: {
-        profile: true,
+        profile: {
+          select: {
+            id: true,
+            handle: true,
+            avatarUrl: true,
+          },
+        },
         college: true,
       },
     });
@@ -444,7 +457,6 @@ export async function createIncognitoComment(data: {
             id: true,
             handle: true,
             avatarUrl: true,
-            userId: true,
           },
         },
       },
@@ -478,7 +490,6 @@ export async function getIncognitoComments(
             id: true,
             handle: true,
             avatarUrl: true,
-            userId: true,
           },
         },
       },

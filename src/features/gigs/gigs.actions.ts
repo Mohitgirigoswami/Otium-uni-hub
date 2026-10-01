@@ -155,8 +155,9 @@ export async function createGig(data: CreateGigParams): Promise<ActionResponse<a
     // Strictly verify platform escrow calculation integrity (takeHome + fee === totalCharge)
     const totalChargeRupees = Number(data.budgetRupees);
     const escrow = calculateEscrow(totalChargeRupees);
-    const calculatedTotal = escrow.writerPayout + escrow.commission;
-    if (Math.abs(calculatedTotal - totalChargeRupees) > 0.01) {
+    // Under strict integer paise math, writerPayout + commission strictly equals totalChargeRupees
+    const calculatedTotal = Number((escrow.writerPayout + escrow.commission).toFixed(2));
+    if (calculatedTotal !== totalChargeRupees) {
       return { error: "Bounty financial integrity check failed (takeHome + fee !== totalCharge)." };
     }
 

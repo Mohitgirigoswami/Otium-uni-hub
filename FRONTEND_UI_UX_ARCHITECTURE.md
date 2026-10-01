@@ -272,14 +272,19 @@ Otium maintains a strict 1:1 component design equivalence between shadcn/ui on W
 
 | Element | Web Component (`src/components/ui/`) | Mobile Component (`mobile/src/components/ui/`) | Styling Notes |
 | :--- | :--- | :--- | :--- |
-| **Button** | `button.tsx` | `Button.tsx` | Variants: `default`, `secondary`, `outline`, `destructive`, `ghost`. Supports `isLoading` with orbital spinner, and `leftIcon` / `rightIcon` slots. |
+| **Button** | `button.tsx` | `Button.tsx` | Variants: `default`, `secondary`, `outline`, `destructive`, `ghost`. Supports `isLoading` with orbital spinner, and `leftIcon` / `rightIcon` slots. Fully theme-driven via `useTheme()`. |
 | **Card** | `card.tsx` | `Card.tsx` | Variants: `default`, `outline`, `secondary`. Uses border tokens and surface elevation. |
-| **Badge** | `badge.tsx` | `Badge.tsx` | Variants: `default`, `secondary`, `outline`, `primary`, `success`, `warning`, `destructive`. |
+| **Badge** | `badge.tsx` | `Badge.tsx` | Variants: `default`, `secondary`, `outline`, `primary`, `success`, `warning`, `destructive`. Legacy `components/Badge.tsx` with static hex colors was retired in favor of `components/ui/Badge.tsx`. |
 | **Spinner** | `spinner.tsx` (Framer Motion) | `Spinner.tsx` (Animated SVG) | Variants: `orbit` (dual counter-rotating rings + satellite particle), `radar` (expanding sonar rings), `classic` (gradient arc). |
-| **Liquid Slider** | `liquid-slider.tsx` | `LiquidSlider.tsx` | Physical thumb stretching (`scaleX: 1.25, scaleY: 0.88`), magnetic floating percentage tooltip, quick-snap preset chips (65%, 75%, 80%, 85%), and PanResponder delta relative drag (`initialThumbX + gestureState.dx`) ensuring flawless mobile sliding across platforms. |
 | **Radial CGPA Gauge** | `RadialCgpaGauge.tsx` | `RadialCgpaGauge.tsx` | 270° SVG arc meter (0.00 - 10.00 scale), animated spring sweep, centered GPA readout, tier badge. |
 | **Print Order Tracker** | `PrintOrderTracker.tsx` | `PrintOrderTracker.tsx` | Horizontal laser timeline connecting `Submitted` → `Printing` → `Dispatched` → `Ready`. |
 | **Service Guard** | `ClientServiceGuard.tsx` | `ClientServiceGuard.tsx` | Concentric amber hazard beacon, campus maintenance notice, and live "Ping Service" check backed by `GET /api/services?campusId=...` for all campus modules. |
+
+### 4.1 Component Sanitation & Retired Legacy Artifacts (v2.5 Audit)
+- **Unified Badge System**: Retired legacy `mobile/src/components/Badge.tsx` (hardcoded hex colors). All screens and modals (`LoginScreen`, `NotificationsModal`) consume `mobile/src/components/ui/Badge.tsx` with dynamic semantic colors from `useTheme()`.
+- **Button Standardization**: Purged duplicate `mobile/src/components/ui/GradientActionButton.tsx` and its wrapper `MintButton.tsx`. All primary interactive actions consume `mobile/src/components/ui/Button.tsx`.
+- **Dynamic Theming Compliance**: 100% of mobile components (`CircularProgress`, `GlassCard`, `NotificationsModal`, `LoginScreen`) now strictly consume dynamic theme tokens (`colors.primary`, `colors.success`, `colors.destructive`, `colors.card`, `colors.border`) from `useTheme()`, with zero static color imports.
+- **Direct Imports over Barrels**: All mobile screen imports use direct module paths; legacy `mobile/src/features/*/index.ts` barrel files were pruned to optimize bundling and eliminate cyclical resolution overhead.
 
 ---
 
@@ -533,10 +538,21 @@ Otium uses physics-based spring transitions rather than linear CSS fades:
 
 ## 8. Mobile & Web Realtime Messaging & Keyboard Architecture (v2.4 Overhaul)
 
-### 8.1 Android Soft Keyboard Layout & Window Resizing
-- **Root Manifest Setting**: Configured `"softwareKeyboardLayoutMode": "resize"` in `mobile/app.json` under `android`. This binds native Android `windowSoftInputMode="adjustResize"` to the main Activity.
-- **In-Place Chat Rendering (Modal Purge)**: In `mobile/src/screens/MessagesScreen.tsx`, active chat conversations are rendered directly in-place within the screen view hierarchy when `activeConv !== null` rather than wrapped in a React Native `<Modal>`. On Android, rendering in a modal spawns a detached Dialog window that bypasses the parent Activity's window resize mechanics, causing the text input to be obscured by the keyboard.
-- **Behavior Rule**: Across modals containing text inputs, use `behavior={Platform.OS === "ios" ? "padding" : undefined}` so Android leverages native `adjustResize` with zero jumpiness.
+### 8.1 Android Soft Keyboard Layout & Window Resizing Architecture
+- **Root Manifest Setting**: Configured `"softwareKeyboardLayoutMode": "resize"` in `mobile/app.json` under `android` and `android:windowSoftInputMode="adjustResize"` in `mobile/android/app/src/main/AndroidManifest.xml`.
+- **Bottom Tab Bar Collision Prevention**: In `mobile/src/navigation/TabNavigator.tsx`, hidden portal routes (`Messages`, `CGPA`, `RideShare`, `LostAndFound`, `Marketplace`, `Gigs`) explicitly declare `tabBarStyle: { display: "none" }`. This completely eliminates the 80px fixed height collision and prevents `tabBarHideOnKeyboard` race conditions from displacing the bottom text input.
+- **Dynamic Inset & Screen Offset Measurement (`measureInWindow`)**: In `mobile/src/screens/MessagesScreen.tsx`, active chat views mount within a container `<View ref={chatContainerRef} onLayout={handleChatContainerLayout}>` that dynamically queries `chatContainerRef.current.measureInWindow((x, y) => setKeyboardOffset(y))`. Passing this exact screen Y position to `keyboardVerticalOffset` guarantees that `KeyboardAvoidingView` computes the keyboard displacement with 0px margin of error across any device status bar / notch / header configuration.
+- **Android Keyboard Avoiding Behavior (`height` strategy)**: Configured `behavior={Platform.OS === "ios" ? "padding" : "height"}` on active chat and modal containers. Rather than relying on `undefined` behavior (which causes Android to leave inputs occluded under edge-to-edge system bars), `height` dynamically shrinks the container while the inverted `<FlatList style={{ flex: 1 }}>` absorbs the delta, docking the input prompt bar snugly above the Android software keyboard.
+- **In-Place Overlays & Modal Bottom Sheets**: In `mobile/src/screens/WhisperWallScreen.tsx`, compose and comment reply sheets utilize `behavior="padding"` with `keyboardVerticalOffset={Platform.OS === "android" ? insets.top + 56 : 0}`, lifting anonymous comment reply inputs cleanly over the soft keyboard.
+- **Application-Wide Textfield & Modal Audit**:
+  - **Attendance Tracker (`AttendanceScreen.tsx`)**: Upgraded both Add Subject and Edit Subject modals from `behavior={undefined}` to `behavior={Platform.OS === "ios" ? "padding" : "height"}`.
+  - **Student Profile (`ProfileScreen.tsx`)**: Upgraded Edit Profile modal from `behavior={undefined}` to `behavior={Platform.OS === "ios" ? "padding" : "height"}`.
+  - **Campus Freelance Tasks (`GigsScreen.tsx`)**: Upgraded Post Task modal from an unhandled `View` to `<KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"}>`.
+  - **Lost & Found (`LostAndFoundScreen.tsx`)**: Upgraded Report Item modal from an unhandled `View` to `<KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"}>`.
+  - **Student Marketplace (`MarketplaceScreen.tsx`)**: Upgraded Sell Listing modal from an unhandled `View` to `<KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"}>`.
+  - **Cab Split & RideShare (`RideShareScreen.tsx`)**: Upgraded Host Ride modal from an unhandled `View` to `<KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"}>`.
+  - **Express Print Station (`PrintStationScreen.tsx`)**: Upgraded both Checkout and Report Problem modals from unhandled `View`s to `<KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"}>`.
+- **Header Space Optimization**: Reduced `chatHeader` and `header` top padding on Android from legacy `36px` to `12px` (matching iOS `14px`), reclaiming critical viewport height for chat bubbles and input controls.
 
 ### 8.2 WhatsApp & Instagram Message Feed Architecture
 - **Inverted Lazy Stream**: Both Mobile and Web use lazy message loading (`take: 25`).

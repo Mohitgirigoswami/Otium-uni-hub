@@ -865,7 +865,7 @@ export function AttendanceScreen() {
       {/* Add Subject Modal with Session Duration Selector */}
       <Modal visible={isAddModalOpen} transparent animationType="fade" onRequestClose={() => setIsAddModalOpen(false)}>
         <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
           style={styles.modalOverlay}
         >
           <View style={[styles.modalCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -983,7 +983,7 @@ export function AttendanceScreen() {
       {editingSub && (
         <Modal visible={isEditModalOpen} transparent animationType="fade" onRequestClose={() => setIsEditModalOpen(false)}>
           <KeyboardAvoidingView
-            behavior={Platform.OS === "ios" ? "padding" : undefined}
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
             style={styles.modalOverlay}
           >
             <View style={[styles.modalCard, { backgroundColor: colors.card, borderColor: colors.border }]}>

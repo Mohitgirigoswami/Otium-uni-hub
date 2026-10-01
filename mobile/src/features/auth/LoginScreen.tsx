@@ -13,9 +13,9 @@ import * as WebBrowser from "expo-web-browser";
 import * as Google from "expo-auth-session/providers/google";
 import * as SecureStore from "expo-secure-store";
 import { Ionicons, AntDesign, MaterialCommunityIcons } from "@expo/vector-icons";
-import { colors } from "../../theme/colors";
+import { useTheme } from "../../context/ThemeContext";
 import { GlassCard } from "../../components/GlassCard";
-import { Badge } from "../../components/Badge";
+import { Badge } from "../../components/ui/Badge";
 import { apiClient } from "../../services/apiClient";
 
 WebBrowser.maybeCompleteAuthSession();
@@ -55,6 +55,7 @@ interface LoginScreenProps {
 }
 
 export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
+  const { colors } = useTheme();
   const [isLoading, setIsLoading] = useState(false);
 
   // Initialize WebBrowser fallback request
@@ -221,11 +222,11 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
       <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
         {/* Top Logo & Hero Badge */}
         <View style={styles.heroSection}>
-          <View style={styles.logoBadge}>
+          <View style={[styles.logoBadge, { shadowColor: colors.primary }]}>
             <Image
               source={require("../../assets/logo.png")}
               style={styles.logoImg}
@@ -233,12 +234,12 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
             />
           </View>
           <View style={styles.brandBadgeRow}>
-            <Badge variant="brand" size="sm">
+            <Badge variant="primary" size="sm">
               Single Sign-On • University Portal
             </Badge>
           </View>
-          <Text style={styles.heroTitle}>Otium Uni Hub</Text>
-          <Text style={styles.heroSubtitle}>
+          <Text style={[styles.heroTitle, { color: colors.text }]}>Otium Uni Hub</Text>
+          <Text style={[styles.heroSubtitle, { color: colors.textSecondary }]}>
             Your entire campus ecosystem. Instant print dispatch, attendance guardrails, anonymous whisper walls, and CGPA forecasting.
           </Text>
         </View>
@@ -246,11 +247,11 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
         {/* Exclusive Google Authentication Card */}
         <GlassCard style={styles.authCard}>
           <View style={styles.cardHeader}>
-            <MaterialCommunityIcons name="google" size={24} color={colors.brand[400]} />
-            <Text style={styles.cardTitle}>Student Authentication</Text>
+            <MaterialCommunityIcons name="google" size={24} color={colors.primary} />
+            <Text style={[styles.cardTitle, { color: colors.text }]}>Student Authentication</Text>
           </View>
 
-          <Text style={styles.cardDesc}>
+          <Text style={[styles.cardDesc, { color: colors.textSecondary }]}>
             Sign in using your Google account to access all campus tools securely with verified university access.
           </Text>
 
@@ -259,16 +260,16 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
             activeOpacity={0.85}
             onPress={handleGoogleSignIn}
             disabled={isLoading}
-            style={styles.googleButton}
+            style={[styles.googleButton, { backgroundColor: colors.primary, shadowColor: colors.primary }]}
           >
             {isLoading ? (
-              <ActivityIndicator size="small" color="#FFFFFF" />
+              <ActivityIndicator size="small" color={colors.primaryForeground} />
             ) : (
               <View style={styles.googleContentRow}>
                 <View style={styles.googleIconCircle}>
                   <AntDesign name="google" size={18} color="#0B132B" />
                 </View>
-                <Text style={styles.googleButtonText}>Sign in with Google</Text>
+                <Text style={[styles.googleButtonText, { color: colors.primaryForeground }]}>Sign in with Google</Text>
               </View>
             )}
           </TouchableOpacity>
@@ -276,8 +277,8 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
 
         {/* Security Footnote */}
         <View style={styles.footerNote}>
-          <Ionicons name="shield-checkmark-outline" size={16} color={colors.brand[400]} />
-          <Text style={styles.footerText}>
+          <Ionicons name="shield-checkmark-outline" size={16} color={colors.primary} />
+          <Text style={[styles.footerText, { color: colors.textSecondary }]}>
             Protected by Google OAuth & 256-bit Stateless JWT
           </Text>
         </View>
@@ -289,7 +290,6 @@ export function LoginScreen({ onLoginSuccess }: LoginScreenProps) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
   },
   scrollContent: {
     padding: 24,
@@ -311,7 +311,6 @@ const styles = StyleSheet.create({
     borderColor: "rgba(20, 184, 166, 0.35)",
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: colors.brand[500],
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.45,
     shadowRadius: 14,
@@ -328,12 +327,10 @@ const styles = StyleSheet.create({
   heroTitle: {
     fontSize: 28,
     fontWeight: "900",
-    color: "#FFFFFF",
     letterSpacing: -0.5,
   },
   heroSubtitle: {
     fontSize: 13.5,
-    color: colors.slate[300],
     textAlign: "center",
     marginTop: 8,
     lineHeight: 20,
@@ -351,22 +348,18 @@ const styles = StyleSheet.create({
   cardTitle: {
     fontSize: 18,
     fontWeight: "800",
-    color: "#FFFFFF",
     letterSpacing: -0.3,
   },
   cardDesc: {
     fontSize: 13,
-    color: colors.slate[400],
     lineHeight: 19,
   },
   googleButton: {
-    backgroundColor: colors.brand[600],
     paddingVertical: 15,
     paddingHorizontal: 20,
     borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: colors.brand[500],
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.4,
     shadowRadius: 10,
@@ -390,7 +383,6 @@ const styles = StyleSheet.create({
   googleButtonText: {
     fontSize: 16,
     fontWeight: "800",
-    color: "#FFFFFF",
     letterSpacing: -0.2,
   },
   footerNote: {
@@ -402,7 +394,6 @@ const styles = StyleSheet.create({
   },
   footerText: {
     fontSize: 11.5,
-    color: colors.slate[400],
     fontWeight: "500",
   },
 });

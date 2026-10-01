@@ -44,15 +44,15 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const auth = await verifyAuth(req);
-    const body = await req.json();
-
-    const userId = auth.authenticated && auth.user ? auth.user.id : body.userId;
-    if (!userId) {
+    if (!auth.authenticated || !auth.user) {
       return NextResponse.json(
-        { success: false, error: "Authentication required." },
+        { success: false, error: auth.error || "Authentication required." },
         { status: 401 }
       );
     }
+
+    const userId = auth.user.id;
+    const body = await req.json();
 
     // 1. Handle Like / Vote action
     if (body.action === "LIKE" || body.action === "VOTE") {
@@ -122,24 +122,22 @@ export async function POST(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   try {
     const auth = await verifyAuth(req);
-    const { searchParams } = new URL(req.url);
-
-    let postId = searchParams.get("postId");
-    let userId = auth.authenticated && auth.user ? auth.user.id : null;
-
-    if (!userId) {
-      try {
-        const body = await req.json();
-        userId = body.userId || userId;
-        postId = postId || body.postId;
-      } catch {}
-    }
-
-    if (!userId) {
+    if (!auth.authenticated || !auth.user) {
       return NextResponse.json(
-        { success: false, error: "Authentication required to delete whisper." },
+        { success: false, error: auth.error || "Authentication required to delete whisper." },
         { status: 401 }
       );
+    }
+
+    const userId = auth.user.id;
+    const { searchParams } = new URL(req.url);
+    let postId = searchParams.get("postId");
+
+    if (!postId) {
+      try {
+        const body = await req.json();
+        postId = body.postId;
+      } catch {}
     }
 
     if (!postId) {

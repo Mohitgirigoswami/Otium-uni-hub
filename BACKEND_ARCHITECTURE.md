@@ -676,6 +676,38 @@ Logged actions include:
 
 ---
 
+## 8. Security Hardening & Zero-Knowledge Isolation (v2.5 Milestone 1 Audit)
+
+### Zero-Knowledge Whisper Wall Anonymity (`src/features/whisper-wall/whisper.actions.ts`)
+- **Leak Elimination**: Excluded `userId` from all public Prisma queries (`getIncognitoPosts`, `getIncognitoPostById`, `createIncognitoPost`, `createIncognitoComment`, `getIncognitoComments`).
+- **Scoped Likes**: The `likes` relation query only returns the authenticated caller's own like record (`where: { userId: currentUserId }`), completely concealing other peer user IDs.
+
+### Multi-Tenant Campus Isolation (`collegeId` Scoping)
+- **Print Orders**: `createPrintOrder` assigns the verified user's `collegeId` to the created order. `getAllPrintOrdersAdmin` enforces `where: { collegeId: session.user.collegeId }` for all non-superadmin print managers, and `updatePrintOrderStatus` strictly blocks cross-campus mutations.
+- **Marketplace & Lost and Found**: `createMarketplaceItem` and `createLostItem` automatically query and bind the poster's `collegeId`. Queries in Server Actions and REST API routes (`/api/marketplace`, `/api/lost-and-found`) filter by `where: { collegeId }`.
+
+### BOLA / IDOR Elimination Across All REST Routes (`/api/*`)
+- Every mutating and user-specific route (`/api/incognito`, `/api/rideshare`, `/api/profile`, `/api/colleges`, `/api/print/issue`, `/api/print/upload`, `/api/users`) mandates verified authentication (`verifyAuth(req)`).
+- All unauthenticated requests return `HTTP 401 Unauthorized`. Client-supplied `body.userId` and query `userId` fallbacks are eliminated; `userId` is strictly bound to `auth.user.id`.
+
+### Storage Deletion Protection (`/api/print/cleanup-orphan`, `upload.actions.ts`)
+- **Authentication**: Caller must possess a valid NextAuth session or Bearer token.
+- **Ownership Verification**: Deletions in `cleanup-orphan` verify that the asset path contains `${user.id}_` or caller is `SUPER_ADMIN`/`PRINT_MANAGER`. Directory traversal (`..`) is strictly blocked.
+- **Action Guards**: `deleteCloudinaryAsset` requires an active session, and `deleteSupabaseStorageFile` requires `SUPER_ADMIN` privileges.
+
+### Edge Middleware Hardening (`src/middleware.ts`)
+- Removed insecure unverified cookie check; routes are protected strictly by cryptographic NextAuth token verification (`authorized: ({ token }) => !!token`).
+- Eliminated hardcoded fallback secret strings.
+
+### Socket.io Handshake Authentication & Room Access Control (`server/socket-server.js`)
+- Handshake connection middleware (`io.use`) cryptographically verifies JWT tokens against `JWT_SECRET`.
+- `join_conversation` checks conversation participants in Prisma (or verifies `computeBlindId()` for anonymous chats) before permitting `socket.join()`.
+- Room membership (`socket.rooms.has(room)`) is strictly enforced before broadcasting messages or typing indicators.
+
+### Strict Integer Paise Escrow Math (`src/features/gigs/escrow-math.ts`)
+- All calculations are performed in integer Paise (`Math.round`), ensuring `writerPayoutPaise + commissionPaise === totalChargePaise` with zero IEEE-754 floating-point drift.
+- Advance and final settlements are split exactly 50/50 in integer Paise (`Math.floor` / remainder).
+
 ---
 
 ## 9. Realtime WebSockets, Student Privacy & Chat Backend (v2.4 Overhaul)

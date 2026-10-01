@@ -5,8 +5,25 @@
 
 const http = require("http");
 const { Server } = require("socket.io");
+const jwt = require("jsonwebtoken");
+const crypto = require("crypto");
+const { PrismaClient } = require("@prisma/client");
 
+const prisma = new PrismaClient();
 const PORT = process.env.PORT || process.env.SOCKET_PORT || 4001;
+const JWT_SECRET =
+  process.env.JWT_SECRET ||
+  process.env.AUTH_SECRET ||
+  process.env.NEXTAUTH_SECRET ||
+  "otium-jwt-secret-key-campus-2026";
+
+function computeBlindId(userId) {
+  const secret =
+    process.env.AUTH_SECRET ||
+    process.env.NEXTAUTH_SECRET ||
+    "otium_blind_participant_secret_salt";
+  return crypto.createHash("sha256").update(`otium_anon:${userId}:${secret}`).digest("hex");
+}
 
 const server = http.createServer((req, res) => {
   // Simple health check route
@@ -28,7 +45,7 @@ const server = http.createServer((req, res) => {
 
 const io = new Server(server, {
   cors: {
-    origin: "*",
+    origin: process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(",") : "*",
     methods: ["GET", "POST"],
     credentials: true,
   },
@@ -36,18 +53,88 @@ const io = new Server(server, {
   pingInterval: 25000,
 });
 
-io.on("connection", (socket) => {
-  console.log(`[Socket Connected] ID: ${socket.id}`);
+// 1. Connection Handshake Authentication Middleware
+io.use((socket, next) => {
+  const token =
+    socket.handshake.auth?.token ||
+    socket.handshake.headers?.authorization?.replace("Bearer ", "");
 
-  // 1. Join conversation room
-  socket.on("join_conversation", (data) => {
+  if (!token) {
+    return next(new Error("Unauthorized: Missing authentication token."));
+  }
+
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    if (!decoded || (!decoded.userId && !decoded.sub && !decoded.id)) {
+      return next(new Error("Unauthorized: Invalid token payload."));
+    }
+    socket.user = {
+      userId: decoded.userId || decoded.sub || decoded.id,
+      role: decoded.role || "STUDENT",
+    };
+    next();
+  } catch (err) {
+    return next(new Error("Unauthorized: Token verification failed."));
+  }
+});
+
+io.on("connection", (socket) => {
+  const userId = socket.user?.userId;
+  console.log(`[Socket Connected] ID: ${socket.id}, User: ${userId}`);
+
+  // 2. Authorized Room Join
+  socket.on("join_conversation", async (data) => {
     if (!data || !data.conversationId) return;
-    const room = `conversation_${data.conversationId}`;
-    socket.join(room);
-    console.log(`[Socket ${socket.id}] Joined room: ${room}`);
+    try {
+      const conversation = await prisma.conversation.findUnique({
+        where: { id: data.conversationId },
+        select: {
+          id: true,
+          participantOneId: true,
+          participantTwoId: true,
+          anonParticipantOneId: true,
+          anonParticipantTwoId: true,
+          isAnonymousChat: true,
+        },
+      });
+
+      if (!conversation) {
+        socket.emit("error", { message: "Conversation not found." });
+        return;
+      }
+
+      // Check authorization
+      let isAuthorized = socket.user?.role === "SUPER_ADMIN";
+      if (!isAuthorized) {
+        if (conversation.isAnonymousChat) {
+          const userBlindId = computeBlindId(userId);
+          isAuthorized =
+            conversation.anonParticipantOneId === userBlindId ||
+            conversation.anonParticipantTwoId === userBlindId;
+        } else {
+          isAuthorized =
+            conversation.participantOneId === userId ||
+            conversation.participantTwoId === userId;
+        }
+      }
+
+      if (!isAuthorized) {
+        console.warn(
+          `[Socket Unauthorized Room Join] User ${userId} attempted to join ${data.conversationId}`
+        );
+        socket.emit("error", { message: "Forbidden: Not a participant in this conversation." });
+        return;
+      }
+
+      const room = `conversation_${data.conversationId}`;
+      socket.join(room);
+      console.log(`[Socket ${socket.id}] User ${userId} joined room: ${room}`);
+    } catch (err) {
+      console.error("[join_conversation Error]:", err);
+    }
   });
 
-  // 2. Leave conversation room
+  // 3. Leave conversation room
   socket.on("leave_conversation", (data) => {
     if (!data || !data.conversationId) return;
     const room = `conversation_${data.conversationId}`;
@@ -55,20 +142,27 @@ io.on("connection", (socket) => {
     console.log(`[Socket ${socket.id}] Left room: ${room}`);
   });
 
-  // 3. Real-time message dispatch
+  // 4. Send Message (Enforce Room Membership)
   socket.on("send_message", (messageData) => {
     if (!messageData || !messageData.conversationId) return;
     const room = `conversation_${messageData.conversationId}`;
+    if (!socket.rooms.has(room)) {
+      socket.emit("error", {
+        message: "Forbidden: You must join the room before sending messages.",
+      });
+      return;
+    }
     console.log(`[Message Dispatched in ${room}]:`, messageData.id || "new");
-    
+
     // Broadcast to everyone in room EXCEPT sender
     socket.to(room).emit("receive_message", messageData);
   });
 
-  // 4. Typing indicators
+  // 5. Typing Indicators (Enforce Room Membership)
   socket.on("typing_start", (data) => {
     if (!data || !data.conversationId) return;
     const room = `conversation_${data.conversationId}`;
+    if (!socket.rooms.has(room)) return;
     socket.to(room).emit("user_typing", {
       conversationId: data.conversationId,
       username: data.username || "Someone",
@@ -78,6 +172,7 @@ io.on("connection", (socket) => {
   socket.on("typing_stop", (data) => {
     if (!data || !data.conversationId) return;
     const room = `conversation_${data.conversationId}`;
+    if (!socket.rooms.has(room)) return;
     socket.to(room).emit("user_stop_typing", {
       conversationId: data.conversationId,
     });

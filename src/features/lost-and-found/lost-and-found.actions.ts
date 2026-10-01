@@ -20,6 +20,10 @@ export async function getLostItems(filters?: LostItemFilters): Promise<ActionRes
       where.category = filters.category;
     }
 
+    if (filters?.collegeId) {
+      where.collegeId = filters.collegeId;
+    }
+
     if (filters?.search && filters.search.trim() !== "") {
       where.OR = [
         { title: { contains: filters.search, mode: "insensitive" } },
@@ -73,9 +77,16 @@ export async function createLostItem(data: CreateLostItemParams): Promise<Action
     if (!data.locationFound?.trim()) return { error: "Location found is required." };
     if (!data.imageUrl?.trim()) return { error: "Item photograph is required." };
 
+    const finder = await prisma.user.findUnique({
+      where: { id: data.finderId },
+      select: { collegeId: true },
+    });
+    const activeCollegeId = data.collegeId || finder?.collegeId || null;
+
     const item = await prisma.lostAndFoundItem.create({
       data: {
         finderId: data.finderId,
+        collegeId: activeCollegeId,
         title: data.title.trim(),
         description: data.description.trim(),
         locationFound: data.locationFound.trim(),
@@ -86,6 +97,7 @@ export async function createLostItem(data: CreateLostItemParams): Promise<Action
       },
       include: {
         finder: true,
+        college: true,
       },
     });
 

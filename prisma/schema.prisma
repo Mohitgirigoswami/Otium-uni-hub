@@ -146,6 +146,9 @@ model College {
   id                String             @id @default(cuid())
   name              String             @unique
   city              String
+  domain            String?            @unique
+  code              String?            @unique
+  state             String?
   createdAt         DateTime           @default(now())
 
   users             User[]
@@ -193,9 +196,10 @@ model VerificationToken {
 }
 
 model PlatformSetting {
-  id        String   @id @default("global_config")
-  upiId     String   @default("admin@upi")
-  updatedAt DateTime @updatedAt
+  id               String   @id @default("global_config")
+  upiId            String   @default("admin@upi")
+  buyerDiscountPct Int      @default(5)
+  updatedAt        DateTime @updatedAt
 }
 
 model PrintSetting {

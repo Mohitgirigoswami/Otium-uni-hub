@@ -9,16 +9,14 @@ export async function OPTIONS() {
 export async function GET(req: NextRequest) {
   try {
     const auth = await verifyAuth(req);
-    const { searchParams } = new URL(req.url);
-    const userId = auth.authenticated && auth.user ? auth.user.id : searchParams.get("userId");
-
-    if (!userId) {
+    if (!auth.authenticated || !auth.user) {
       return NextResponse.json(
-        { success: false, error: "User ID is required to fetch attendance." },
-        { status: 400 }
+        { success: false, error: auth.error || "Unauthorized" },
+        { status: 401 }
       );
     }
 
+    const userId = auth.user.id;
     const res = await getSubjects(userId);
     return NextResponse.json(res);
   } catch (error: any) {
@@ -33,15 +31,15 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const auth = await verifyAuth(req);
-    const body = await req.json();
-
-    const userId = auth.authenticated && auth.user ? auth.user.id : body.userId;
-    if (!userId) {
+    if (!auth.authenticated || !auth.user) {
       return NextResponse.json(
-        { success: false, error: "Authentication required." },
+        { success: false, error: auth.error || "Unauthorized" },
         { status: 401 }
       );
     }
+
+    const userId = auth.user.id;
+    const body = await req.json();
 
     // If synchronizing offline subjects / bulk reconciliation
     if (body.action === "SYNC_OFFLINE") {
@@ -102,13 +100,14 @@ export async function POST(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   try {
     const auth = await verifyAuth(req);
+    if (!auth.authenticated || !auth.user) {
+      return NextResponse.json({ success: false, error: auth.error || "Unauthorized" }, { status: 401 });
+    }
+
+    const userId = auth.user.id;
     const { searchParams } = new URL(req.url);
     const subjectId = searchParams.get("subjectId") || searchParams.get("id");
 
-    const userId = auth.authenticated && auth.user ? auth.user.id : searchParams.get("userId");
-    if (!userId) {
-      return NextResponse.json({ success: false, error: "Authentication required." }, { status: 401 });
-    }
     if (!subjectId) {
       return NextResponse.json({ success: false, error: "Subject ID is required." }, { status: 400 });
     }

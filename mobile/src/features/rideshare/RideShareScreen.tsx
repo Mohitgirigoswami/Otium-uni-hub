@@ -12,6 +12,7 @@ import {
   RefreshControl,
   Platform,
   ScrollView,
+  KeyboardAvoidingView,
 } from "react-native";
 import { Ionicons, Feather, FontAwesome5 } from "@expo/vector-icons";
 import { useTheme } from "../../context/ThemeContext";
@@ -337,7 +338,10 @@ export function RideShareScreen({ navigation }: any) {
         transparent={true}
         onRequestClose={() => setIsHostModalOpen(false)}
       >
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+        >
           <View
             style={[
               styles.modalContent,
@@ -499,7 +503,7 @@ export function RideShareScreen({ navigation }: any) {
               />
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
       </View>
     </ClientServiceGuard>

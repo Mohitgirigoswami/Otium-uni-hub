@@ -1,6 +1,6 @@
 import React from "react";
 import { View, StyleSheet, ViewStyle, TouchableOpacity } from "react-native";
-import { colors } from "../theme/colors";
+import { useTheme } from "../context/ThemeContext";
 
 interface GlassCardProps {
   children: React.ReactNode;
@@ -17,31 +17,40 @@ export function GlassCard({
   onPress,
   style,
 }: GlassCardProps) {
-  const variantStyles = {
-    default: styles.variantDefault,
-    brand: styles.variantBrand,
-    danger: styles.variantDanger,
-    warning: styles.variantWarning,
-    purple: styles.variantPurple,
-  }[variant];
+  const { colors } = useTheme();
 
-  if (interactive && onPress) {
-    return (
-      <TouchableOpacity
-        activeOpacity={0.8}
-        onPress={onPress}
-        style={[styles.card, variantStyles, style]}
-      >
-        {children}
-      </TouchableOpacity>
-    );
-  }
+  const getVariantStyle = (): ViewStyle => {
+    switch (variant) {
+      case "brand":
+        return {
+          borderColor: colors.primary + "40",
+          backgroundColor: colors.primary + "0A",
+        };
+      case "danger":
+        return {
+          borderColor: colors.destructive + "40",
+          backgroundColor: colors.destructive + "14",
+        };
+      case "warning":
+        return {
+          borderColor: colors.warning + "40",
+          backgroundColor: colors.warning + "14",
+        };
+      case "purple":
+        return {
+          borderColor: colors.secondary + "40",
+          backgroundColor: colors.secondary + "14",
+        };
+      case "default":
+      default:
+        return {
+          borderColor: colors.border,
+          backgroundColor: colors.card,
+        };
+    }
+  };
 
-  return <View style={[styles.card, variantStyles, style]}>{children}</View>;
-}
-
-const styles = StyleSheet.create({
-  card: {
+  const cardStyle: ViewStyle = {
     backgroundColor: colors.card,
     borderRadius: 16,
     borderWidth: 1,
@@ -51,24 +60,19 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 6,
     elevation: 3,
-  },
-  variantDefault: {
-    borderColor: colors.cardBorder,
-  },
-  variantBrand: {
-    borderColor: "rgba(255, 255, 255, 0.25)",
-    backgroundColor: "rgba(255, 255, 255, 0.04)",
-  },
-  variantDanger: {
-    borderColor: colors.rose.border,
-    backgroundColor: colors.rose.bg,
-  },
-  variantWarning: {
-    borderColor: colors.amber.border,
-    backgroundColor: colors.amber.bg,
-  },
-  variantPurple: {
-    borderColor: colors.purple.border,
-    backgroundColor: colors.purple.bg,
-  },
-});
+  };
+
+  if (interactive && onPress) {
+    return (
+      <TouchableOpacity
+        activeOpacity={0.8}
+        onPress={onPress}
+        style={[cardStyle, getVariantStyle(), style]}
+      >
+        {children}
+      </TouchableOpacity>
+    );
+  }
+
+  return <View style={[cardStyle, getVariantStyle(), style]}>{children}</View>;
+}

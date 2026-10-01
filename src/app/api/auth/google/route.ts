@@ -3,7 +3,6 @@ import { OAuth2Client } from "google-auth-library";
 import { prisma } from "@/lib/prisma";
 import { signToken } from "@/utils/auth";
 import { encode } from "next-auth/jwt";
-import jwt from "jsonwebtoken";
 
 const googleClient = new OAuth2Client(
   process.env.GOOGLE_CLIENT_ID ||
@@ -100,25 +99,13 @@ export async function POST(req: NextRequest) {
             console.warn("Google tokeninfo error:", tokenInfoErr);
           }
         }
-
-        // Fallback: decode JWT payload
-        if (!payload) {
-          const decoded: any = jwt.decode(tokenToVerify);
-          if (decoded && decoded.email) {
-            payload = {
-              email: decoded.email,
-              name: decoded.name || decoded.email.split("@")[0],
-              picture: decoded.picture || decoded.avatar,
-              sub: decoded.sub,
-            };
-          }
-        }
       }
     }
 
+    // SECURITY REMEDIATION [C3]: Reject unverified tokens. Cryptographic signature must be verified.
     if (!payload || !payload.email) {
       return NextResponse.json(
-        { success: false, error: "Unable to extract email from Google authentication." },
+        { success: false, error: "Invalid or unverified Google token. Cryptographic authentication failed." },
         { status: 401 }
       );
     }

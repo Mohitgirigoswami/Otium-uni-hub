@@ -18,13 +18,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Optional auth check, fallback to body/form userId
     const auth = await verifyAuth(req);
-    const userId =
-      auth.authenticated && auth.user
-        ? auth.user.id
-        : (formData.get("userId") as string) || "mobile_user";
-    formData.set("userId", userId);
+    if (!auth.authenticated || !auth.user) {
+      return NextResponse.json(
+        { success: false, error: auth.error || "Authentication required." },
+        { status: 401 }
+      );
+    }
+    formData.set("userId", auth.user.id);
 
     const res = await uploadPrintDocument(formData);
 

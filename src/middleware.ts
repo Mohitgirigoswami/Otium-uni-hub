@@ -65,19 +65,11 @@ export default withAuth(
   },
   {
     callbacks: {
-      authorized: ({ token, req }) => {
-        if (token) return true;
-        const hasSessionCookie =
-          req.cookies.get("__Secure-next-auth.session-token")?.value ||
-          req.cookies.get("next-auth.session-token")?.value ||
-          req.cookies.get("otium_token")?.value;
-        return !!hasSessionCookie;
+      authorized: ({ token }) => {
+        return !!token;
       },
     },
-    secret:
-      process.env.AUTH_SECRET ||
-      process.env.NEXTAUTH_SECRET ||
-      "otium-super-secret-key-production-jwt",
+    secret: process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET,
     pages: {
       signIn: "/login",
     },

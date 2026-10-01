@@ -13,16 +13,14 @@ export async function OPTIONS() {
 export async function GET(req: NextRequest) {
   try {
     const auth = await verifyAuth(req);
-    const { searchParams } = new URL(req.url);
-    const userId = auth.authenticated && auth.user ? auth.user.id : searchParams.get("userId");
-
-    if (!userId) {
+    if (!auth.authenticated || !auth.user) {
       return NextResponse.json(
-        { success: false, error: "User ID is required." },
-        { status: 400 }
+        { success: false, error: auth.error || "Unauthorized" },
+        { status: 401 }
       );
     }
 
+    const userId = auth.user.id;
     const res = await getSemesterRecords(userId);
     return NextResponse.json(res);
   } catch (error: any) {
@@ -37,15 +35,15 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const auth = await verifyAuth(req);
-    const body = await req.json();
-
-    const userId = auth.authenticated && auth.user ? auth.user.id : body.userId;
-    if (!userId) {
+    if (!auth.authenticated || !auth.user) {
       return NextResponse.json(
-        { success: false, error: "Authentication required." },
+        { success: false, error: auth.error || "Unauthorized" },
         { status: 401 }
       );
     }
+
+    const userId = auth.user.id;
+    const body = await req.json();
 
     const { semester, courses = [], gpa, totalCredits } = body;
     if (semester === undefined || gpa === undefined || !totalCredits) {
@@ -80,13 +78,20 @@ export async function POST(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   try {
     const auth = await verifyAuth(req);
+    if (!auth.authenticated || !auth.user) {
+      return NextResponse.json(
+        { success: false, error: auth.error || "Unauthorized" },
+        { status: 401 }
+      );
+    }
+
+    const userId = auth.user.id;
     const { searchParams } = new URL(req.url);
     const recordId = searchParams.get("recordId");
-    const userId = auth.authenticated && auth.user ? auth.user.id : searchParams.get("userId");
 
-    if (!recordId || !userId) {
+    if (!recordId) {
       return NextResponse.json(
-        { success: false, error: "Record ID and User ID are required." },
+        { success: false, error: "Record ID is required." },
         { status: 400 }
       );
     }

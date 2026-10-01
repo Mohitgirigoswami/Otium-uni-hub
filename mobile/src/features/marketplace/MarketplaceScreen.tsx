@@ -13,6 +13,7 @@ import {
   Platform,
   ScrollView,
   Image,
+  KeyboardAvoidingView,
 } from "react-native";
 import { Ionicons, Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useTheme } from "../../context/ThemeContext";
@@ -457,7 +458,10 @@ export function MarketplaceScreen({ navigation }: any) {
         transparent={true}
         onRequestClose={() => setIsSellModalOpen(false)}
       >
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+        >
           <View
             style={[
               styles.modalContent,
@@ -609,7 +613,7 @@ export function MarketplaceScreen({ navigation }: any) {
               />
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
       </View>
     </ClientServiceGuard>

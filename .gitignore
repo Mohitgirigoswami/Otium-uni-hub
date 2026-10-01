@@ -1,5 +1,6 @@
 # Dependencies
 node_modules
+.agents
 /node_modules
 mobile/node_modules
 .expo
@@ -9,7 +10,7 @@ mobile/ios/
 /.pnp
 .pnp.js
 .yarn/install-state.gz
-
+ORIGINAL_REQUEST.md
 # Next.js Build Output
 /.next/
 /out/

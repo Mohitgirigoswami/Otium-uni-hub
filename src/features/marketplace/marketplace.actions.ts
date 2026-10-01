@@ -27,6 +27,10 @@ export async function getMarketplaceItems(filters?: MarketplaceFilters): Promise
       where.condition = filters.condition;
     }
 
+    if (filters?.collegeId) {
+      where.collegeId = filters.collegeId;
+    }
+
     if (filters?.search && filters.search.trim() !== "") {
       where.OR = [
         { title: { contains: filters.search, mode: "insensitive" } },
@@ -88,6 +92,12 @@ export async function createMarketplaceItem(data: CreateMarketplaceItemParams): 
       "https://images.unsplash.com/photo-1526738549149-8e07eca6c147?w=500&auto=format&fit=crop&q=80"
     ];
 
+    const seller = await prisma.user.findUnique({
+      where: { id: data.sellerId },
+      select: { collegeId: true },
+    });
+    const activeCollegeId = data.collegeId || seller?.collegeId || null;
+
     const item = await prisma.$transaction(async (tx) => {
       if (cleanPhoneDigits && cleanPhoneDigits.length === 10) {
         await tx.user.update({
@@ -99,6 +109,7 @@ export async function createMarketplaceItem(data: CreateMarketplaceItemParams): 
       return tx.marketplaceItem.create({
         data: {
           sellerId: data.sellerId,
+          collegeId: activeCollegeId,
           title: data.title.trim(),
           description: data.description.trim(),
           price: pricePaise, // Strictly store in Paise
@@ -109,6 +120,7 @@ export async function createMarketplaceItem(data: CreateMarketplaceItemParams): 
         },
         include: {
           seller: true,
+          college: true,
         },
       });
     });

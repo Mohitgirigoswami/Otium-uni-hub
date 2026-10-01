@@ -5,6 +5,8 @@ import { createClient } from "@supabase/supabase-js";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { ActionResponse } from "@/lib/types";
 import { CloudinarySignatureData, SupabaseUploadUrlData } from "./storage.types";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/features/auth/auth.config";
 
 // Configure Cloudinary backend SDK
 cloudinary.config({
@@ -226,6 +228,11 @@ export async function deleteCloudinaryAsset(
   publicIdOrUrl: string
 ): Promise<ActionResponse<{ success: boolean }>> {
   try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) {
+      return { success: false, error: "Unauthorized: Active session required." };
+    }
+
     if (!publicIdOrUrl) return { success: true, data: { success: true } };
 
     const publicId = publicIdOrUrl.includes("http")
@@ -258,6 +265,11 @@ export async function deleteSupabaseStorageFile(
   filePathOrUrl: string
 ): Promise<ActionResponse<{ success: boolean }>> {
   try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id || (session.user as any).role !== "SUPER_ADMIN") {
+      return { success: false, error: "Unauthorized: Super Admin access required." };
+    }
+
     if (!filePathOrUrl) return { success: true, data: { success: true } };
 
     const supabaseAdmin = getSupabaseAdmin();

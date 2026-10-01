@@ -13,8 +13,9 @@ export async function GET(req: NextRequest) {
     const category = searchParams.get("category") || undefined;
     const search = searchParams.get("search") || undefined;
     const status = searchParams.get("status") || undefined;
+    const collegeId = searchParams.get("collegeId") || undefined;
 
-    const result = await getLostItems({ category, search, status });
+    const result = await getLostItems({ category, search, status, collegeId });
     if (!result.success) {
       return NextResponse.json(
         { success: false, error: result.error || "Failed to load lost & found items." },
@@ -38,15 +39,15 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const auth = await verifyAuth(req);
-    const body = await req.json();
-
-    const userId = auth.authenticated && auth.user ? auth.user.id : body.userId;
-    if (!userId) {
+    if (!auth.authenticated || !auth.user) {
       return NextResponse.json(
-        { success: false, error: auth.error || "Authentication required." },
+        { success: false, error: auth.error || "Unauthorized" },
         { status: 401 }
       );
     }
+
+    const userId = auth.user.id;
+    const body = await req.json();
 
     // Action: Mark Claimed
     if (body.action === "CLAIM") {
@@ -74,7 +75,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Action: Create Found Item Report
-    const { title, description, locationFound, dateFound, imageUrl, category } = body;
+    const { title, description, locationFound, dateFound, imageUrl, category, collegeId } = body;
 
     if (!title || !locationFound || !imageUrl) {
       return NextResponse.json(
@@ -91,6 +92,7 @@ export async function POST(req: NextRequest) {
       dateFound: dateFound || new Date().toISOString(),
       imageUrl: imageUrl.trim(),
       category: category || "OTHER",
+      collegeId: collegeId || auth.user.collegeId || null,
     });
 
     if (!createResult.success) {

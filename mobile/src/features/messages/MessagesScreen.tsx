@@ -75,6 +75,18 @@ export function MessagesScreen({ navigation, route }: any) {
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
 
   const flatListRef = useRef<FlatList>(null);
+  const chatContainerRef = useRef<View>(null);
+  const [keyboardOffset, setKeyboardOffset] = useState(
+    insets.top + (Platform.OS === "android" ? 56 : 60)
+  );
+
+  const handleChatContainerLayout = () => {
+    chatContainerRef.current?.measureInWindow((x, y) => {
+      if (typeof y === "number" && y >= 0) {
+        setKeyboardOffset(y);
+      }
+    });
+  };
 
   // Keyboard state listener
   useEffect(() => {
@@ -534,12 +546,17 @@ export function MessagesScreen({ navigation, route }: any) {
       : "Campus Peer Chat";
 
     return (
-      <KeyboardAvoidingView
+      <View
+        ref={chatContainerRef}
         style={[styles.container, { backgroundColor: colors.background }]}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 10 : 0}
+        onLayout={handleChatContainerLayout}
       >
-        {/* Chat Header */}
+        <KeyboardAvoidingView
+          style={styles.container}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          keyboardVerticalOffset={keyboardOffset}
+        >
+          {/* Chat Header */}
         <View style={[styles.chatHeader, { borderBottomColor: colors.border, backgroundColor: colors.card }]}>
           <TouchableOpacity
             onPress={closeChat}
@@ -749,7 +766,8 @@ export function MessagesScreen({ navigation, route }: any) {
             />
           </TouchableOpacity>
         </View>
-      </KeyboardAvoidingView>
+        </KeyboardAvoidingView>
+      </View>
     );
   }
 
@@ -1036,7 +1054,7 @@ export function MessagesScreen({ navigation, route }: any) {
       >
         <KeyboardAvoidingView
           style={styles.modalOverlay}
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
         >
           <View style={[styles.newChatModalContent, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <View style={styles.modalHeader}>
@@ -1140,7 +1158,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 16,
-    paddingTop: Platform.OS === "ios" ? 52 : 36,
+    paddingTop: Platform.OS === "ios" ? 14 : 12,
     paddingBottom: 12,
     borderBottomWidth: 1,
   },
@@ -1278,7 +1296,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 16,
-    paddingTop: Platform.OS === "ios" ? 52 : 36,
+    paddingTop: Platform.OS === "ios" ? 14 : 12,
     paddingBottom: 12,
     borderBottomWidth: 1,
     gap: 12,

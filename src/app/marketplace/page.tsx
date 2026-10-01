@@ -85,6 +85,7 @@ export default function MarketplacePage() {
       category: categoryFilter,
       status: statusFilter,
       search: searchQuery,
+      collegeId: user?.collegeId,
     });
     if (res.success && res.data) {
       setItems(res.data);
@@ -94,7 +95,7 @@ export default function MarketplacePage() {
 
   useEffect(() => {
     fetchItemsList();
-  }, [categoryFilter, statusFilter]);
+  }, [categoryFilter, statusFilter, user?.collegeId]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -124,6 +125,7 @@ export default function MarketplacePage() {
       condition,
       images: imageUrl.trim() ? [imageUrl.trim()] : [],
       sellerPhone: sellerPhone.trim() || undefined,
+      collegeId: user.collegeId,
     });
     setIsSubmitting(false);
 

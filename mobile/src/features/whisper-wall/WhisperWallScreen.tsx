@@ -19,6 +19,7 @@ import { Ionicons, Feather } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
 import * as DocumentPicker from "expo-document-picker";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "../../context/ThemeContext";
 import { useUser } from "../../context/UserContext";
 import { apiClient } from "../../services/apiClient";
@@ -85,6 +86,7 @@ export const resolveMediaUri = (uri?: string) => {
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 
 export function WhisperWallScreen({ navigation }: any) {
+  const insets = useSafeAreaInsets();
   const { colors } = useTheme();
   const { user } = useUser();
 
@@ -869,7 +871,8 @@ export function WhisperWallScreen({ navigation }: any) {
               onPress={() => !isSubmitting && setIsComposeOpen(false)}
             />
             <KeyboardAvoidingView
-              behavior={Platform.OS === "ios" ? "padding" : undefined}
+              behavior="padding"
+              keyboardVerticalOffset={Platform.OS === "android" ? insets.top + 56 : 0}
               style={styles.sheetWrapper}
             >
               <View
@@ -1062,7 +1065,8 @@ export function WhisperWallScreen({ navigation }: any) {
               onPress={() => setCommentsModalPost(null)}
             />
             <KeyboardAvoidingView
-              behavior={Platform.OS === "ios" ? "padding" : undefined}
+              behavior="padding"
+              keyboardVerticalOffset={Platform.OS === "android" ? insets.top + 56 : 0}
               style={styles.sheetWrapper}
             >
               <View

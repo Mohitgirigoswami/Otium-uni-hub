@@ -146,37 +146,55 @@ export function TabNavigator() {
       <Tab.Screen
         name="CGPA"
         component={CgpaPredictorScreen}
-        options={{ tabBarButton: () => null }}
+        options={{
+          tabBarButton: () => null,
+          tabBarStyle: { display: "none" },
+        }}
       />
 
       <Tab.Screen
         name="Messages"
         component={MessagesScreen}
-        options={{ tabBarButton: () => null }}
+        options={{
+          tabBarButton: () => null,
+          tabBarStyle: { display: "none" },
+        }}
       />
 
       <Tab.Screen
         name="RideShare"
         component={RideShareScreen}
-        options={{ tabBarButton: () => null }}
+        options={{
+          tabBarButton: () => null,
+          tabBarStyle: { display: "none" },
+        }}
       />
 
       <Tab.Screen
         name="LostAndFound"
         component={LostAndFoundScreen}
-        options={{ tabBarButton: () => null }}
+        options={{
+          tabBarButton: () => null,
+          tabBarStyle: { display: "none" },
+        }}
       />
 
       <Tab.Screen
         name="Marketplace"
         component={MarketplaceScreen}
-        options={{ tabBarButton: () => null }}
+        options={{
+          tabBarButton: () => null,
+          tabBarStyle: { display: "none" },
+        }}
       />
 
       <Tab.Screen
         name="Gigs"
         component={GigsScreen}
-        options={{ tabBarButton: () => null }}
+        options={{
+          tabBarButton: () => null,
+          tabBarStyle: { display: "none" },
+        }}
       />
     </Tab.Navigator>
   );

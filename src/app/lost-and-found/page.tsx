@@ -66,6 +66,7 @@ export default function LostAndFoundPage() {
       status: statusFilter,
       category: categoryFilter,
       search: searchQuery,
+      collegeId: user?.collegeId,
     });
     if (res.success && res.data) {
       setItems(res.data);
@@ -75,7 +76,7 @@ export default function LostAndFoundPage() {
 
   useEffect(() => {
     fetchItemsList();
-  }, [statusFilter, categoryFilter]);
+  }, [statusFilter, categoryFilter, user?.collegeId]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -102,6 +103,7 @@ export default function LostAndFoundPage() {
       dateFound: dateFound ? new Date(dateFound).toISOString() : new Date().toISOString(),
       imageUrl: imageUrl.trim(),
       category,
+      collegeId: user.collegeId,
     });
     setIsSubmitting(false);
 

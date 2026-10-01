@@ -8,8 +8,8 @@ import {
   ScrollView,
 } from "react-native";
 import { Ionicons, Feather, MaterialCommunityIcons } from "@expo/vector-icons";
-import { colors } from "../theme/colors";
-import { Badge } from "./Badge";
+import { useTheme } from "../context/ThemeContext";
+import { Badge } from "./ui/Badge";
 
 interface NotificationsModalProps {
   visible: boolean;
@@ -22,6 +22,8 @@ export function NotificationsModal({
   onClose,
   campusName = "Campus Hub",
 }: NotificationsModalProps) {
+  const { colors } = useTheme();
+
   const notices = [
     {
       id: "1",
@@ -55,62 +57,62 @@ export function NotificationsModal({
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={styles.backdrop}>
-        <View style={styles.modalCard}>
+        <View style={[styles.modalCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
           {/* Header */}
-          <View style={styles.modalHeader}>
+          <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
             <View style={styles.headerLeft}>
-              <View style={styles.bellBadge}>
-                <Ionicons name="notifications" size={18} color={colors.brand[400]} />
+              <View style={[styles.bellBadge, { backgroundColor: colors.primary + "20" }]}>
+                <Ionicons name="notifications" size={18} color={colors.primary} />
               </View>
               <View>
-                <Text style={styles.modalTitle}>Campus Notifications</Text>
-                <Text style={styles.modalSubtitle}>{campusName}</Text>
+                <Text style={[styles.modalTitle, { color: colors.text }]}>Campus Notifications</Text>
+                <Text style={[styles.modalSubtitle, { color: colors.textSecondary }]}>{campusName}</Text>
               </View>
             </View>
-            <TouchableOpacity onPress={onClose} style={styles.closeBtn} activeOpacity={0.7}>
-              <Ionicons name="close" size={20} color={colors.slate[400]} />
+            <TouchableOpacity onPress={onClose} style={[styles.closeBtn, { backgroundColor: colors.secondary }]} activeOpacity={0.7}>
+              <Ionicons name="close" size={20} color={colors.textSecondary} />
             </TouchableOpacity>
           </View>
 
           {/* List of Notices */}
           <ScrollView style={styles.noticesList} showsVerticalScrollIndicator={false}>
             {notices.map((n) => (
-              <View key={n.id} style={styles.noticeItem}>
-                <View style={styles.noticeIconBox}>
+              <View key={n.id} style={[styles.noticeItem, { backgroundColor: colors.secondary + "40", borderColor: colors.border }]}>
+                <View style={[styles.noticeIconBox, { backgroundColor: colors.secondary }]}>
                   {n.iconType === "feather" ? (
-                    <Feather name={n.icon as any} size={16} color={colors.brand[400]} />
+                    <Feather name={n.icon as any} size={16} color={colors.primary} />
                   ) : n.iconType === "material" ? (
-                    <MaterialCommunityIcons name={n.icon as any} size={18} color={colors.brand[400]} />
+                    <MaterialCommunityIcons name={n.icon as any} size={18} color={colors.primary} />
                   ) : (
-                    <Ionicons name={n.icon as any} size={18} color={colors.brand[400]} />
+                    <Ionicons name={n.icon as any} size={18} color={colors.primary} />
                   )}
                 </View>
                 <View style={styles.noticeContent}>
                   <View style={styles.noticeTopRow}>
-                    <Text style={styles.noticeTitle}>{n.title}</Text>
-                    <Badge variant="neutral" size="sm">
+                    <Text style={[styles.noticeTitle, { color: colors.text }]}>{n.title}</Text>
+                    <Badge variant="secondary" size="sm">
                       {n.tag}
                     </Badge>
                   </View>
-                  <Text style={styles.noticeMessage}>{n.message}</Text>
-                  <Text style={styles.noticeTime}>{n.time}</Text>
+                  <Text style={[styles.noticeMessage, { color: colors.textSecondary }]}>{n.message}</Text>
+                  <Text style={[styles.noticeTime, { color: colors.textSecondary }]}>{n.time}</Text>
                 </View>
               </View>
             ))}
 
             {/* All Caught Up Card */}
-            <View style={styles.allCaughtUpCard}>
-              <Ionicons name="checkmark-circle-outline" size={22} color={colors.emerald[400]} />
-              <Text style={styles.allCaughtUpText}>You're all caught up!</Text>
-              <Text style={styles.allCaughtUpSubtext}>
+            <View style={[styles.allCaughtUpCard, { backgroundColor: colors.success + "14", borderColor: colors.success + "30" }]}>
+              <Ionicons name="checkmark-circle-outline" size={22} color={colors.success} />
+              <Text style={[styles.allCaughtUpText, { color: colors.success }]}>You're all caught up!</Text>
+              <Text style={[styles.allCaughtUpSubtext, { color: colors.textSecondary }]}>
                 No urgent warnings or unread administrative notices.
               </Text>
             </View>
           </ScrollView>
 
           {/* Dismiss Button */}
-          <TouchableOpacity onPress={onClose} style={styles.dismissBtn} activeOpacity={0.8}>
-            <Text style={styles.dismissBtnText}>Dismiss</Text>
+          <TouchableOpacity onPress={onClose} style={[styles.dismissBtn, { backgroundColor: colors.primary }]} activeOpacity={0.8}>
+            <Text style={[styles.dismissBtnText, { color: colors.primaryForeground }]}>Dismiss</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -125,11 +127,9 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
   },
   modalCard: {
-    backgroundColor: colors.surface,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.1)",
     maxHeight: "80%",
     padding: 20,
     gap: 16,
@@ -140,7 +140,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: colors.cardBorder,
   },
   headerLeft: {
     flexDirection: "row",
@@ -151,25 +150,21 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 12,
-    backgroundColor: "rgba(20, 184, 166, 0.15)",
     alignItems: "center",
     justifyContent: "center",
   },
   modalTitle: {
     fontSize: 16,
     fontWeight: "800",
-    color: "#FFFFFF",
   },
   modalSubtitle: {
     fontSize: 11,
-    color: colors.slate[400],
     marginTop: 1,
   },
   closeBtn: {
     width: 32,
     height: 32,
     borderRadius: 10,
-    backgroundColor: colors.slate[800],
     alignItems: "center",
     justifyContent: "center",
   },
@@ -180,9 +175,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     padding: 12,
     borderRadius: 14,
-    backgroundColor: "rgba(255, 255, 255, 0.03)",
     borderWidth: 1,
-    borderColor: colors.cardBorder,
     marginBottom: 10,
     gap: 12,
   },
@@ -190,7 +183,6 @@ const styles = StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: 10,
-    backgroundColor: colors.slate[800],
     alignItems: "center",
     justifyContent: "center",
   },
@@ -205,25 +197,20 @@ const styles = StyleSheet.create({
   noticeTitle: {
     fontSize: 13,
     fontWeight: "700",
-    color: "#FFFFFF",
   },
   noticeMessage: {
     fontSize: 11.5,
-    color: colors.slate[300],
     marginTop: 3,
     lineHeight: 16,
   },
   noticeTime: {
     fontSize: 10,
-    color: colors.slate[500],
     marginTop: 4,
   },
   allCaughtUpCard: {
     padding: 16,
     borderRadius: 14,
-    backgroundColor: "rgba(16, 185, 129, 0.08)",
     borderWidth: 1,
-    borderColor: "rgba(16, 185, 129, 0.2)",
     alignItems: "center",
     marginTop: 6,
     marginBottom: 10,
@@ -231,23 +218,19 @@ const styles = StyleSheet.create({
   allCaughtUpText: {
     fontSize: 13,
     fontWeight: "700",
-    color: colors.emerald[400],
     marginTop: 4,
   },
   allCaughtUpSubtext: {
     fontSize: 11,
-    color: colors.slate[400],
     textAlign: "center",
     marginTop: 2,
   },
   dismissBtn: {
-    backgroundColor: colors.slate[800],
     paddingVertical: 12,
     borderRadius: 12,
     alignItems: "center",
   },
   dismissBtnText: {
-    color: "#FFFFFF",
     fontSize: 13,
     fontWeight: "700",
   },

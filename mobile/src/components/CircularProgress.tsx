@@ -1,7 +1,7 @@
 import React from "react";
 import { View, Text, StyleSheet } from "react-native";
 import Svg, { Circle, Defs, LinearGradient, Stop } from "react-native-svg";
-import { colors } from "../theme/colors";
+import { useTheme } from "../context/ThemeContext";
 
 interface CircularProgressProps {
   percentage: number;
@@ -16,15 +16,16 @@ export function CircularProgress({
   strokeWidth = 14,
   subtitle = "Overall Attendance",
 }: CircularProgressProps) {
+  const { colors } = useTheme();
   const isSafe = percentage >= 75;
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
   const clampedPercentage = Math.min(Math.max(percentage, 0), 100);
   const strokeDashoffset = circumference - (circumference * clampedPercentage) / 100;
 
-  const gradientStart = isSafe ? "#10B981" : "#EF4444";
-  const gradientEnd = isSafe ? "#00FFC6" : "#F59E0B";
-  const textColor = isSafe ? colors.emerald[400] : colors.rose[400];
+  const gradientStart = isSafe ? colors.success : colors.destructive;
+  const gradientEnd = isSafe ? colors.primary : colors.warning;
+  const textColor = isSafe ? colors.success : colors.destructive;
 
   return (
     <View style={[styles.container, { width: size, height: size }]}>
@@ -66,20 +67,20 @@ export function CircularProgress({
         <Text style={[styles.percentageText, { color: textColor }]}>
           {percentage.toFixed(0)}%
         </Text>
-        <Text style={styles.subtitleText}>{subtitle}</Text>
+        <Text style={[styles.subtitleText, { color: colors.textSecondary }]}>{subtitle}</Text>
         <View
           style={[
             styles.statusPill,
             {
-              backgroundColor: isSafe ? colors.emerald.bg : colors.rose.bg,
-              borderColor: isSafe ? colors.emerald.border : colors.rose.border,
+              backgroundColor: isSafe ? colors.success + "18" : colors.destructive + "18",
+              borderColor: isSafe ? colors.success + "40" : colors.destructive + "40",
             },
           ]}
         >
           <Text
             style={[
               styles.statusPillText,
-              { color: isSafe ? colors.emerald[400] : colors.rose[400] },
+              { color: isSafe ? colors.success : colors.destructive },
             ]}
           >
             {isSafe ? "✓ Safe (>75%)" : "⚠️ Risk (<75%)"}
@@ -109,7 +110,6 @@ const styles = StyleSheet.create({
   subtitleText: {
     fontSize: 11,
     fontWeight: "600",
-    color: colors.slate[400],
     textTransform: "uppercase",
     letterSpacing: 0.5,
     marginTop: 2,

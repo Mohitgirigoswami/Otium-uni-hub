@@ -121,6 +121,8 @@ export async function createPrintOrder(data: CreatePrintOrderParams): Promise<Ac
       ? `${data.deliveryLocation.trim()}${!data.deliveryLocation.includes("Phone:") && cleanPhoneDigits ? contactInfo : ""}`
       : `${data.deliveryLocation.trim()}${data.copies && data.copies > 1 ? ` | Copies: ${data.copies}` : ""}${data.utr ? ` | UTR: ${data.utr}` : ""}${data.driveFileId ? ` | DriveID: ${data.driveFileId}` : ""}${contactInfo}`;
 
+    const activeCollegeId = data.collegeId || user.collegeId || null;
+
     // Atomic transaction for database integrity
     const order = await prisma.$transaction(async (tx) => {
       // Update phone number on user record if provided and valid 10 digits
@@ -134,6 +136,7 @@ export async function createPrintOrder(data: CreatePrintOrderParams): Promise<Ac
       return tx.printOrder.create({
         data: {
           userId: data.userId,
+          collegeId: activeCollegeId,
           fileName: data.fileName.trim(),
           fileUrl: data.fileUrl?.trim() || null,
           pageCount: validPageCount,

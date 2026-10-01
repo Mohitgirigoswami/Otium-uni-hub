@@ -2,7 +2,7 @@ import { ActionResponse } from "@/lib/types";
 
 export interface IncognitoProfileData {
   id: string;
-  userId: string;
+  userId?: string;
   handle: string;
   avatarUrl: string;
 }
