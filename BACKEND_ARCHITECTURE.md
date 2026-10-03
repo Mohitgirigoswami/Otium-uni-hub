@@ -755,6 +755,56 @@ Logged actions include:
   - Render web service installs dependencies directly from `server/package.json` (`jsonwebtoken`, `socket.io`).
   - Prisma initialization is wrapped in a dynamic `try...catch` block. When deployed in standalone mode without a local database client or schema, the socket server functions in lightweight stateless JWT authentication mode, allowing authenticated students to connect and exchange real-time messages with 0 crash risk.
 
+### 9.6 Express Print Station — Server-Side Page Count Re-Verification
+- **Independent PDF Byte Inspection**: In `createPrintOrder`, the server does not rely on client-reported page counts. It loads the uploaded document from `data.fileUrl` directly into `pdf-lib` via `PDFDocument.load()`, extracts the true page count, and enforces `verifiedPageCount = Math.max(actualPages, validPageCount)`.
+- **Tamper-Proof Financial Calculation**: The per-page rate and minimum floor (`Math.max(500, baseCostPaise * validCopies)`) are calculated strictly against `verifiedPageCount`, ensuring any malicious client payload attempting to pay for fewer pages is overridden and charged correctly.
+
+### 9.7 Otium Campus E-Wallet & Atomic Ledger Engine (Phase 1)
+- **Immutable Append-Only Ledger (`WalletTransaction`)**:
+  - Direct mutations to `User.walletBalancePaise` are strictly prohibited outside of atomic transactions.
+  - Every monetary mutation creates a corresponding `WalletTransaction` row tracking `amountPaise` (positive for credits, negative for debits), resulting `balanceAfterPaise`, transaction `type` (`TOPUP_CREDIT`, `PRINT_PAYMENT`, `PRINT_CASHBACK`, `REFUND`), human-readable `description`, unique `referenceId`, and mandatory 12-digit bank `utr`.
+- **Topup Request & Verification Workflow (`WalletTopupRequest`)**:
+  - Top-up requests record student ID, requested `amountPaise`, unique `@unique utr` (12 numeric digits), and initial status `PENDING`.
+  - Duplicate UTR detection rejects reused payment references immediately.
+  - Verification (`APPROVED` / `REJECTED`) is atomic (`prisma.$transaction`) with admin attribution (`verifiedBy`, `verifiedAt`), instantly crediting the user balance and writing the ledger row.
+- **Dual-Gateway API Parity**:
+  - Web Server Actions: `getWalletDetailsAction`, `submitTopupRequestAction`, `adminApproveTopupAction`, `adminRejectTopupAction`, `adminGetPendingTopupsAction` in `src/features/wallet/wallet.actions.ts`.
+  - Mobile REST Endpoints: `GET /api/wallet` (fetches balance, pending top-ups, transaction history) and `POST /api/wallet/topup` (submits UTR recharge) with `verifyAuth` and `checkRateLimit`.
+
+### 9.8 Express Print Station — 1-Click Wallet Payment & Automated 2% Cashback Loop (Phase 2)
+- **1-Click Atomic Checkout (`createPrintOrder`)**:
+  - Students can choose `paymentMethod: "WALLET"` or `paymentMethod: "UPI"`.
+  - If paid via wallet, `createPrintOrder` performs pessimistic balance validation, creates the order with `utr: "WALLET_PAYMENT"`, debits `PRINT_PAYMENT` (`-totalCostPaise`), and atomically credits `PRINT_CASHBACK` (`+Math.floor(totalCostPaise * 0.02)`) in the same `prisma.$transaction`.
+  - REST route `POST /api/print/order` accepts `paymentMethod: "WALLET"` without requiring a manual UTR.
+- **Admin-Controlled Cancellation & Discretionary Refund (`refundPrintOrder`)**:
+  - Strictly restricted to campus print operators and administrators (students cannot self-cancel; they contact the admin).
+  - When an admin rejects an order (`updatePrintOrderStatus` with status `REJECTED` in `admin.actions.ts`), the backend checks if `existing.paymentMethod === "WALLET"`.
+  - **Direct UPI Orders (Fake/Wrong UTR Protection)**: Rejections for UPI orders (e.g. invalid or unverified UTR) **never** trigger automatic refunds or wallet credits. Zero platform money is lost to fraudulent UTR submissions.
+  - **Discretionary Wallet Refunds (`issueRefund?: boolean`)**: The admin panel presents an explicit checkbox (`Issue Wallet Refund`). If checked (default), atomic +100% refund (`PRINT_REFUND`) and -2% cashback reversal (`CASHBACK_REVERSAL`) execute seamlessly. If unchecked by the admin (e.g. print was already completed, abusive behavior, or policy breach), the order is rejected with **no refund issued**.
+  - Prevents double-refund abuse via idempotent check on `PRINT_REFUND` ledger transactions.
+
+### 9.9 Campus E-Wallet Admin Operations & Real-Time Telegram Bot Approvals (Phase 3)
+- **Instant Telegram Push Notifications (`src/lib/telegram.ts`)**:
+  - Whenever a student submits a wallet recharge with a 12-digit numeric UTR, `submitWalletTopupRequest` triggers an asynchronous, non-blocking call to `sendTopupTelegramAlert(...)`.
+  - Notification payload formats rich HTML containing student name, email, phone, campus, claimed ₹ amount (and Paise), formatted 12-digit UTR (`<code>{utr}</code>`), and two inline callback buttons: `[✅ Approve ₹XX.XX]` and `[❌ Reject]`.
+- **Telegram Bot Webhook Engine (`POST /api/telegram/webhook`) & Open-Source Security Hardening**:
+  - **Secret Token Validation**: If `TELEGRAM_WEBHOOK_SECRET` is defined in `.env`, the webhook validates the `X-Telegram-Bot-Api-Secret-Token` header, immediately rejecting unauthorized external callers.
+  - **Fail-Closed Access Control**: The webhook mandates `TELEGRAM_ADMIN_CHAT_ID`. If missing or if the sender chat ID does not match, all requests (callbacks and incoming text messages) are rejected with HTTP 403 Forbidden.
+  - **Inline Callback Execution**:
+    - `approve_topup:<id>`: Validates request status, calls `adminApproveTopup({ requestId, adminId: 'telegram:@username' })`, credits student balance atomically in `prisma.$transaction`, records ledger entry, answers callback query, and updates message in-place to an immutable audit card.
+    - `reject_topup:<id>`: Calls `adminRejectTopup`, marks request `REJECTED` with zero wallet refund issued, and updates Telegram card.
+  - **Bot Commands**:
+    - Strictly authenticated to the admin chat ID: `/status` returns live aggregate metrics (`totalFloatPaise`, student count, pending approvals queue). Unauthorized callers receive HTTP 403 without data exposure.
+    - `/start` & `/help`: Displays bot capabilities and operational manual.
+- **Race-Condition & Double-Spend Proof Invariants (`wallet.service.ts` & `print.actions.ts`)**:
+  - **Atomic Compare-And-Swap (CAS)**: Both `adminApproveTopup` and `adminRejectTopup` utilize `tx.walletTopupRequest.updateMany({ where: { id: requestId, status: "PENDING" }, data: ... })`. If two concurrent requests arrive, exactly one gets `count === 1` and proceeds; the second gets `count === 0` and is immediately rolled back by PostgreSQL.
+  - **Conditional Balance Decrement**: In `payPrintOrderWithWallet` and `createPrintOrder`, balance deductions use `tx.user.updateMany({ where: { id: userId, walletBalancePaise: { gte: totalCostPaise } }, data: { walletBalancePaise: { decrement: totalCostPaise - cashbackPaise } } })`. It is mathematically impossible for a user to overspend or induce a negative wallet balance via parallel requests.
+  - **Single Top-Up Ceiling**: Enforces maximum single top-up ceiling (`MAX_TOPUP_PAISE = 500000`, ₹5,000) to deter integer overflow or excessive fraudulent claims.
+  - **Custom Admin Remark**: `adminApproveTopup` accepts an optional `remark?: string`, appending `[Remark: ...]` directly to the immutable ledger transaction (`WalletTransaction.description`).
+- **Admin KPI Overview Action (`adminGetWalletOverviewAction` & `adminGetWalletOverview`)**:
+  - Computes multi-tenant campus float aggregates (`totalFloatPaise`, `totalStudents`), pending queue count & sums, approved today count & sums (`verifiedAt >= midnight`), rejected today count, and Telegram configuration state (`isTelegramConfigured()`).
+  - Powers both the web `/admin/wallet` dashboard and automated operational reporting.
+
 ---
 ## 10. Agent Maintenance Checklist & Updating Rules
 

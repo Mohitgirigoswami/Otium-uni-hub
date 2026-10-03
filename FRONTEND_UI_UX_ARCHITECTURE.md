@@ -594,7 +594,44 @@ Otium uses physics-based spring transitions rather than linear CSS fades:
 ### 8.8 Cloud Production Bundling & Asset Resolution Hardening
 - **Metro Bundler Asset Path Resolution**: Verified all nested screen components under `mobile/src/features/*` employ relative imports (`../../../assets/logo.png`) that accurately navigate 3 directory levels to the root `mobile/assets/` directory. This resolves EAS cloud build failures (`Unable to resolve module ../../assets/logo.png`) and guarantees Android/iOS standalone APK compilation parity.
 
+### 8.9 Express Print Station — Immutable Document Page Count
+- **Anti-Tampering Read-Only Badge**: Eliminated manual `[-]` and `[+]` page counter buttons on Web (`/print-station`) and Mobile (`PrintStationScreen`). The document page count is strictly determined server-side from PDF bytes via `pdf-lib` and displayed as an immutable status badge (`N pages • Server Verified`), preventing client-side price tampering. Users may only adjust the **Number of Copies** multiplier stepper.
+
+### 8.10 Otium Campus E-Wallet Component Architecture (Phase 1)
+- **Web Navigation Balance Pill (`src/components/wallet/WalletPill.tsx`)**: Renders a live, responsive balance badge in the primary navbar with automatic refresh via the `otium:wallet_updated` window event.
+- **Topup & Audit Modal (`src/components/wallet/TopupModal.tsx`)**: Provides preset recharge chips (₹50, ₹100, ₹200, ₹500), amount-locked QR codes, UTR input validation, and an immutable double-entry ledger history view displaying exact UTR references, transaction descriptions, and running balance snapshots.
+- **Mobile Header Badge & Modal (`mobile/src/components/wallet/WalletHeaderBadge.tsx`, `WalletRechargeModal.tsx`)**: Integrates dynamic `useTheme()` tokens (`colors.card`, `colors.primary`, `colors.border`), UPI deep linking (`upi://pay`), native clipboard integration, and real-time ledger view.
+
+### 8.11 Express Print Station — 1-Click Wallet Checkout & Dual Payment UI (Phase 2)
+- **Web Payment Selector (`src/app/print-station/page.tsx`)**:
+  - Replaces single UPI section with interactive dual payment cards:
+    - **Otium E-Wallet (+2% Cashback)**: Shows live balance, auto-calculates 2% instant cashback, and enables 1-click checkout without QR code or UTR entry. If balance is insufficient, presents dynamic shortage calculator and opens inline `TopupModal`.
+    - **Direct UPI App / QR**: Retains amount-locked dynamic QR and 12-digit UTR input for students paying directly via UPI apps.
+- **Mobile Checkout Modal Parity (`mobile/src/features/print-station/PrintStationScreen.tsx`)**:
+  - Implements theme-adaptive segmented selector consuming `useTheme()` tokens (`colors.primary`, `colors.secondary`, `colors.border`).
+  - Supports 1-click submission with instant feedback and embedded `WalletRechargeModal` for immediate top-ups.
+  - In accordance with campus administrative policy, customer self-cancellation is removed; order cancellations and refunds are administered exclusively through campus print operators with automatic wallet refund and cashback clawback reversal.
+- **Admin Print Rejection Panel Parity (`src/app/admin/print/page.tsx`)**:
+  - Provides contextual payment method indicator:
+    - **Wallet-paid orders**: Displays interactive `[x] Issue Wallet Refund` toggle (checked by default). Unchecking allows administrators to reject without refunding.
+    - **UPI-paid orders**: Displays alert noting direct UPI payment (and submitted UTR), explicitly confirming that no automatic wallet refund will be triggered, safeguarding platform balances against fake/invalid UTR submissions.
+
+### 8.12 Campus E-Wallet Admin Dashboard & Telegram Bot UI (Phase 3)
+- **Web Admin Management Page (`src/app/admin/wallet/page.tsx`)**:
+  - **KPI Metrics Grid**: 4 responsive cards rendering Total Campus Float (Rupees & Paise, with student count), Pending Approvals (with highlighted amber border & urgency badge when > 0), Approved Today (Rupees credited & count), and Rejected Today (unmatched UTRs).
+  - **Telegram Bot Status Pill & Setup Modal**: Displays live green pulsing dot when `TELEGRAM_BOT_TOKEN` & `TELEGRAM_ADMIN_CHAT_ID` are configured in `.env`, or opens an interactive setup guide detailing BotFather token creation, Chat ID discovery, webhook URLs, and previewing the Telegram inline card format.
+  - **Interactive Filtering & Search**: Segmented status pills (`All`, `Pending`, `Approved`, `Rejected`) with real-time count badges alongside instant search matching student name, email, phone, and 12-digit UTR.
+  - **Monospace UTR with 1-Click Clipboard Copy**: Displays 12-digit UTR references in monospace chips with visual checkmark feedback upon copying, expediting bank statement matching.
+  - **1-Tap Admin Approval & Discretionary Rejection**:
+    - **Approve**: Dispatches `adminApproveTopupAction`, disables button to prevent double-clicks, and credits student balance in real time.
+    - **Reject**: Opens a rejection modal with 4 pre-configured reason chips (*"Payment could not be verified in bank records"*, *"Duplicate UTR"*, *"Amount mismatch"*, *"Reversed transaction"*) or custom note input. Rejection explicitly enforces zero wallet refund/credits.
+- **Admin Navigation & Middleware Parity**:
+  - Added `Wallet Recharges` link to `src/app/admin/layout.tsx` in both the desktop sidebar and mobile horizontal navigation strip.
+  - Configured role protection in `src/middleware.ts` granting access to `PRINT_MANAGER` and `SUPER_ADMIN` roles.
+
 ---
 *Document maintained by Antigravity AI Engineering Suite.*
+
+
 
 

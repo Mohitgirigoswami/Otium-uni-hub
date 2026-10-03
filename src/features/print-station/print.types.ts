@@ -33,6 +33,7 @@ export interface CreatePrintOrderParams {
   expectedDelivery?: string;
   collegeId?: string | null;
   phoneNumber?: string;
+  paymentMethod?: "WALLET" | "UPI";
 }
 
 export interface ReportPrintIssueParams {

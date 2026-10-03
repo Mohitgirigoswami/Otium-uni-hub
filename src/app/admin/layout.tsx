@@ -15,6 +15,7 @@ import {
   Settings,
   FileText,
   HelpCircle,
+  Wallet,
 } from "lucide-react";
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
@@ -83,6 +84,7 @@ export default function AdminLayout({
       title: "Operations",
       items: [
         { href: "/admin/print", label: "Print Station", icon: Printer },
+        { href: "/admin/wallet", label: "Wallet Recharges", icon: Wallet },
         ...(isSuperAdmin
           ? [{ href: "/admin/gigs", label: "Gig Escrow", icon: Briefcase }]
           : []),
@@ -160,6 +162,20 @@ export default function AdminLayout({
           >
             <Printer className="w-3.5 h-3.5" />
             <span>Print Station</span>
+          </button>
+        </Link>
+
+        <Link href="/admin/wallet">
+          <button
+            className={cn(
+              "px-3 py-1.5 rounded-md text-xs font-medium whitespace-nowrap transition-colors flex items-center gap-1.5",
+              pathname === "/admin/wallet"
+                ? "bg-primary text-primary-foreground font-semibold"
+                : "text-muted-foreground hover:text-foreground hover:bg-secondary"
+            )}
+          >
+            <Wallet className="w-3.5 h-3.5" />
+            <span>Wallet Recharges</span>
           </button>
         </Link>
 

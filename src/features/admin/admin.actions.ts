@@ -15,6 +15,7 @@ import { render } from "@react-email/render";
 import { PrintStatusEmail } from "@/emails/PrintStatusEmail";
 import { sendEmail } from "@/lib/mail";
 import { sendPrintStationMessage } from "@/actions/print.actions";
+import { refundPrintOrder } from "@/features/wallet";
 
 /**
  * Helper to verify Print Operator / Admin permissions
@@ -130,6 +131,7 @@ export async function updatePrintOrderStatus(data: {
   status: "SUBMITTED" | "PRINTING" | "OUT_FOR_DELIVERY" | "READY" | "DELIVERED" | "COMPLETED" | "REJECTED" | "ISSUE_REPORTED";
   adminUserId: string;
   rejectionReason?: string;
+  issueRefund?: boolean;
 }): Promise<ActionResponse<any>> {
   try {
     const session = await getServerSession(authOptions);
@@ -183,6 +185,16 @@ export async function updatePrintOrderStatus(data: {
         user: true,
       },
     });
+
+    // If order was paid via Otium Wallet, atomically refund user and reverse 2% cashback ONLY if issueRefund is not false
+    const shouldRefund = data.issueRefund !== false;
+    if (data.status === "REJECTED" && existing.paymentMethod === "WALLET" && shouldRefund) {
+      await refundPrintOrder({
+        orderId: data.orderId,
+        reason: data.rejectionReason?.trim() || "Rejected by campus print operator",
+        adminId: session.user.id,
+      });
+    }
 
     await logAdminAction(
       session.user.id,
@@ -241,7 +253,10 @@ export async function updatePrintOrderStatus(data: {
     } else if (data.status === "COMPLETED" || data.status === "DELIVERED") {
       inAppStatusNotice = `✅ Your print job for "${updated.fileName}" has been successfully delivered to ${updated.deliveryLocation}.`;
     } else if (data.status === "REJECTED") {
-      inAppStatusNotice = `⚠️ Print Order #${updated.id.slice(-6).toUpperCase()} was rejected.${data.rejectionReason ? ` Reason: "${data.rejectionReason}"` : ""}`;
+      const refundNotice = existing.paymentMethod === "WALLET" && shouldRefund
+        ? " Your payment has been refunded to your Otium Wallet."
+        : "";
+      inAppStatusNotice = `⚠️ Print Order #${updated.id.slice(-6).toUpperCase()} was rejected.${data.rejectionReason ? ` Reason: "${data.rejectionReason}"` : ""}${refundNotice}`;
     } else if (data.status === "ISSUE_REPORTED") {
       inAppStatusNotice = `⚠️ Issue flagged on Order #${updated.id.slice(-6).toUpperCase()}.${data.rejectionReason ? ` Note: "${data.rejectionReason}"` : ""}`;
     }

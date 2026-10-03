@@ -55,13 +55,18 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const rawUtr = utr || body.utrNumber || "";
-    const cleanUtr = String(rawUtr).trim().replace(/\D/g, "");
-    if (cleanUtr.length !== 12) {
-      return NextResponse.json(
-        { success: false, error: "Valid 12-digit numeric UPI UTR is required." },
-        { status: 400 }
-      );
+    const isWallet = body.paymentMethod === "WALLET";
+    let cleanUtr: string | undefined = undefined;
+
+    if (!isWallet) {
+      const rawUtr = utr || body.utrNumber || "";
+      cleanUtr = String(rawUtr).trim().replace(/\D/g, "");
+      if (cleanUtr.length !== 12) {
+        return NextResponse.json(
+          { success: false, error: "Valid 12-digit numeric UPI UTR is required." },
+          { status: 400 }
+        );
+      }
     }
 
     const res = await createPrintOrder({
@@ -77,6 +82,7 @@ export async function POST(req: NextRequest) {
       phoneNumber: phoneNumber ? String(phoneNumber).replace(/\D/g, "").slice(-10) : undefined,
       utr: cleanUtr,
       collegeId: collegeId || undefined,
+      paymentMethod: isWallet ? "WALLET" : "UPI",
     });
 
     if (!res.success) {

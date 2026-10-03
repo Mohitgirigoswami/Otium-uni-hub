@@ -6,6 +6,8 @@ import { ActionResponse } from "@/lib/types";
 import { getDynamicPrintRates, calculatePrintCostPaise } from "./print.service";
 import { PrintRatesData, CreatePrintOrderParams, ReportPrintIssueParams } from "./print.types";
 import { sendEmail } from "@/lib/mail";
+import { PDFDocument } from "pdf-lib";
+import { refundPrintOrder } from "@/features/wallet";
 
 /**
  * Fetch dynamic print pricing rates
@@ -86,6 +88,25 @@ export async function createPrintOrder(data: CreatePrintOrderParams): Promise<Ac
       return { success: false, error: "Valid auto-calculated page count (>= 1) is required." };
     }
 
+    // Server-Side Independent Verification: Extract true PDF page count directly from uploaded file
+    let verifiedPageCount = Math.max(1, validPageCount);
+    if (data.fileUrl && data.fileUrl.startsWith("http")) {
+      try {
+        const resp = await fetch(data.fileUrl);
+        if (resp.ok) {
+          const arrayBuffer = await resp.arrayBuffer();
+          const pdfDoc = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
+          const actualPages = pdfDoc.getPageCount();
+          if (actualPages && actualPages > 0) {
+            // Strictly enforce server-verified pages so clients cannot tamper or under-report
+            verifiedPageCount = Math.max(actualPages, verifiedPageCount);
+          }
+        }
+      } catch (pdfErr) {
+        console.warn("[createPrintOrder] PDF re-verification fallback:", pdfErr);
+      }
+    }
+
     const validCopies = Math.max(1, Number(data.copies) || 1);
 
     if (!data.deliveryLocation?.trim()) {
@@ -95,7 +116,7 @@ export async function createPrintOrder(data: CreatePrintOrderParams): Promise<Ac
     // Verify user existence and get campus
     const user = await prisma.user.findUnique({
       where: { id: data.userId },
-      select: { id: true, isBanned: true, collegeId: true, phone: true },
+      select: { id: true, isBanned: true, collegeId: true, phone: true, walletBalancePaise: true },
     });
 
     if (!user) {
@@ -108,10 +129,27 @@ export async function createPrintOrder(data: CreatePrintOrderParams): Promise<Ac
 
     // Server-Side Independent Cost Calculation with ₹5 Minimum Floor
     const rates = await getDynamicPrintRates();
-    const baseCostPaise = calculatePrintCostPaise(validPageCount, data.printType, rates);
+    const baseCostPaise = calculatePrintCostPaise(verifiedPageCount, data.printType, rates);
     const rawCostPaise = baseCostPaise * validCopies;
     const MINIMUM_ORDER_PAISE = 500; // ₹5 minimum floor to deter spam/pranks
     const totalCostPaise = Math.max(MINIMUM_ORDER_PAISE, rawCostPaise);
+
+    const isWalletPayment = data.paymentMethod === "WALLET";
+
+    if (isWalletPayment) {
+      const currentBalance = user.walletBalancePaise || 0;
+      if (currentBalance < totalCostPaise) {
+        return {
+          success: false,
+          error: `Insufficient wallet balance. You have ₹${(currentBalance / 100).toFixed(2)}, but this order requires ₹${(totalCostPaise / 100).toFixed(2)}. Please recharge your wallet first.`,
+        };
+      }
+    } else {
+      const cleanUtr = String(data.utr || "").trim().replace(/\D/g, "");
+      if (cleanUtr.length !== 12) {
+        return { success: false, error: "Please enter a valid 12-digit numeric UPI UTR number." };
+      }
+    }
 
     // Format deliveryLocation to embed copies, UTR, Drive File ID, and optional Contact Phone
     const cleanPhoneDigits = data.phoneNumber ? data.phoneNumber.replace(/\D/g, "").slice(-10) : "";
@@ -119,7 +157,7 @@ export async function createPrintOrder(data: CreatePrintOrderParams): Promise<Ac
 
     const enrichedLocation = data.deliveryLocation.includes("UTR:")
       ? `${data.deliveryLocation.trim()}${!data.deliveryLocation.includes("Phone:") && cleanPhoneDigits ? contactInfo : ""}`
-      : `${data.deliveryLocation.trim()}${data.copies && data.copies > 1 ? ` | Copies: ${data.copies}` : ""}${data.utr ? ` | UTR: ${data.utr}` : ""}${data.driveFileId ? ` | DriveID: ${data.driveFileId}` : ""}${contactInfo}`;
+      : `${data.deliveryLocation.trim()}${data.copies && data.copies > 1 ? ` | Copies: ${data.copies}` : ""}${isWalletPayment ? " | Method: WALLET (+2% Cashback)" : data.utr ? ` | UTR: ${data.utr}` : ""}${data.driveFileId ? ` | DriveID: ${data.driveFileId}` : ""}${contactInfo}`;
 
     const activeCollegeId = data.collegeId || user.collegeId || null;
 
@@ -133,13 +171,23 @@ export async function createPrintOrder(data: CreatePrintOrderParams): Promise<Ac
         });
       }
 
-      return tx.printOrder.create({
+      if (isWalletPayment) {
+        const freshUser = await tx.user.findUnique({
+          where: { id: data.userId },
+          select: { walletBalancePaise: true },
+        });
+        if ((freshUser?.walletBalancePaise || 0) < totalCostPaise) {
+          throw new Error("Insufficient wallet balance for this print order.");
+        }
+      }
+
+      const createdOrder = await tx.printOrder.create({
         data: {
           userId: data.userId,
           collegeId: activeCollegeId,
           fileName: data.fileName.trim(),
           fileUrl: data.fileUrl?.trim() || null,
-          pageCount: validPageCount,
+          pageCount: verifiedPageCount,
           printType: data.printType as any,
           deliveryLocation: enrichedLocation,
           deliverySlot: data.deliverySlot?.trim() || null,
@@ -148,19 +196,74 @@ export async function createPrintOrder(data: CreatePrintOrderParams): Promise<Ac
             : new Date(Date.now() + 24 * 60 * 60 * 1000),
           totalCost: totalCostPaise,
           status: "SUBMITTED",
+          paymentMethod: isWalletPayment ? "WALLET" : "UPI",
+          utr: isWalletPayment ? "WALLET_PAYMENT" : (data.utr?.trim() || null),
         },
         include: {
           user: {
-            select: { id: true, name: true, email: true, phone: true },
+            select: { id: true, name: true, email: true, phone: true, walletBalancePaise: true },
           },
         },
       });
+
+      if (isWalletPayment) {
+        const startBalance = createdOrder.user.walletBalancePaise || 0;
+        const cashbackPaise = Math.floor(totalCostPaise * 0.02);
+
+        // Step 1: Debit Order Payment
+        const balanceAfterDebit = startBalance - totalCostPaise;
+        await tx.walletTransaction.create({
+          data: {
+            userId: data.userId,
+            type: "PRINT_PAYMENT",
+            amountPaise: -totalCostPaise,
+            balanceAfterPaise: balanceAfterDebit,
+            referenceId: createdOrder.id,
+            description: `Express Print Order #${createdOrder.id.slice(-6).toUpperCase()} (${data.fileName.trim()})`,
+          },
+        });
+
+        // Step 2: Credit 2% Instant Cashback
+        const finalBalance = balanceAfterDebit + cashbackPaise;
+        if (cashbackPaise > 0) {
+          await tx.walletTransaction.create({
+            data: {
+              userId: data.userId,
+              type: "PRINT_CASHBACK",
+              amountPaise: cashbackPaise,
+              balanceAfterPaise: finalBalance,
+              referenceId: createdOrder.id,
+              description: `2% Instant Cashback for Print Order #${createdOrder.id.slice(-6).toUpperCase()}`,
+            },
+          });
+        }
+
+        // Step 3: Update user balance atomically with conditional balance check
+        const balanceUpdate = await tx.user.updateMany({
+          where: {
+            id: data.userId,
+            walletBalancePaise: { gte: totalCostPaise },
+          },
+          data: {
+            walletBalancePaise: {
+              decrement: totalCostPaise - cashbackPaise,
+            },
+          },
+        });
+
+        if (balanceUpdate.count === 0) {
+          throw new Error("Insufficient wallet balance or concurrent payment detected.");
+        }
+      }
+
+      return createdOrder;
     });
 
     // Trigger Email Receipt upon order creation
     if (order.user?.email) {
       const totalRupees = (order.totalCost / 100).toFixed(2);
       const invoiceSubject = `Otium Print Receipt - Order #${order.id.slice(-6).toUpperCase()}`;
+      const cashbackRupees = (Math.floor(order.totalCost * 0.02) / 100).toFixed(2);
       const invoiceHtml = `
         <div style="font-family: Arial, sans-serif; max-width: 580px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 16px; background-color: #ffffff;">
           <div style="text-align: center; margin-bottom: 24px;">
@@ -183,7 +286,9 @@ export async function createPrintOrder(data: CreatePrintOrderParams): Promise<Ac
 
           <div style="background-color: #f0fdf4; border-left: 4px solid #10b981; padding: 12px 16px; border-radius: 8px; margin-bottom: 20px;">
             <p style="margin: 0; color: #065f46; font-size: 13px; font-weight: 600; line-height: 1.5;">
-              ✅ Payment received via advance UPI. Your print order is queued for campus processing and delivery.
+              ${isWalletPayment
+                ? `⚡ Payment settled instantly via Otium Campus Wallet with 2% Instant Cashback (+₹${cashbackRupees}) credited to your wallet balance.`
+                : "✅ Payment received via advance UPI. Your print order is queued for campus processing and delivery."}
             </p>
           </div>
 

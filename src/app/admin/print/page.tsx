@@ -42,6 +42,7 @@ import {
   Utensils,
   ChevronRight,
   Sparkles,
+  Zap,
 } from "lucide-react";
 
 export default function AdminPrintQueuePage() {
@@ -60,6 +61,7 @@ export default function AdminPrintQueuePage() {
   const [rejectionReason, setRejectionReason] = useState<string>(
     "Invalid or unverified UPI transaction UTR."
   );
+  const [issueRefund, setIssueRefund] = useState<boolean>(true);
 
   // Dynamic Pricing Settings Form
   const [singleSidedRupees, setSingleSidedRupees] = useState<string>("2.50");
@@ -137,7 +139,8 @@ export default function AdminPrintQueuePage() {
   const handleUpdateStatus = async (
     orderId: string,
     newStatus: any,
-    reason?: string
+    reason?: string,
+    shouldRefund?: boolean
   ) => {
     if (!user?.id) return;
     setStatusUpdatingId(orderId);
@@ -146,6 +149,7 @@ export default function AdminPrintQueuePage() {
       status: newStatus,
       adminUserId: user.id,
       rejectionReason: reason,
+      issueRefund: shouldRefund,
     });
     setStatusUpdatingId(null);
 
@@ -951,6 +955,52 @@ export default function AdminPrintQueuePage() {
               The student will receive an automated email notice explaining why the print order was rejected.
             </div>
 
+            {/* Payment Method Context & Optional Refund Toggle */}
+            {(() => {
+              const rejectingOrder = orders.find((o) => o.id === rejectingOrderId);
+              const isWalletPaid = rejectingOrder?.paymentMethod === "WALLET";
+              return isWalletPaid ? (
+                <div className="p-3 rounded-lg border border-primary/30 bg-primary/5 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                      <Zap className="w-3.5 h-3.5 text-primary" />
+                      Paid via Otium E-Wallet (₹{((rejectingOrder?.totalCost || 0) / 100).toFixed(2)})
+                    </span>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={issueRefund}
+                        onChange={(e) => setIssueRefund(e.target.checked)}
+                        className="rounded border-border text-primary focus:ring-primary w-4 h-4 cursor-pointer"
+                      />
+                      <span className="text-xs font-semibold text-foreground">
+                        Issue Wallet Refund
+                      </span>
+                    </label>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground leading-normal">
+                    {issueRefund
+                      ? `✓ Full ₹${((rejectingOrder?.totalCost || 0) / 100).toFixed(2)} will be credited back to student's wallet and 2% cashback will be clawed back.`
+                      : "⚠️ Unchecked: The order will be rejected WITHOUT issuing any refund (student will NOT receive their money back)."}
+                  </p>
+                </div>
+              ) : (
+                <div className="p-3 rounded-lg border border-amber-500/20 bg-amber-500/5 text-xs text-amber-700 dark:text-amber-400 space-y-1">
+                  <div className="font-semibold flex items-center gap-1.5">
+                    <span>📱 Paid via Direct UPI</span>
+                    {rejectingOrder?.utr && (
+                      <span className="font-mono text-[11px] bg-amber-500/10 px-1.5 py-0.5 rounded">
+                        UTR: {rejectingOrder.utr}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    Rejecting this order will <strong>NOT</strong> issue any automatic refund. If this was an invalid/unmatched UTR, no refund is needed. If you received payment and wish to refund, please process via manual UPI reversal.
+                  </p>
+                </div>
+              );
+            })()}
+
             <div className="space-y-1.5">
               <label className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
                 Quick Reason Presets
@@ -1003,9 +1053,16 @@ export default function AdminPrintQueuePage() {
                 size="sm"
                 variant="danger"
                 disabled={statusUpdatingId === rejectingOrderId || !rejectionReason.trim()}
-                onClick={() =>
-                  handleUpdateStatus(rejectingOrderId, "REJECTED", rejectionReason)
-                }
+                onClick={() => {
+                  const rejectingOrder = orders.find((o) => o.id === rejectingOrderId);
+                  const isWalletPaid = rejectingOrder?.paymentMethod === "WALLET";
+                  handleUpdateStatus(
+                    rejectingOrderId,
+                    "REJECTED",
+                    rejectionReason,
+                    isWalletPaid ? issueRefund : false
+                  );
+                }}
                 leftIcon={<XCircle className="w-3.5 h-3.5" />}
               >
                 {statusUpdatingId === rejectingOrderId

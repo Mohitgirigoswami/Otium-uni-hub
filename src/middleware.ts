@@ -38,8 +38,8 @@ export default withAuth(
       if (path.startsWith("/admin")) {
         const role = token.role as string;
 
-        // Print hub requires PRINT_MANAGER or SUPER_ADMIN
-        if (path.startsWith("/admin/print")) {
+        // Print hub and Wallet recharge hub require PRINT_MANAGER or SUPER_ADMIN
+        if (path.startsWith("/admin/print") || path.startsWith("/admin/wallet")) {
           if (role !== "PRINT_MANAGER" && role !== "SUPER_ADMIN") {
             const url = req.nextUrl.clone();
             url.pathname = "/";

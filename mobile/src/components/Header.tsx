@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, Image } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useTheme } from "../context/ThemeContext";
 import { Badge } from "./ui/Badge";
+import { WalletHeaderBadge } from "./wallet/WalletHeaderBadge";
 
 interface HeaderProps {
   title?: string;
@@ -47,7 +48,9 @@ export function Header({
         </View>
       </View>
 
-      <TouchableOpacity
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+        <WalletHeaderBadge />
+        <TouchableOpacity
         activeOpacity={0.7}
         onPress={onNotificationPress}
         style={[
@@ -61,6 +64,7 @@ export function Header({
         <Ionicons name="notifications-outline" size={18} color={colors.text} />
         <View style={[styles.notificationDot, { backgroundColor: colors.primary }]} />
       </TouchableOpacity>
+      </View>
     </View>
   );
 }

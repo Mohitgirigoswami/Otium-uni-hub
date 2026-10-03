@@ -32,6 +32,8 @@ import {
   Phone,
   RefreshCw,
   Save,
+  Zap,
+  Wallet,
 } from "lucide-react";
 import { PrintTypeEnum } from "@/lib/types";
 import { DocumentUpload } from "@/components/ui/DocumentUpload";
@@ -40,6 +42,8 @@ import { ClientServiceGuard } from "@/components/ClientServiceGuard";
 import { PrintOrderTracker } from "@/components/print/PrintOrderTracker";
 import { Modal } from "@/components/ui/modal";
 import { Textarea } from "@/components/ui/textarea";
+import { getWalletDetailsAction } from "@/features/wallet";
+import { TopupModal } from "@/components/wallet/TopupModal";
 
 const DELIVERY_LOCATIONS = [
   "Hostel Block 1 (Freshers Boys)",
@@ -89,6 +93,30 @@ export default function PrintStationPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [copiedUpi, setCopiedUpi] = useState(false);
   const [platformUpiId, setPlatformUpiId] = useState("8307798816@upi");
+
+  // Wallet states
+  const [paymentMethod, setPaymentMethod] = useState<"WALLET" | "UPI">("WALLET");
+  const [walletBalancePaise, setWalletBalancePaise] = useState<number | null>(null);
+  const [isTopupModalOpen, setIsTopupModalOpen] = useState(false);
+
+  const fetchWallet = async () => {
+    if (!user?.id) return;
+    try {
+      const res = await getWalletDetailsAction();
+      if (res.success && res.data) {
+        setWalletBalancePaise(res.data.balancePaise);
+      }
+    } catch (err) {
+      console.error("Failed to load wallet details:", err);
+    }
+  };
+
+  useEffect(() => {
+    fetchWallet();
+    const handleWalletUpdated = () => fetchWallet();
+    window.addEventListener("otium:wallet_updated", handleWalletUpdated);
+    return () => window.removeEventListener("otium:wallet_updated", handleWalletUpdated);
+  }, [user?.id]);
 
   // Issue reporting states
   const [reportingOrder, setReportingOrder] = useState<any | null>(null);
@@ -201,6 +229,10 @@ export default function PrintStationPage() {
   const rawCostPaise = calculatePrintCostPaise(effectivePages, printType, rates) * copies;
   const totalCostPaise = Math.max(500, rawCostPaise); // Strict ₹5 floor rule
   const totalCostRupees = totalCostPaise / 100;
+  const cashbackPaise = Math.floor(totalCostPaise * 0.02);
+  const cashbackRupees = (cashbackPaise / 100).toFixed(2);
+  const hasSufficientWalletBalance =
+    walletBalancePaise !== null && walletBalancePaise >= totalCostPaise;
 
   // Amount-locked UPI deep link & QR
   const upiUrl = generateUpiUrl(
@@ -258,9 +290,17 @@ export default function PrintStationPage() {
       }
     }
 
-    if (!utrNumber || utrNumber.trim().length < 6) {
-      toast.error("Please enter the valid 12-digit UPI transaction reference number (UTR).");
-      return;
+    if (paymentMethod === "WALLET") {
+      if (walletBalancePaise === null || walletBalancePaise < totalCostPaise) {
+        toast.error("Insufficient wallet balance. Please top up your wallet or switch to UPI.");
+        setIsTopupModalOpen(true);
+        return;
+      }
+    } else {
+      if (!utrNumber || utrNumber.trim().length < 6) {
+        toast.error("Please enter the valid 12-digit UPI transaction reference number (UTR).");
+        return;
+      }
     }
 
     setIsSubmitting(true);
@@ -275,15 +315,25 @@ export default function PrintStationPage() {
         copies,
         printType,
         deliveryLocation: `${deliveryLocation} (${deliverySlot})`,
-        utr: utrNumber.trim(),
+        utr: paymentMethod === "WALLET" ? undefined : utrNumber.trim(),
         phoneNumber: cleanPhone,
+        paymentMethod,
       });
 
       if (!res.success) {
         throw new Error(res.error || "Failed to submit print order.");
       }
 
-      toast.success("Print order queued! The print manager has received your job.");
+      if (paymentMethod === "WALLET") {
+        window.dispatchEvent(new CustomEvent("otium:wallet_updated"));
+        fetchWallet();
+        const earnedCashback = (Math.floor(totalCostPaise * 0.02) / 100).toFixed(2);
+        toast.success(
+          `⚡ Paid ₹${totalCostRupees.toFixed(2)} via Otium Wallet! +₹${earnedCashback} (2%) cashback credited.`
+        );
+      } else {
+        toast.success("Print order queued! The print manager has received your job.");
+      }
 
       // Start 4-second cooldown timer to prevent accidental double-ordering
       setCooldownSeconds(4);
@@ -383,7 +433,7 @@ export default function PrintStationPage() {
                     ))}
                   </div>
 
-                  {/* Manual Page Count Stepper & Copies Stepper */}
+                  {/* Document Pages (Server-Verified & Read-Only) & Copies Stepper */}
                   <div className="pt-2 border-t border-border space-y-3">
                     <div className="flex items-center justify-between gap-4">
                       <div>
@@ -391,30 +441,13 @@ export default function PrintStationPage() {
                           Document Pages:
                         </span>
                         <span className="text-[11px] text-muted-foreground">
-                          {detectedPages > 0 ? "Auto-detected (or adjust manually)" : "Set pages manually"}
+                          {detectedPages > 0 ? "Server-verified from uploaded PDF" : "Calculated automatically upon PDF upload"}
                         </span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setDetectedPages((p) => Math.max(1, (p || 1) - 1))}
-                          disabled={(detectedPages || 1) <= 1}
-                        >
-                          -
-                        </Button>
-                        <span className="w-10 text-center text-xs font-bold text-foreground">
-                          {detectedPages || 1}
+                        <span className="px-3 py-1 text-xs font-bold bg-secondary text-foreground rounded-md border border-border">
+                          {detectedPages > 0 ? `${detectedPages} page${detectedPages > 1 ? "s" : ""}` : "—"}
                         </span>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setDetectedPages((p) => (p || 1) + 1)}
-                        >
-                          +
-                        </Button>
                       </div>
                     </div>
 
@@ -566,11 +599,11 @@ export default function PrintStationPage() {
                   </div>
                 </div>
 
-                {/* 4. Dynamic Amount-Locked UPI Payment */}
+                {/* 4. Payment Method & Checkout */}
                 <div className="space-y-4 pt-2 border-t border-border">
                   <div className="flex items-center justify-between">
                     <label className="block text-xs font-bold uppercase tracking-wider text-foreground">
-                      4. UPI Payment Confirmation
+                      4. Payment Method & Checkout
                     </label>
                     <div className="text-right">
                       <div className="text-sm font-bold text-foreground">
@@ -584,55 +617,157 @@ export default function PrintStationPage() {
                     </div>
                   </div>
 
-                  <div className="p-4 rounded-xl border border-border bg-secondary/30 grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
-                    <div className="flex justify-center">
-                      <div className="p-2.5 rounded-lg bg-white border border-border shadow-xs">
-                        <img
-                          src={qrImageUrl}
-                          alt="UPI QR Code"
-                          className="w-36 h-36 object-contain"
+                  {/* Payment Method Switcher */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {/* Option 1: Otium Campus Wallet */}
+                    <div
+                      onClick={() => setPaymentMethod("WALLET")}
+                      className={`relative p-3.5 rounded-xl border-2 cursor-pointer transition-all ${
+                        paymentMethod === "WALLET"
+                          ? "border-primary bg-primary/5 shadow-xs"
+                          : "border-border bg-card/50 hover:border-border/80"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-1.5">
+                        <div className="flex items-center gap-2">
+                          <div className={`p-1.5 rounded-lg ${paymentMethod === "WALLET" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
+                            <Zap className="w-4 h-4" />
+                          </div>
+                          <span className="text-xs font-bold text-foreground">Otium E-Wallet</span>
+                        </div>
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-600 text-white">
+                          +2% Cashback
+                        </span>
+                      </div>
+
+                      <div className="text-xs text-muted-foreground flex items-center justify-between mt-2 pt-2 border-t border-border/60">
+                        <span>Balance:</span>
+                        <span className="font-bold text-foreground">
+                          {walletBalancePaise !== null ? `₹${(walletBalancePaise / 100).toFixed(2)}` : "Loading..."}
+                        </span>
+                      </div>
+
+                      {hasSufficientWalletBalance ? (
+                        <div className="mt-2 text-[11px] text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
+                          <CheckCircle2 className="w-3 h-3 flex-shrink-0" />
+                          <span>1-Click Pay! You'll earn +₹{cashbackRupees} cashback.</span>
+                        </div>
+                      ) : (
+                        <div className="mt-2 text-[11px] text-amber-600 dark:text-amber-400 flex items-center justify-between">
+                          <span>Short by ₹{(((totalCostPaise - (walletBalancePaise || 0))) / 100).toFixed(2)}</span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setIsTopupModalOpen(true);
+                            }}
+                            className="font-bold underline hover:opacity-80"
+                          >
+                            Top Up
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Option 2: Direct UPI QR */}
+                    <div
+                      onClick={() => setPaymentMethod("UPI")}
+                      className={`relative p-3.5 rounded-xl border-2 cursor-pointer transition-all ${
+                        paymentMethod === "UPI"
+                          ? "border-primary bg-primary/5 shadow-xs"
+                          : "border-border bg-card/50 hover:border-border/80"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-1.5">
+                        <div className="flex items-center gap-2">
+                          <div className={`p-1.5 rounded-lg ${paymentMethod === "UPI" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
+                            <QrCode className="w-4 h-4" />
+                          </div>
+                          <span className="text-xs font-bold text-foreground">Direct UPI App / QR</span>
+                        </div>
+                      </div>
+
+                      <div className="text-xs text-muted-foreground mt-2 pt-2 border-t border-border/60">
+                        Scan with GPay, PhonePe, Paytm, etc. and enter transaction UTR.
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* If UPI selected, show QR and UTR input */}
+                  {paymentMethod === "UPI" && (
+                    <div className="space-y-4 pt-2">
+                      <div className="p-4 rounded-xl border border-border bg-secondary/30 grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
+                        <div className="flex justify-center">
+                          <div className="p-2.5 rounded-lg bg-white border border-border shadow-xs">
+                            <img
+                              src={qrImageUrl}
+                              alt="UPI QR Code"
+                              className="w-36 h-36 object-contain"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="space-y-2 text-xs">
+                          <p className="font-semibold text-foreground">
+                            Scan QR using any UPI app:
+                          </p>
+                          <p className="text-muted-foreground text-[11px] leading-relaxed">
+                            GPay, PhonePe, Paytm, or BHIM. Amount is locked to ₹{totalCostRupees.toFixed(2)}.
+                          </p>
+
+                          <div className="pt-1 space-y-1">
+                            <span className="text-[11px] font-medium text-muted-foreground">
+                              UPI ID:
+                            </span>
+                            <div className="flex items-center gap-1.5 font-mono text-[11px] text-foreground bg-card px-2 py-1 rounded border border-border">
+                              <span className="truncate">{platformUpiId}</span>
+                              <button
+                                type="button"
+                                onClick={copyUpiId}
+                                className="text-primary hover:underline ml-auto flex-shrink-0"
+                              >
+                                {copiedUpi ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <span className="text-xs font-medium text-foreground">
+                          Transaction UTR (12 digits from bank SMS / UPI receipt):
+                        </span>
+                        <Input
+                          type="text"
+                          placeholder="e.g. 423187654321"
+                          value={utrNumber}
+                          onChange={(e) => setUtrNumber(e.target.value.replace(/\s/g, ""))}
+                          maxLength={18}
                         />
                       </div>
                     </div>
+                  )}
 
-                    <div className="space-y-2 text-xs">
-                      <p className="font-semibold text-foreground">
-                        Scan QR using any UPI app:
-                      </p>
-                      <p className="text-muted-foreground text-[11px] leading-relaxed">
-                        GPay, PhonePe, Paytm, or BHIM. Amount is locked to ₹{totalCostRupees.toFixed(2)}.
-                      </p>
-
-                      <div className="pt-1 space-y-1">
-                        <span className="text-[11px] font-medium text-muted-foreground">
-                          UPI ID:
-                        </span>
-                        <div className="flex items-center gap-1.5 font-mono text-[11px] text-foreground bg-card px-2 py-1 rounded border border-border">
-                          <span className="truncate">{platformUpiId}</span>
-                          <button
-                            type="button"
-                            onClick={copyUpiId}
-                            className="text-primary hover:underline ml-auto flex-shrink-0"
-                          >
-                            {copiedUpi ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                          </button>
-                        </div>
+                  {/* If Wallet selected and insufficient balance, show Top Up CTA */}
+                  {paymentMethod === "WALLET" && !hasSufficientWalletBalance && (
+                    <div className="p-3 rounded-lg border border-amber-500/30 bg-amber-500/10 flex items-center justify-between">
+                      <div className="text-xs text-amber-600 dark:text-amber-400">
+                        <p className="font-semibold">Insufficient Otium Wallet Balance</p>
+                        <p className="text-[11px]">
+                          Recharge ₹{(((totalCostPaise - (walletBalancePaise || 0))) / 100).toFixed(2)} to unlock 1-click checkout + 2% cashback.
+                        </p>
                       </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setIsTopupModalOpen(true)}
+                        className="text-xs"
+                      >
+                        Top Up Now
+                      </Button>
                     </div>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <span className="text-xs font-medium text-foreground">
-                      Transaction UTR (12 digits from bank SMS / UPI receipt):
-                    </span>
-                    <Input
-                      type="text"
-                      placeholder="e.g. 423187654321"
-                      value={utrNumber}
-                      onChange={(e) => setUtrNumber(e.target.value.replace(/\s/g, ""))}
-                      maxLength={18}
-                    />
-                  </div>
+                  )}
                 </div>
 
                 <Button
@@ -640,10 +775,19 @@ export default function PrintStationPage() {
                   size="lg"
                   className="w-full"
                   isLoading={isSubmitting}
-                  disabled={!fileUrl || isSubmitting || cooldownSeconds > 0}
+                  disabled={
+                    !fileUrl ||
+                    isSubmitting ||
+                    cooldownSeconds > 0 ||
+                    (paymentMethod === "WALLET" && !hasSufficientWalletBalance)
+                  }
                 >
                   {cooldownSeconds > 0
                     ? `✓ Order Placed! Please wait (${cooldownSeconds}s)...`
+                    : paymentMethod === "WALLET"
+                    ? hasSufficientWalletBalance
+                      ? `⚡ Pay ₹${totalCostRupees.toFixed(2)} with Wallet (+₹${cashbackRupees} Cashback)`
+                      : `Insufficient Balance (Top Up ₹${(((totalCostPaise - (walletBalancePaise || 0))) / 100).toFixed(2)})`
                     : `Confirm & Submit Print Job (₹${totalCostRupees.toFixed(2)})`}
                 </Button>
               </form>
@@ -861,6 +1005,13 @@ export default function PrintStationPage() {
             </div>
           </form>
         </Modal>
+
+        {/* Embedded E-Wallet Top-up Modal */}
+        <TopupModal
+          isOpen={isTopupModalOpen}
+          onClose={() => setIsTopupModalOpen(false)}
+          onSuccess={fetchWallet}
+        />
       </div>
     </ClientServiceGuard>
   );

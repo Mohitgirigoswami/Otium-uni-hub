@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { ThemeSwitcher } from "./ThemeSwitcher";
+import { WalletPill } from "@/components/wallet/WalletPill";
 import { useUser } from "../providers/UserContext";
 import {
   Printer,
@@ -129,6 +130,9 @@ export function Navbar() {
 
           {/* Right Action Items */}
           <div className="flex items-center gap-2 flex-shrink-0">
+            {/* Campus Wallet Pill */}
+            <WalletPill />
+
             {/* Theme Switcher */}
             <ThemeSwitcher />
 

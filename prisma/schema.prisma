@@ -122,6 +122,10 @@ model User {
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
 
+  walletBalancePaise Int                @default(0)
+  walletTransactions WalletTransaction[]
+  topupRequests      WalletTopupRequest[]
+
   accounts           Account[]
   sessions           Session[]
   incognitoProfile   IncognitoProfile?
@@ -367,6 +371,7 @@ model PrintOrder {
   expectedDelivery DateTime
   totalCost        Int         // Strictly stored in Paise
   status           PrintStatus @default(SUBMITTED)
+  paymentMethod    String      @default("UPI") // "UPI" | "WALLET"
   utr              String?
   userId           String
   user             User        @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -487,5 +492,40 @@ model CampusService {
   @@unique([campusId, serviceKey])
   @@index([campusId])
 }
+
+model WalletTransaction {
+  id                String   @id @default(cuid())
+  userId            String
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type              String   // "TOPUP", "PRINT_PAYMENT", "PRINT_CASHBACK", "REFUND"
+  amountPaise       Int      // Signed integer in Paise (+ for credit, - for debit)
+  balanceAfterPaise Int      // Running balance snapshot immediately following this transaction
+  utr               String?  // UTR transaction reference number (strictly tracked for all top-ups)
+  referenceId       String?  // Links to WalletTopupRequest.id or PrintOrder.id
+  description       String   // Human-readable ledger note (e.g. "Wallet Top-Up (UTR: 428190827361)")
+  createdAt         DateTime @default(now())
+
+  @@index([userId])
+  @@index([type])
+  @@index([utr])
+  @@index([createdAt])
+}
+
+model WalletTopupRequest {
+  id              String    @id @default(cuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  amountPaise     Int       // Amount in Paise (e.g. 10000 for ₹100.00)
+  utr             String    @unique // Strict anti-fraud uniqueness constraint
+  status          String    @default("PENDING") // "PENDING", "APPROVED", "REJECTED"
+  rejectionReason String?
+  verifiedBy      String?   // Admin identifier who approved/rejected
+  createdAt       DateTime  @default(now())
+  verifiedAt      DateTime?
+
+  @@index([userId])
+  @@index([status])
+}
+
 
 

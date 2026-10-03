@@ -30,6 +30,7 @@ import { PrintOrderTracker } from "../../components/print/PrintOrderTracker";
 import { ClientServiceGuard } from "../../components/ClientServiceGuard";
 import { useUser } from "../../context/UserContext";
 import { apiClient } from "../../services/apiClient";
+import { WalletRechargeModal } from "../wallet/WalletRechargeModal";
 
 interface PrintOption {
   id: string;
@@ -118,6 +119,26 @@ export function PrintStationScreen({ navigation }: any) {
   const [recentOrders, setRecentOrders] = useState<any[]>([]);
   const [isRefreshingOrders, setIsRefreshingOrders] = useState(false);
   const [copiedUpi, setCopiedUpi] = useState(false);
+
+  // Wallet states
+  const [paymentMethod, setPaymentMethod] = useState<"WALLET" | "UPI">("WALLET");
+  const [walletBalancePaise, setWalletBalancePaise] = useState<number | null>(null);
+  const [isWalletModalOpen, setIsWalletModalOpen] = useState(false);
+
+  const fetchWalletBalance = async () => {
+    try {
+      const res = await apiClient.get<any>("/wallet");
+      if (res.success && res.data) {
+        setWalletBalancePaise(res.data.balancePaise);
+      }
+    } catch (err) {
+      console.warn("Could not fetch wallet balance:", err);
+    }
+  };
+
+  useEffect(() => {
+    fetchWalletBalance();
+  }, []);
 
   // Animated spin for refresh button
   const spinAnim = useRef(new Animated.Value(0)).current;
@@ -287,60 +308,35 @@ export function PrintStationScreen({ navigation }: any) {
 
       const fileSizeMb = asset.size ? (asset.size / (1024 * 1024)).toFixed(2) : "0.5";
 
-      let pageCount = 1;
-      try {
-        if (asset.uri) {
-          const fileResp = await fetch(asset.uri);
-          const blob = await fileResp.blob();
-          const reader = new FileReader();
-          pageCount = await new Promise((resolve) => {
-            reader.onload = (e) => {
-              try {
-                const text = (e.target?.result as string) || "";
-                // 1. Match /Type /Page objects in PDF stream
-                const pageMatches = text.match(/\/Type\s*\/Page[^s]/g);
-                if (pageMatches && pageMatches.length > 0) {
-                  return resolve(pageMatches.length);
-                }
-                // 2. Match root page catalog /Count N
-                const countMatches = text.match(/\/Count\s+(\d+)/);
-                if (countMatches && countMatches[1]) {
-                  const num = parseInt(countMatches[1], 10);
-                  if (!isNaN(num) && num > 0) {
-                    return resolve(num);
-                  }
-                }
-                resolve(1);
-              } catch {
-                resolve(1);
-              }
-            };
-            reader.onerror = () => resolve(1);
-            reader.readAsText(blob);
-          });
-        }
-      } catch {
-        pageCount = 1;
+      // Upload PDF directly to secure cloud print storage and receive server-verified page count
+      const formData = new FormData();
+      formData.append("file", {
+        uri: asset.uri,
+        name: asset.name || "document.pdf",
+        type: "application/pdf",
+      } as any);
+      if (user?.collegeId) {
+        formData.append("campusId", user.collegeId);
       }
 
-      setSelectedFile({
-        name: asset.name,
-        pages: Math.max(1, pageCount),
-        size: `${fileSizeMb} MB`,
-        fileUrl: asset.uri,
-      });
-    } catch {
-      Alert.alert("Document Error", "Could not read the selected PDF file.");
+      const uploadRes = await apiClient.upload("/print/upload", formData);
+
+      if (uploadRes.success && uploadRes.data?.fileUrl) {
+        const serverPages = Math.max(1, Number(uploadRes.data.pageCount) || 1);
+        setSelectedFile({
+          name: asset.name,
+          pages: serverPages,
+          size: `${fileSizeMb} MB`,
+          fileUrl: uploadRes.data.fileUrl,
+        });
+      } else {
+        throw new Error(uploadRes.error || "Failed to upload document to print station.");
+      }
+    } catch (uploadErr: any) {
+      Alert.alert("Upload Failed", uploadErr.message || "Could not upload the selected PDF file.");
     } finally {
       setIsUploadingFile(false);
     }
-  };
-
-  const handleUpdatePageCount = (delta: number) => {
-    setSelectedFile((prev) => {
-      if (!prev) return null;
-      return { ...prev, pages: Math.max(1, prev.pages + delta) };
-    });
   };
 
   const handleSavePhone = async () => {
@@ -374,6 +370,11 @@ export function PrintStationScreen({ navigation }: any) {
   const isFloorApplied = rawCost < 5.0;
   const minFloorAdjustment = isFloorApplied ? 5.0 - rawCost : 0;
   const finalCost = Math.max(5.0, rawCost).toFixed(2);
+  const finalCostPaise = Math.round(Number(finalCost) * 100);
+  const cashbackPaise = Math.floor(finalCostPaise * 0.02);
+  const cashbackRupees = (cashbackPaise / 100).toFixed(2);
+  const hasSufficientWalletBalance =
+    walletBalancePaise !== null && walletBalancePaise >= finalCostPaise;
 
   const handleCopyUpi = async () => {
     await Clipboard.setStringAsync(upiId);
@@ -398,6 +399,7 @@ export function PrintStationScreen({ navigation }: any) {
       Alert.alert("Missing Location", "Please select or type your campus drop location.");
       return;
     }
+    fetchWalletBalance();
     setIsCheckoutModalOpen(true);
   };
 
@@ -412,10 +414,26 @@ export function PrintStationScreen({ navigation }: any) {
       return;
     }
 
-    const cleanUtr = utrNumber.trim();
-    if (!cleanUtr || cleanUtr.length < 6) {
-      Alert.alert("Missing UTR", "Please enter the 12-digit transaction UTR number from your payment receipt.");
-      return;
+    const isWallet = paymentMethod === "WALLET";
+    const cleanUtr = isWallet ? "WALLET_PAYMENT" : utrNumber.trim();
+
+    if (isWallet) {
+      if (!hasSufficientWalletBalance) {
+        Alert.alert(
+          "Insufficient Wallet Balance",
+          `Your wallet balance is ₹${((walletBalancePaise || 0) / 100).toFixed(2)}, but this print order costs ₹${finalCost}. Please top up your wallet.`,
+          [
+            { text: "Cancel", style: "cancel" },
+            { text: "Top Up Wallet", onPress: () => setIsWalletModalOpen(true) },
+          ]
+        );
+        return;
+      }
+    } else {
+      if (!cleanUtr || cleanUtr.length < 6) {
+        Alert.alert("Missing UTR", "Please enter the 12-digit transaction UTR number from your payment receipt.");
+        return;
+      }
     }
 
     setIsSubmitting(true);
@@ -428,8 +446,9 @@ export function PrintStationScreen({ navigation }: any) {
       deliveryLocation: deliveryLocation.trim(),
       deliverySlot: deliveryWindow,
       phoneNumber: phone ? phone.replace(/\D/g, "") : undefined,
-      utr: cleanUtr,
-      utrNumber: cleanUtr,
+      utr: isWallet ? undefined : utrNumber.trim(),
+      utrNumber: isWallet ? undefined : utrNumber.trim(),
+      paymentMethod: isWallet ? "WALLET" : "UPI",
       fileUrl: selectedFile.fileUrl || "https://otiumhub.in/placeholder-doc.pdf",
     };
 
@@ -450,7 +469,11 @@ export function PrintStationScreen({ navigation }: any) {
       const res = await apiClient.post("/print/order", orderPayload);
 
       if (res.success) {
-        Alert.alert("Order Placed! 🚀", "Your print job is queued. Live status updates will appear in your tracking section.");
+        fetchWalletBalance();
+        const successMsg = isWallet
+          ? `Paid ₹${finalCost} instantly with Otium Wallet! +₹${cashbackRupees} (2%) cashback credited.`
+          : "Your print job is queued. Live status updates will appear in your tracking section.";
+        Alert.alert("Order Placed! 🚀", successMsg);
         setIsCheckoutModalOpen(false);
         setSelectedFile(null);
         setUtrNumber("");
@@ -460,6 +483,11 @@ export function PrintStationScreen({ navigation }: any) {
         throw new Error(res.error || "Failed to submit print order.");
       }
     } catch (err: any) {
+      if (isWallet) {
+        Alert.alert("Payment Failed", err.message || "Failed to process wallet payment.");
+        setIsSubmitting(false);
+        return;
+      }
       // Offline fallback: Queue order on device and show optimistic feedback
       const localPendingOrder = {
         id: `offline-${Date.now()}`,
@@ -576,34 +604,21 @@ export function PrintStationScreen({ navigation }: any) {
                 </TouchableOpacity>
               </View>
 
-              {/* Interactive Page Count Stepper */}
+              {/* Document Pages (Server-Verified & Read-Only) */}
               <View style={[styles.pageStepperRow, { borderTopColor: colors.border }]}>
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.pageStepperLabel, { color: colors.text }]}>
-                    Total Pages to Print
+                    Document Pages
                   </Text>
                   <Text style={[styles.pageStepperHint, { color: colors.textMuted }]}>
-                    Tap - / + to verify or adjust page count
+                    Auto-calculated from uploaded PDF bytes
                   </Text>
                 </View>
 
-                <View style={styles.pageCounterWrap}>
-                  <TouchableOpacity
-                    onPress={() => handleUpdatePageCount(-1)}
-                    disabled={selectedFile.pages <= 1}
-                    style={[styles.counterBtn, { borderColor: colors.border, opacity: selectedFile.pages <= 1 ? 0.4 : 1 }]}
-                  >
-                    <Feather name="minus" size={14} color={colors.text} />
-                  </TouchableOpacity>
-                  <Text style={[styles.counterValue, { color: colors.primary, minWidth: 36, textAlign: "center" }]}>
-                    {selectedFile.pages}
+                <View style={{ backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 }}>
+                  <Text style={{ color: colors.primary, fontWeight: "700", fontSize: 13 }}>
+                    {selectedFile.pages} {selectedFile.pages === 1 ? "page" : "pages"}
                   </Text>
-                  <TouchableOpacity
-                    onPress={() => handleUpdatePageCount(1)}
-                    style={[styles.counterBtn, { borderColor: colors.border }]}
-                  >
-                    <Feather name="plus" size={14} color={colors.text} />
-                  </TouchableOpacity>
                 </View>
               </View>
             </View>
@@ -1031,50 +1046,143 @@ export function PrintStationScreen({ navigation }: any) {
                   </View>
                 </View>
 
-                {/* Campus UPI Section */}
-                <View style={[styles.checkoutUpiSection, { borderColor: colors.border }]}>
-                  <View style={styles.upiHeader}>
-                    <Ionicons name="qr-code-outline" size={16} color={colors.primary} />
-                    <Text style={[styles.upiTitle, { color: colors.text }]}>Pay via Campus UPI ID</Text>
-                  </View>
+                {/* Payment Method Selector */}
+                <View style={{ marginTop: 14 }}>
+                  <Text style={[styles.subLabel, { color: colors.text, marginBottom: 8 }]}>
+                    Select Payment Method
+                  </Text>
+                  
+                  <View style={{ flexDirection: "row", gap: 8, marginBottom: 12 }}>
+                    {/* Option 1: Otium Wallet */}
+                    <TouchableOpacity
+                      onPress={() => setPaymentMethod("WALLET")}
+                      style={{
+                        flex: 1,
+                        padding: 10,
+                        borderRadius: 10,
+                        borderWidth: 2,
+                        borderColor: paymentMethod === "WALLET" ? colors.primary : colors.border,
+                        backgroundColor: paymentMethod === "WALLET" ? colors.primary + "15" : colors.secondary,
+                      }}
+                    >
+                      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+                          <Feather name="zap" size={13} color={paymentMethod === "WALLET" ? colors.primary : colors.textMuted} />
+                          <Text style={{ fontSize: 12, fontWeight: "700", color: colors.text }}>E-Wallet</Text>
+                        </View>
+                        <View style={{ backgroundColor: "#059669", paddingHorizontal: 5, paddingVertical: 2, borderRadius: 4 }}>
+                          <Text style={{ fontSize: 8, fontWeight: "800", color: "#fff" }}>+2% CASHBACK</Text>
+                        </View>
+                      </View>
+                      <Text style={{ fontSize: 11, color: colors.textMuted, marginTop: 6 }}>
+                        Bal: <Text style={{ fontWeight: "700", color: colors.text }}>₹{((walletBalancePaise || 0) / 100).toFixed(2)}</Text>
+                      </Text>
+                    </TouchableOpacity>
 
-                  <View style={[styles.upiIdRow, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
-                    <Text style={[styles.upiIdText, { color: colors.text }]} numberOfLines={1}>
-                      {upiId}
-                    </Text>
-                    <TouchableOpacity onPress={handleCopyUpi} style={styles.copyBtn}>
-                      <Feather name={copiedUpi ? "check" : "copy"} size={14} color={colors.primary} />
-                      <Text style={[styles.copyText, { color: colors.primary }]}>
-                        {copiedUpi ? "Copied" : "Copy"}
+                    {/* Option 2: Direct UPI */}
+                    <TouchableOpacity
+                      onPress={() => setPaymentMethod("UPI")}
+                      style={{
+                        flex: 1,
+                        padding: 10,
+                        borderRadius: 10,
+                        borderWidth: 2,
+                        borderColor: paymentMethod === "UPI" ? colors.primary : colors.border,
+                        backgroundColor: paymentMethod === "UPI" ? colors.primary + "15" : colors.secondary,
+                      }}
+                    >
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+                        <Ionicons name="qr-code-outline" size={14} color={paymentMethod === "UPI" ? colors.primary : colors.textMuted} />
+                        <Text style={{ fontSize: 12, fontWeight: "700", color: colors.text }}>Direct UPI</Text>
+                      </View>
+                      <Text style={{ fontSize: 11, color: colors.textMuted, marginTop: 6 }}>
+                        Pay & Enter UTR
                       </Text>
                     </TouchableOpacity>
                   </View>
-
-                  <Button
-                    title={`Pay ₹${finalCost} with UPI App`}
-                    variant="outline"
-                    size="sm"
-                    onPress={handleOpenUpiApp}
-                    style={{ marginTop: 8 }}
-                    leftIcon={<Feather name="external-link" size={13} color={colors.primary} />}
-                  />
                 </View>
 
-                {/* 12-digit UTR Input */}
-                <View style={{ marginTop: 14 }}>
-                  <Text style={[styles.subLabel, { color: colors.text }]}>12-Digit Transaction UTR Number *</Text>
-                  <Text style={[styles.utrHint, { color: colors.textMuted }]}>
-                    Found on your Google Pay, PhonePe, or Paytm success screen
-                  </Text>
-                  <Input
-                    placeholder="e.g. 425619283741"
-                    value={utrNumber}
-                    onChangeText={setUtrNumber}
-                    keyboardType="numeric"
-                    maxLength={20}
-                    containerStyle={{ marginTop: 4 }}
-                  />
-                </View>
+                {/* If Wallet Selected */}
+                {paymentMethod === "WALLET" && (
+                  <View style={{ padding: 12, borderRadius: 10, borderWidth: 1, borderColor: hasSufficientWalletBalance ? colors.primary + "40" : "#d9770640", backgroundColor: hasSufficientWalletBalance ? colors.primary + "10" : "#d9770610", marginBottom: 10 }}>
+                    {hasSufficientWalletBalance ? (
+                      <View>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                          <Ionicons name="checkmark-circle" size={16} color="#059669" />
+                          <Text style={{ fontSize: 12, fontWeight: "700", color: colors.text }}>1-Click Payment Available</Text>
+                        </View>
+                        <Text style={{ fontSize: 11, color: colors.textMuted, marginTop: 4 }}>
+                          ⚡ Instant confirmation without leaving the app. You'll earn +₹{cashbackRupees} (2%) cashback credited directly to your wallet!
+                        </Text>
+                      </View>
+                    ) : (
+                      <View>
+                        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                          <Text style={{ fontSize: 12, fontWeight: "700", color: "#d97706" }}>Insufficient Balance</Text>
+                          <TouchableOpacity
+                            onPress={() => setIsWalletModalOpen(true)}
+                            style={{ backgroundColor: colors.primary, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 }}
+                          >
+                            <Text style={{ fontSize: 11, fontWeight: "700", color: "#fff" }}>Top Up Wallet</Text>
+                          </TouchableOpacity>
+                        </View>
+                        <Text style={{ fontSize: 11, color: colors.textMuted, marginTop: 4 }}>
+                          Short by ₹{(((finalCostPaise - (walletBalancePaise || 0))) / 100).toFixed(2)}. Recharge now to unlock 1-click checkout + 2% cashback.
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                )}
+
+                {/* If UPI Selected */}
+                {paymentMethod === "UPI" && (
+                  <View>
+                    {/* Campus UPI Section */}
+                    <View style={[styles.checkoutUpiSection, { borderColor: colors.border }]}>
+                      <View style={styles.upiHeader}>
+                        <Ionicons name="qr-code-outline" size={16} color={colors.primary} />
+                        <Text style={[styles.upiTitle, { color: colors.text }]}>Pay via Campus UPI ID</Text>
+                      </View>
+
+                      <View style={[styles.upiIdRow, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
+                        <Text style={[styles.upiIdText, { color: colors.text }]} numberOfLines={1}>
+                          {upiId}
+                        </Text>
+                        <TouchableOpacity onPress={handleCopyUpi} style={styles.copyBtn}>
+                          <Feather name={copiedUpi ? "check" : "copy"} size={14} color={colors.primary} />
+                          <Text style={[styles.copyText, { color: colors.primary }]}>
+                            {copiedUpi ? "Copied" : "Copy"}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+
+                      <Button
+                        title={`Pay ₹${finalCost} with UPI App`}
+                        variant="outline"
+                        size="sm"
+                        onPress={handleOpenUpiApp}
+                        style={{ marginTop: 8 }}
+                        leftIcon={<Feather name="external-link" size={13} color={colors.primary} />}
+                      />
+                    </View>
+
+                    {/* 12-digit UTR Input */}
+                    <View style={{ marginTop: 14 }}>
+                      <Text style={[styles.subLabel, { color: colors.text }]}>12-Digit Transaction UTR Number *</Text>
+                      <Text style={[styles.utrHint, { color: colors.textMuted }]}>
+                        Found on your Google Pay, PhonePe, or Paytm success screen
+                      </Text>
+                      <Input
+                        placeholder="e.g. 425619283741"
+                        value={utrNumber}
+                        onChangeText={setUtrNumber}
+                        keyboardType="numeric"
+                        maxLength={20}
+                        containerStyle={{ marginTop: 4 }}
+                      />
+                    </View>
+                  </View>
+                )}
               </ScrollView>
 
               {/* Modal Confirmation Footer */}
@@ -1091,17 +1199,41 @@ export function PrintStationScreen({ navigation }: any) {
                       ? "Authorizing..."
                       : cooldownSeconds > 0
                       ? `✓ Placed (${cooldownSeconds}s)`
+                      : paymentMethod === "WALLET"
+                      ? hasSufficientWalletBalance
+                        ? `⚡ Pay ₹${finalCost} (+₹${cashbackRupees})`
+                        : `Top Up (Short ₹${(((finalCostPaise - (walletBalancePaise || 0))) / 100).toFixed(2)})`
                       : `Confirm & Submit (₹${finalCost})`
                   }
                   variant="default"
                   size="sm"
-                  onPress={handleSubmitOrder}
-                  disabled={isSubmitting || cooldownSeconds > 0 || !utrNumber.trim()}
+                  onPress={
+                    paymentMethod === "WALLET" && !hasSufficientWalletBalance
+                      ? () => setIsWalletModalOpen(true)
+                      : handleSubmitOrder
+                  }
+                  disabled={
+                    isSubmitting ||
+                    cooldownSeconds > 0 ||
+                    (paymentMethod === "UPI" && !utrNumber.trim())
+                  }
                 />
               </View>
             </View>
           </KeyboardAvoidingView>
         </Modal>
+
+        {/* E-Wallet Recharge Modal */}
+        <WalletRechargeModal
+          visible={isWalletModalOpen}
+          onClose={() => {
+            setIsWalletModalOpen(false);
+            fetchWalletBalance();
+          }}
+          onSuccess={() => {
+            fetchWalletBalance();
+          }}
+        />
 
         {/* 8. Report Problem Modal */}
         <Modal
