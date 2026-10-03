@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import {
   Wallet,
@@ -34,6 +35,7 @@ interface TopupModalProps {
 const PRESET_AMOUNTS = [50, 100, 200, 500];
 
 export function TopupModal({ isOpen, onClose, onSuccess }: TopupModalProps) {
+  const [mounted, setMounted] = useState(false);
   const [activeTab, setActiveTab] = useState<"topup" | "history">("topup");
   const [selectedAmount, setSelectedAmount] = useState<number>(100);
   const [customAmount, setCustomAmount] = useState<string>("");
@@ -44,6 +46,10 @@ export function TopupModal({ isOpen, onClose, onSuccess }: TopupModalProps) {
   const [loadingDetails, setLoadingDetails] = useState(false);
 
   const platformUpiId = "8307798816@upi";
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const fetchWallet = async () => {
     setLoadingDetails(true);
@@ -66,7 +72,20 @@ export function TopupModal({ isOpen, onClose, onSuccess }: TopupModalProps) {
     }
   }, [isOpen]);
 
-  if (!isOpen) return null;
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.body.style.overflow = "";
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isOpen, onClose]);
+
+  if (!isOpen || !mounted) return null;
 
   const currentRechargeAmount = customAmount ? Number(customAmount) : selectedAmount;
   const isAmountValid = currentRechargeAmount >= 20;
@@ -123,84 +142,93 @@ export function TopupModal({ isOpen, onClose, onSuccess }: TopupModalProps) {
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in-0">
-      <div className="relative w-full max-w-lg bg-card border border-border rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-card">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center border border-primary/20">
-              <Wallet className="w-4 h-4" />
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] overflow-y-auto bg-black/75 backdrop-blur-sm animate-in fade-in-0 duration-200">
+      <div className="flex min-h-full items-center justify-center p-3 sm:p-4 md:p-6 text-center">
+        {/* Backdrop Click Dismiss */}
+        <div
+          onClick={onClose}
+          className="fixed inset-0 transition-opacity"
+          aria-hidden="true"
+        />
+
+        {/* Modal Card */}
+        <div className="relative z-10 w-full max-w-lg bg-card text-card-foreground border border-border rounded-2xl shadow-2xl overflow-hidden flex flex-col my-auto max-h-[85vh] text-left animate-in fade-in-0 zoom-in-95 duration-200">
+          {/* Header */}
+          <div className="flex items-center justify-between px-6 py-4 border-b border-border bg-card">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center border border-primary/20">
+                <Wallet className="w-4 h-4" />
+              </div>
+              <div>
+                <h2 className="text-sm font-bold text-foreground">Otium Campus E-Wallet</h2>
+                <p className="text-[11px] text-muted-foreground">
+                  Current Balance:{" "}
+                  <span className="font-bold text-foreground">
+                    ₹{walletData ? walletData.balanceRupees.toFixed(2) : "0.00"}
+                  </span>
+                </p>
+              </div>
             </div>
-            <div>
-              <h2 className="text-sm font-bold text-foreground">Otium Campus E-Wallet</h2>
-              <p className="text-[11px] text-muted-foreground">
-                Current Balance:{" "}
-                <span className="font-bold text-foreground">
-                  ₹{walletData ? walletData.balanceRupees.toFixed(2) : "0.00"}
-                </span>
-              </p>
-            </div>
+
+            <button
+              onClick={onClose}
+              className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
           </div>
 
-          <button
-            onClick={onClose}
-            className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
+          {/* Tab Toggle */}
+          <div className="flex border-b border-border bg-secondary/30">
+            <button
+              onClick={() => setActiveTab("topup")}
+              className={`flex-1 py-2.5 text-xs font-semibold text-center border-b-2 transition-colors flex items-center justify-center gap-1.5 ${
+                activeTab === "topup"
+                  ? "border-primary text-primary"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <QrCode className="w-3.5 h-3.5" />
+              Recharge Balance
+            </button>
+            <button
+              onClick={() => setActiveTab("history")}
+              className={`flex-1 py-2.5 text-xs font-semibold text-center border-b-2 transition-colors flex items-center justify-center gap-1.5 ${
+                activeTab === "history"
+                  ? "border-primary text-primary"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <History className="w-3.5 h-3.5" />
+              Audit Ledger ({walletData?.transactions.length || 0})
+            </button>
+          </div>
 
-        {/* Tab Toggle */}
-        <div className="flex border-b border-border bg-secondary/30">
-          <button
-            onClick={() => setActiveTab("topup")}
-            className={`flex-1 py-2.5 text-xs font-semibold text-center border-b-2 transition-colors flex items-center justify-center gap-1.5 ${
-              activeTab === "topup"
-                ? "border-primary text-primary"
-                : "border-transparent text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            <QrCode className="w-3.5 h-3.5" />
-            Recharge Balance
-          </button>
-          <button
-            onClick={() => setActiveTab("history")}
-            className={`flex-1 py-2.5 text-xs font-semibold text-center border-b-2 transition-colors flex items-center justify-center gap-1.5 ${
-              activeTab === "history"
-                ? "border-primary text-primary"
-                : "border-transparent text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            <History className="w-3.5 h-3.5" />
-            Audit Ledger ({walletData?.transactions.length || 0})
-          </button>
-        </div>
-
-        {/* Modal Body */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          {activeTab === "topup" ? (
-            <form onSubmit={handleSubmitTopup} className="space-y-6">
-              {/* Active Pending Request Notification */}
-              {walletData?.pendingTopups && walletData.pendingTopups.length > 0 && (
-                <div className="p-3.5 rounded-xl border border-warning/30 bg-warning/10 text-foreground text-xs space-y-1">
-                  <div className="flex items-center gap-2 font-bold text-warning">
-                    <Clock className="w-4 h-4" />
-                    Pending Top-Up Under Review
+          {/* Modal Body */}
+          <div className="flex-1 overflow-y-auto p-6 space-y-6">
+            {activeTab === "topup" ? (
+              <form onSubmit={handleSubmitTopup} className="space-y-6">
+                {/* Active Pending Request Notification */}
+                {walletData?.pendingTopups && walletData.pendingTopups.length > 0 && (
+                  <div className="p-3.5 rounded-xl border border-amber-500/30 bg-amber-500/10 text-foreground text-xs space-y-1">
+                    <div className="flex items-center gap-2 font-bold text-amber-600 dark:text-amber-400">
+                      <Clock className="w-4 h-4" />
+                      Pending Top-Up Under Review
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">
+                      You have {walletData.pendingTopups.length} pending recharge(s) totaling{" "}
+                      <span className="font-semibold text-foreground">
+                        ₹
+                        {walletData.pendingTopups
+                          .reduce((sum, r) => sum + r.amountRupees, 0)
+                          .toFixed(2)}
+                      </span>
+                      . UTR: {walletData.pendingTopups[0].utr}. The campus manager will verify
+                      shortly.
+                    </p>
                   </div>
-                  <p className="text-[11px] text-muted-foreground">
-                    You have {walletData.pendingTopups.length} pending recharge(s) totaling{" "}
-                    <span className="font-semibold text-foreground">
-                      ₹
-                      {walletData.pendingTopups
-                        .reduce((sum, r) => sum + r.amountRupees, 0)
-                        .toFixed(2)}
-                    </span>
-                    . UTR: {walletData.pendingTopups[0].utr}. The campus manager will verify
-                    shortly.
-                  </p>
-                </div>
-              )}
+                )}
 
               {/* 1. Select Preset Amount */}
               <div className="space-y-2.5">
@@ -271,7 +299,7 @@ export function TopupModal({ isOpen, onClose, onSuccess }: TopupModalProps) {
                       className="p-1 rounded text-muted-foreground hover:text-foreground"
                     >
                       {copiedUpi ? (
-                        <CheckCircle2 className="w-3.5 h-3.5 text-success" />
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
                       ) : (
                         <Copy className="w-3.5 h-3.5" />
                       )}
@@ -339,7 +367,7 @@ export function TopupModal({ isOpen, onClose, onSuccess }: TopupModalProps) {
                           <div
                             className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${
                               isCredit
-                                ? "bg-success/10 text-success border border-success/20"
+                                ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
                                 : "bg-destructive/10 text-destructive border border-destructive/20"
                             }`}
                           >
@@ -367,7 +395,7 @@ export function TopupModal({ isOpen, onClose, onSuccess }: TopupModalProps) {
                         <div className="text-right flex-shrink-0">
                           <span
                             className={`font-bold block ${
-                              isCredit ? "text-success" : "text-foreground"
+                              isCredit ? "text-emerald-600 dark:text-emerald-400" : "text-foreground"
                             }`}
                           >
                             {isCredit ? "+" : "-"}₹
@@ -387,5 +415,7 @@ export function TopupModal({ isOpen, onClose, onSuccess }: TopupModalProps) {
         </div>
       </div>
     </div>
-  );
+  </div>,
+  document.body
+);
 }

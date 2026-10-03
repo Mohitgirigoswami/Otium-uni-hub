@@ -276,6 +276,8 @@ Otium maintains a strict 1:1 component design equivalence between shadcn/ui on W
 | **Card** | `card.tsx` | `Card.tsx` | Variants: `default`, `outline`, `secondary`. Uses border tokens and surface elevation. |
 | **Badge** | `badge.tsx` | `Badge.tsx` | Variants: `default`, `secondary`, `outline`, `primary`, `success`, `warning`, `destructive`. Legacy `components/Badge.tsx` with static hex colors was retired in favor of `components/ui/Badge.tsx`. |
 | **Spinner** | `spinner.tsx` (Framer Motion) | `Spinner.tsx` (Animated SVG) | Variants: `orbit` (dual counter-rotating rings + satellite particle), `radar` (expanding sonar rings), `classic` (gradient arc). |
+| **Modal / Dialog** | `modal.tsx` (`createPortal`) | Native `Modal` (`transparent={true}`) | Transported via `createPortal(..., document.body)` with `mounted` check to escape ancestor `backdrop-filter` clipping (e.g. sticky Navbar). Fixed `z-[9999]`, flex centering, and body scroll lock. |
+| **Wallet Recharge Modal** | `src/components/wallet/TopupModal.tsx` | Custom Bottom Sheet / Modal | Portaled to `document.body` with `z-[9999]`, tabbed between Recharge Balance and Audit Ledger, scroll-locked body, copyable UPI ID, and 12-digit UTR verification. |
 | **Radial CGPA Gauge** | `RadialCgpaGauge.tsx` | `RadialCgpaGauge.tsx` | 270° SVG arc meter (0.00 - 10.00 scale), animated spring sweep, centered GPA readout, tier badge. |
 | **Print Order Tracker** | `PrintOrderTracker.tsx` | `PrintOrderTracker.tsx` | Horizontal laser timeline connecting `Submitted` → `Printing` → `Dispatched` → `Ready`. |
 | **Service Guard** | `ClientServiceGuard.tsx` | `ClientServiceGuard.tsx` | Concentric amber hazard beacon, campus maintenance notice, and live "Ping Service" check backed by `GET /api/services?campusId=...` for all campus modules. |
@@ -285,6 +287,11 @@ Otium maintains a strict 1:1 component design equivalence between shadcn/ui on W
 - **Button Standardization**: Purged duplicate `mobile/src/components/ui/GradientActionButton.tsx` and its wrapper `MintButton.tsx`. All primary interactive actions consume `mobile/src/components/ui/Button.tsx`.
 - **Dynamic Theming Compliance**: 100% of mobile components (`CircularProgress`, `GlassCard`, `NotificationsModal`, `LoginScreen`) now strictly consume dynamic theme tokens (`colors.primary`, `colors.success`, `colors.destructive`, `colors.card`, `colors.border`) from `useTheme()`, with zero static color imports.
 - **Direct Imports over Barrels**: All mobile screen imports use direct module paths; legacy `mobile/src/features/*/index.ts` barrel files were pruned to optimize bundling and eliminate cyclical resolution overhead.
+
+### 4.2 Modal & Dialog Portal Architecture (`createPortal`)
+- **Web Backdrop-Filter Escape**: In Next.js / Tailwind, headers or navigation bars styled with `backdrop-blur-*` (CSS `backdrop-filter`) establish a new containing block for `position: fixed` elements. When modals were nested inside `Navbar.tsx` (such as `WalletPill` opening `TopupModal`), their `fixed inset-0 flex items-center justify-center` was constrained to the 64px header height rather than the full viewport, clipping off the top half of the modal off-screen.
+- **Universal Fix**: All web modals (including generic `src/components/ui/modal.tsx` and `src/components/wallet/TopupModal.tsx`) render via `createPortal(jsx, document.body)` with an SSR-safe `mounted` state check (`useEffect(() => setMounted(true), [])`).
+- **Body Scroll Lock & Keyboard Handling**: Modals lock `document.body.style.overflow = "hidden"` on open, restore on unmount, and support global `Escape` key dismissal. All flex wrappers use `min-h-full items-center justify-center` with `my-auto max-h-[85vh]` on the card to guarantee vertical centering on all screen sizes.
 
 ---
 
