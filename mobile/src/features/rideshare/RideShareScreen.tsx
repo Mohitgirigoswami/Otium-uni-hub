@@ -23,6 +23,7 @@ import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { Input } from "../../components/ui/Input";
 import { ClientServiceGuard } from "../../components/ClientServiceGuard";
+import { useDebounce } from "../../hooks/useDebounce";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
@@ -36,6 +37,7 @@ export function RideShareScreen({ navigation }: any) {
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [searchDestination, setSearchDestination] = useState("");
+  const debouncedSearchDestination = useDebounce(searchDestination, 350);
 
   // Host Ride Modal
   const [isHostModalOpen, setIsHostModalOpen] = useState(false);
@@ -49,29 +51,33 @@ export function RideShareScreen({ navigation }: any) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [bookingRideId, setBookingRideId] = useState<string | null>(null);
 
-  const fetchRides = async (isPull = false) => {
+  // 0. Immediate 0ms cache restore on mount
+  useEffect(() => {
+    AsyncStorage.getItem(STORAGE_KEY_RIDES)
+      .then((cached) => {
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setRides(parsed);
+          }
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const fetchRides = async (isPull = false, dest = debouncedSearchDestination) => {
     if (isPull) setRefreshing(true);
 
-    // 1. Immediate offline cache restore
     try {
-      const cached = await AsyncStorage.getItem(STORAGE_KEY_RIDES);
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          setRides(parsed);
-        }
-      }
-    } catch {}
-
-    // 2. Fetch fresh from server
-    try {
-      const query = searchDestination.trim()
-        ? `/rideshare?destination=${encodeURIComponent(searchDestination.trim())}`
+      const query = dest.trim()
+        ? `/rideshare?destination=${encodeURIComponent(dest.trim())}`
         : "/rideshare";
       const res = await apiClient.get(query);
       if (res.success && Array.isArray(res.data)) {
         setRides(res.data);
-        AsyncStorage.setItem(STORAGE_KEY_RIDES, JSON.stringify(res.data)).catch(() => {});
+        if (!dest.trim()) {
+          AsyncStorage.setItem(STORAGE_KEY_RIDES, JSON.stringify(res.data)).catch(() => {});
+        }
       }
     } catch (err) {
       console.log("[Fetch Rides Note]: Operating in offline cached mode");
@@ -82,8 +88,9 @@ export function RideShareScreen({ navigation }: any) {
   };
 
   useEffect(() => {
-    fetchRides();
-  }, [searchDestination]);
+    setLoading(true);
+    fetchRides(false, debouncedSearchDestination);
+  }, [debouncedSearchDestination]);
 
   const handleHostRide = async () => {
     const campusName = user?.college?.name || "JCBOSEUST, YMCA";
@@ -211,7 +218,7 @@ export function RideShareScreen({ navigation }: any) {
       </View>
 
       {/* Ride List */}
-      {loading ? (
+      {loading && rides.length === 0 ? (
         <View style={styles.loadingWrap}>
           <ActivityIndicator size="small" color={colors.primary} />
           <Text style={[styles.loadingText, { color: colors.textMuted }]}>
@@ -342,6 +349,11 @@ export function RideShareScreen({ navigation }: any) {
           style={styles.modalOverlay}
           behavior={Platform.OS === "ios" ? "padding" : "height"}
         >
+          <TouchableOpacity
+            style={styles.modalBackdropTouch}
+            activeOpacity={1}
+            onPress={() => setIsHostModalOpen(false)}
+          />
           <View
             style={[
               styles.modalContent,
@@ -363,7 +375,12 @@ export function RideShareScreen({ navigation }: any) {
               </TouchableOpacity>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 420 }}>
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              style={styles.modalScroll}
+              contentContainerStyle={styles.modalScrollContent}
+            >
               <View style={styles.formGroup}>
                 <Text style={[styles.formLabel, { color: colors.text }]}>Pickup Origin</Text>
                 <View style={styles.quickOriginRow}>
@@ -485,23 +502,23 @@ export function RideShareScreen({ navigation }: any) {
                   placeholder="e.g. 2 trolley bags max, leaving sharp on time"
                 />
               </View>
-            </ScrollView>
 
-            <View style={styles.modalFooter}>
-              <Button
-                title="Cancel"
-                variant="outline"
-                size="sm"
-                onPress={() => setIsHostModalOpen(false)}
-              />
-              <Button
-                title={isSubmitting ? "Hosting..." : "Confirm & Host Cab"}
-                variant="default"
-                size="sm"
-                onPress={handleHostRide}
-                disabled={isSubmitting}
-              />
-            </View>
+              <View style={styles.modalFooter}>
+                <Button
+                  title="Cancel"
+                  variant="outline"
+                  size="sm"
+                  onPress={() => setIsHostModalOpen(false)}
+                />
+                <Button
+                  title={isSubmitting ? "Hosting..." : "Confirm & Host Cab"}
+                  variant="default"
+                  size="sm"
+                  onPress={handleHostRide}
+                  disabled={isSubmitting}
+                />
+              </View>
+            </ScrollView>
           </View>
         </KeyboardAvoidingView>
       </Modal>
@@ -679,12 +696,21 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.65)",
     justifyContent: "flex-end",
   },
+  modalBackdropTouch: {
+    flex: 1,
+  },
   modalContent: {
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     borderTopWidth: 1,
     padding: 20,
-    paddingBottom: 36,
+    maxHeight: "88%",
+  },
+  modalScroll: {
+    flexGrow: 0,
+  },
+  modalScrollContent: {
+    paddingBottom: 28,
   },
   modalHeader: {
     flexDirection: "row",

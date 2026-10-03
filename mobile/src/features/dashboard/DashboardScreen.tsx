@@ -100,81 +100,63 @@ export function DashboardScreen() {
       }
     } catch {}
 
-    // 2. Fetch fresh attendance
+    // 2. Parallel background fetch for all dashboard metrics (attendance, prints, gigs, marketplace, whisper, chat)
+    let syncPayload: any[] = [];
     try {
-      let syncPayload: any[] = [];
       const cached = await AsyncStorage.getItem("@otium_attendance_subjects");
-      if (cached) {
-        try {
-          syncPayload = JSON.parse(cached);
-        } catch {}
-      }
-
-      const attRes = await apiClient.post("/attendance", {
-        action: "SYNC_OFFLINE",
-        subjects: syncPayload,
-      });
-
-      if (attRes.success && Array.isArray(attRes.data) && attRes.data.length > 0) {
-        const subjects = attRes.data;
-        const tot = subjects.reduce((sum: number, s: any) => sum + (s.totalClasses || 0), 0);
-        const att = subjects.reduce((sum: number, s: any) => sum + (s.attendedClasses || 0), 0);
-        const pct = tot > 0 ? (att / tot) * 100 : 100;
-        const crit = subjects.filter((s: any) => (s.totalClasses > 0 ? (s.attendedClasses / s.totalClasses) * 100 < 75 : false)).length;
-        latestAttendance = { percentage: pct, attended: att, total: tot, criticalCount: crit };
-        setAttendanceData(latestAttendance);
-      }
+      if (cached) syncPayload = JSON.parse(cached);
     } catch {}
 
-    // 3. Print orders count
+    const printUrl = user?.id ? `/print/order?userId=${encodeURIComponent(user.id)}` : "/print/order";
+
+    const [attSettled, printSettled, gigsSettled, marketSettled, whisperSettled, chatSettled] = await Promise.allSettled([
+      apiClient.post("/attendance", { action: "SYNC_OFFLINE", subjects: syncPayload }),
+      apiClient.get(printUrl),
+      apiClient.get("/gigs?status=OPEN"),
+      apiClient.get("/marketplace?status=AVAILABLE"),
+      apiClient.get("/incognito?limit=1"),
+      apiClient.get("/chat"),
+    ]);
+
     let printsCount = activePrintsCount;
-    try {
-      const printUrl = user?.id ? `/print/order?userId=${encodeURIComponent(user.id)}` : "/print/order";
-      const printRes = await apiClient.get(printUrl);
-      if (printRes.success && Array.isArray(printRes.data)) {
-        printsCount = printRes.data.filter((o: any) => o.status !== "DELIVERED" && o.status !== "REJECTED" && o.status !== "CANCELLED").length;
-        setActivePrintsCount(printsCount);
-      }
-    } catch {}
-
-    // 4. Open gigs count
     let gigsCount = openTasksCount;
-    try {
-      const gigsRes = await apiClient.get("/gigs?status=OPEN");
-      if (gigsRes.success && Array.isArray(gigsRes.data)) {
-        gigsCount = gigsRes.data.length;
-        setOpenTasksCount(gigsCount);
-      }
-    } catch {}
-
-    // 5. Active marketplace count
     let marketCount = activeListingsCount;
-    try {
-      const marketRes = await apiClient.get("/marketplace?status=AVAILABLE");
-      if (marketRes.success && Array.isArray(marketRes.data)) {
-        marketCount = marketRes.data.length;
-        setActiveListingsCount(marketCount);
-      }
-    } catch {}
-
-    // 6. Recent whisper
     let latestWhisper = recentWhisper;
-    try {
-      const whisperRes = await apiClient.get("/incognito?limit=1");
-      if (whisperRes.success && Array.isArray(whisperRes.data) && whisperRes.data.length > 0) {
-        latestWhisper = whisperRes.data[0];
-        setRecentWhisper(latestWhisper);
-      }
-    } catch {}
 
-    // 7. Check unread conversations
-    try {
-      const convRes = await apiClient.get("/chat");
-      if (convRes.success && Array.isArray(convRes.data)) {
-        await AsyncStorage.setItem("@otium_cached_conversations", JSON.stringify(convRes.data));
-        calculateUnreadWhispers(convRes.data);
-      }
-    } catch {}
+    if (attSettled.status === "fulfilled" && attSettled.value.success && Array.isArray(attSettled.value.data) && attSettled.value.data.length > 0) {
+      const subjects = attSettled.value.data;
+      const tot = subjects.reduce((sum: number, s: any) => sum + (s.totalClasses || 0), 0);
+      const att = subjects.reduce((sum: number, s: any) => sum + (s.attendedClasses || 0), 0);
+      const pct = tot > 0 ? (att / tot) * 100 : 100;
+      const crit = subjects.filter((s: any) => (s.totalClasses > 0 ? (s.attendedClasses / s.totalClasses) * 100 < 75 : false)).length;
+      latestAttendance = { percentage: pct, attended: att, total: tot, criticalCount: crit };
+      setAttendanceData(latestAttendance);
+    }
+
+    if (printSettled.status === "fulfilled" && printSettled.value.success && Array.isArray(printSettled.value.data)) {
+      printsCount = printSettled.value.data.filter((o: any) => o.status !== "DELIVERED" && o.status !== "REJECTED" && o.status !== "CANCELLED").length;
+      setActivePrintsCount(printsCount);
+    }
+
+    if (gigsSettled.status === "fulfilled" && gigsSettled.value.success && Array.isArray(gigsSettled.value.data)) {
+      gigsCount = gigsSettled.value.data.length;
+      setOpenTasksCount(gigsCount);
+    }
+
+    if (marketSettled.status === "fulfilled" && marketSettled.value.success && Array.isArray(marketSettled.value.data)) {
+      marketCount = marketSettled.value.data.length;
+      setActiveListingsCount(marketCount);
+    }
+
+    if (whisperSettled.status === "fulfilled" && whisperSettled.value.success && Array.isArray(whisperSettled.value.data) && whisperSettled.value.data.length > 0) {
+      latestWhisper = whisperSettled.value.data[0];
+      setRecentWhisper(latestWhisper);
+    }
+
+    if (chatSettled.status === "fulfilled" && chatSettled.value.success && Array.isArray(chatSettled.value.data)) {
+      AsyncStorage.setItem("@otium_cached_conversations", JSON.stringify(chatSettled.value.data)).catch(() => {});
+      calculateUnreadWhispers(chatSettled.value.data);
+    }
 
     // Save full snapshot for offline instant load
     try {

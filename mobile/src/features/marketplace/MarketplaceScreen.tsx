@@ -24,6 +24,7 @@ import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { Input } from "../../components/ui/Input";
 import { ClientServiceGuard } from "../../components/ClientServiceGuard";
+import { useDebounce } from "../../hooks/useDebounce";
 
 const CATEGORIES = [
   { label: "All Items", value: "ALL" },
@@ -56,6 +57,7 @@ export function MarketplaceScreen({ navigation }: any) {
   const [refreshing, setRefreshing] = useState(false);
   const [activeCategory, setActiveCategory] = useState("ALL");
   const [searchQuery, setSearchQuery] = useState("");
+  const debouncedSearchQuery = useDebounce(searchQuery, 350);
   const [statusFilter, setStatusFilter] = useState("ALL");
 
   // Sell Modal State
@@ -70,33 +72,37 @@ export function MarketplaceScreen({ navigation }: any) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [connectingSellerId, setConnectingSellerId] = useState<string | null>(null);
 
-  const fetchItems = async (isPull = false) => {
+  // 0. Immediate 0ms cache restore on mount
+  useEffect(() => {
+    AsyncStorage.getItem(STORAGE_KEY_MARKETPLACE)
+      .then((cached) => {
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setItems(parsed);
+          }
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const fetchItems = async (isPull = false, search = debouncedSearchQuery) => {
     if (isPull) setRefreshing(true);
 
-    // 1. Immediate offline cache restore
-    try {
-      const cached = await AsyncStorage.getItem(STORAGE_KEY_MARKETPLACE);
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          setItems(parsed);
-        }
-      }
-    } catch {}
-
-    // 2. Fetch fresh items from server
     try {
       let url = "/marketplace";
       const params = [];
       if (activeCategory !== "ALL") params.push(`category=${activeCategory}`);
       if (statusFilter !== "ALL") params.push(`status=${statusFilter}`);
-      if (searchQuery.trim()) params.push(`search=${encodeURIComponent(searchQuery.trim())}`);
+      if (search.trim()) params.push(`search=${encodeURIComponent(search.trim())}`);
       if (params.length > 0) url += `?${params.join("&")}`;
 
       const res = await apiClient.get(url);
       if (res.success && Array.isArray(res.data)) {
         setItems(res.data);
-        AsyncStorage.setItem(STORAGE_KEY_MARKETPLACE, JSON.stringify(res.data)).catch(() => {});
+        if (!search.trim() && activeCategory === "ALL" && statusFilter === "ALL") {
+          AsyncStorage.setItem(STORAGE_KEY_MARKETPLACE, JSON.stringify(res.data)).catch(() => {});
+        }
       }
     } catch (err) {
       console.log("[Fetch Marketplace Note]: Operating in offline cached mode");
@@ -107,8 +113,9 @@ export function MarketplaceScreen({ navigation }: any) {
   };
 
   useEffect(() => {
-    fetchItems();
-  }, [activeCategory, statusFilter, searchQuery]);
+    setLoading(true);
+    fetchItems(false, debouncedSearchQuery);
+  }, [activeCategory, statusFilter, debouncedSearchQuery]);
 
   const handlePostItem = async () => {
     const price = Number(priceRupees);
@@ -324,7 +331,7 @@ export function MarketplaceScreen({ navigation }: any) {
       </View>
 
       {/* Items Grid */}
-      {loading ? (
+      {loading && items.length === 0 ? (
         <View style={styles.loadingWrap}>
           <ActivityIndicator size="small" color={colors.primary} />
           <Text style={[styles.loadingText, { color: colors.textMuted }]}>
@@ -462,6 +469,11 @@ export function MarketplaceScreen({ navigation }: any) {
           style={styles.modalOverlay}
           behavior={Platform.OS === "ios" ? "padding" : "height"}
         >
+          <TouchableOpacity
+            style={styles.modalBackdropTouch}
+            activeOpacity={1}
+            onPress={() => setIsSellModalOpen(false)}
+          />
           <View
             style={[
               styles.modalContent,
@@ -483,7 +495,12 @@ export function MarketplaceScreen({ navigation }: any) {
               </TouchableOpacity>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 440 }}>
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              style={styles.modalScroll}
+              contentContainerStyle={styles.modalScrollContent}
+            >
               <View style={styles.formGroup}>
                 <Text style={[styles.formLabel, { color: colors.text }]}>Item Title *</Text>
                 <Input
@@ -595,23 +612,23 @@ export function MarketplaceScreen({ navigation }: any) {
                   placeholder="Mention edition, usage history, included accessories..."
                 />
               </View>
-            </ScrollView>
 
-            <View style={styles.modalFooter}>
-              <Button
-                title="Cancel"
-                variant="outline"
-                size="sm"
-                onPress={() => setIsSellModalOpen(false)}
-              />
-              <Button
-                title={isSubmitting ? "Publishing..." : "Publish Listing"}
-                variant="default"
-                size="sm"
-                onPress={handlePostItem}
-                disabled={isSubmitting}
-              />
-            </View>
+              <View style={styles.modalFooter}>
+                <Button
+                  title="Cancel"
+                  variant="outline"
+                  size="sm"
+                  onPress={() => setIsSellModalOpen(false)}
+                />
+                <Button
+                  title={isSubmitting ? "Publishing..." : "Publish Listing"}
+                  variant="default"
+                  size="sm"
+                  onPress={handlePostItem}
+                  disabled={isSubmitting}
+                />
+              </View>
+            </ScrollView>
           </View>
         </KeyboardAvoidingView>
       </Modal>
@@ -797,12 +814,21 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.65)",
     justifyContent: "flex-end",
   },
+  modalBackdropTouch: {
+    flex: 1,
+  },
   modalContent: {
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     borderTopWidth: 1,
     padding: 20,
-    paddingBottom: 36,
+    maxHeight: "88%",
+  },
+  modalScroll: {
+    flexGrow: 0,
+  },
+  modalScrollContent: {
+    paddingBottom: 28,
   },
   modalHeader: {
     flexDirection: "row",

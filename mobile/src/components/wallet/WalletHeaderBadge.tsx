@@ -1,9 +1,12 @@
 import React, { useState, useEffect } from "react";
 import { TouchableOpacity, Text, StyleSheet, View } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { useTheme } from "../../context/ThemeContext";
 import { apiClient } from "../../services/apiClient";
 import { WalletRechargeModal } from "../../features/wallet/WalletRechargeModal";
+
+const STORAGE_KEY_WALLET_BALANCE = "@otium_cached_wallet_balance";
 
 interface WalletHeaderBadgeProps {
   onBalanceUpdated?: (balanceRupees: number) => void;
@@ -14,6 +17,18 @@ export function WalletHeaderBadge({ onBalanceUpdated }: WalletHeaderBadgeProps) 
   const [balanceRupees, setBalanceRupees] = useState<number | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
 
+  // 1. Instant 0ms cache restore on mount
+  useEffect(() => {
+    AsyncStorage.getItem(STORAGE_KEY_WALLET_BALANCE).then((cached) => {
+      if (cached !== null) {
+        const val = parseFloat(cached);
+        if (!isNaN(val)) {
+          setBalanceRupees(val);
+        }
+      }
+    }).catch(() => {});
+  }, []);
+
   const fetchBalance = async () => {
     try {
       const res = await apiClient.get("/wallet");
@@ -21,6 +36,7 @@ export function WalletHeaderBadge({ onBalanceUpdated }: WalletHeaderBadgeProps) 
         const bal = Number(res.data.balanceRupees);
         setBalanceRupees(bal);
         onBalanceUpdated?.(bal);
+        AsyncStorage.setItem(STORAGE_KEY_WALLET_BALANCE, bal.toString()).catch(() => {});
       }
     } catch {
       // Ignore network errors on background fetch

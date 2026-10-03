@@ -88,6 +88,7 @@ const QUICK_LOCATION_CHIPS = [
 const STORAGE_KEY_PRINT_ORDERS = "@otium_cached_print_orders";
 const STORAGE_KEY_PRINT_SYNC_QUEUE = "@otium_print_pending_sync";
 const STORAGE_KEY_UPI_ID = "@otium_cached_upi_id";
+const STORAGE_KEY_WALLET_BALANCE = "@otium_cached_wallet_balance";
 
 export function PrintStationScreen({ navigation }: any) {
   const { colors, isDark } = useTheme();
@@ -130,6 +131,7 @@ export function PrintStationScreen({ navigation }: any) {
       const res = await apiClient.get<any>("/wallet");
       if (res.success && res.data) {
         setWalletBalancePaise(res.data.balancePaise);
+        AsyncStorage.setItem(STORAGE_KEY_WALLET_BALANCE, String(res.data.balancePaise)).catch(() => {});
       }
     } catch (err) {
       console.warn("Could not fetch wallet balance:", err);
@@ -137,6 +139,11 @@ export function PrintStationScreen({ navigation }: any) {
   };
 
   useEffect(() => {
+    AsyncStorage.getItem(STORAGE_KEY_WALLET_BALANCE)
+      .then((val) => {
+        if (val !== null) setWalletBalancePaise(Number(val));
+      })
+      .catch(() => {});
     fetchWalletBalance();
   }, []);
 
@@ -985,6 +992,11 @@ export function PrintStationScreen({ navigation }: any) {
             style={styles.modalOverlay}
             behavior={Platform.OS === "ios" ? "padding" : "height"}
           >
+            <TouchableOpacity
+              style={styles.modalBackdropTouch}
+              activeOpacity={1}
+              onPress={() => setIsCheckoutModalOpen(false)}
+            />
             <View style={[styles.checkoutModalContent, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <View style={styles.modalHeader}>
                 <View style={{ flex: 1 }}>
@@ -998,7 +1010,12 @@ export function PrintStationScreen({ navigation }: any) {
                 </TouchableOpacity>
               </View>
 
-              <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 420 }}>
+              <ScrollView
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+                style={styles.modalScroll}
+                contentContainerStyle={styles.modalScrollContent}
+              >
                 {/* Itemized Order Summary */}
                 <View style={[styles.checkoutSummaryCard, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
                   <View style={styles.checkoutItemRow}>
@@ -1183,42 +1200,42 @@ export function PrintStationScreen({ navigation }: any) {
                     </View>
                   </View>
                 )}
-              </ScrollView>
 
-              {/* Modal Confirmation Footer */}
-              <View style={styles.modalFooter}>
-                <Button
-                  title="Back"
-                  variant="outline"
-                  size="sm"
-                  onPress={() => setIsCheckoutModalOpen(false)}
-                />
-                <Button
-                  title={
-                    isSubmitting
-                      ? "Authorizing..."
-                      : cooldownSeconds > 0
-                      ? `✓ Placed (${cooldownSeconds}s)`
-                      : paymentMethod === "WALLET"
-                      ? hasSufficientWalletBalance
-                        ? `⚡ Pay ₹${finalCost} (+₹${cashbackRupees})`
-                        : `Top Up (Short ₹${(((finalCostPaise - (walletBalancePaise || 0))) / 100).toFixed(2)})`
-                      : `Confirm & Submit (₹${finalCost})`
-                  }
-                  variant="default"
-                  size="sm"
-                  onPress={
-                    paymentMethod === "WALLET" && !hasSufficientWalletBalance
-                      ? () => setIsWalletModalOpen(true)
-                      : handleSubmitOrder
-                  }
-                  disabled={
-                    isSubmitting ||
-                    cooldownSeconds > 0 ||
-                    (paymentMethod === "UPI" && !utrNumber.trim())
-                  }
-                />
-              </View>
+                {/* Modal Confirmation Footer */}
+                <View style={styles.modalFooter}>
+                  <Button
+                    title="Back"
+                    variant="outline"
+                    size="sm"
+                    onPress={() => setIsCheckoutModalOpen(false)}
+                  />
+                  <Button
+                    title={
+                      isSubmitting
+                        ? "Authorizing..."
+                        : cooldownSeconds > 0
+                        ? `✓ Placed (${cooldownSeconds}s)`
+                        : paymentMethod === "WALLET"
+                        ? hasSufficientWalletBalance
+                          ? `⚡ Pay ₹${finalCost} (+₹${cashbackRupees})`
+                          : `Top Up (Short ₹${(((finalCostPaise - (walletBalancePaise || 0))) / 100).toFixed(2)})`
+                        : `Confirm & Submit (₹${finalCost})`
+                    }
+                    variant="default"
+                    size="sm"
+                    onPress={
+                      paymentMethod === "WALLET" && !hasSufficientWalletBalance
+                        ? () => setIsWalletModalOpen(true)
+                        : handleSubmitOrder
+                    }
+                    disabled={
+                      isSubmitting ||
+                      cooldownSeconds > 0 ||
+                      (paymentMethod === "UPI" && !utrNumber.trim())
+                    }
+                  />
+                </View>
+              </ScrollView>
             </View>
           </KeyboardAvoidingView>
         </Modal>
@@ -1246,6 +1263,11 @@ export function PrintStationScreen({ navigation }: any) {
             style={styles.modalOverlay}
             behavior={Platform.OS === "ios" ? "padding" : "height"}
           >
+            <TouchableOpacity
+              style={styles.modalBackdropTouch}
+              activeOpacity={1}
+              onPress={() => setReportingOrder(null)}
+            />
             <View style={[styles.modalContent, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <View style={styles.modalHeader}>
                 <View>
@@ -1259,68 +1281,75 @@ export function PrintStationScreen({ navigation }: any) {
                 </TouchableOpacity>
               </View>
 
-              <View style={styles.formGroup}>
-                <Text style={[styles.formLabel, { color: colors.text }]}>Category</Text>
-                <View style={styles.categoryPillsWrap}>
-                  {["Print Quality", "Wrong Pages", "Drop Location Issue", "Payment Error"].map((cat) => (
-                    <TouchableOpacity
-                      key={cat}
-                      onPress={() => setIssueCategory(cat)}
-                      style={[
-                        styles.catChip,
-                        {
-                          backgroundColor: issueCategory === cat ? colors.primary + "18" : colors.secondary,
-                          borderColor: issueCategory === cat ? colors.primary : colors.border,
-                        },
-                      ]}
-                    >
-                      <Text
+              <ScrollView
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+                style={styles.modalScroll}
+                contentContainerStyle={styles.modalScrollContent}
+              >
+                <View style={styles.formGroup}>
+                  <Text style={[styles.formLabel, { color: colors.text }]}>Category</Text>
+                  <View style={styles.categoryPillsWrap}>
+                    {["Print Quality", "Wrong Pages", "Drop Location Issue", "Payment Error"].map((cat) => (
+                      <TouchableOpacity
+                        key={cat}
+                        onPress={() => setIssueCategory(cat)}
                         style={[
-                          styles.catChipText,
+                          styles.catChip,
                           {
-                            color: issueCategory === cat ? colors.primary : colors.textMuted,
-                            fontWeight: issueCategory === cat ? "700" : "500",
+                            backgroundColor: issueCategory === cat ? colors.primary + "18" : colors.secondary,
+                            borderColor: issueCategory === cat ? colors.primary : colors.border,
                           },
                         ]}
                       >
-                        {cat}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
+                        <Text
+                          style={[
+                            styles.catChipText,
+                            {
+                              color: issueCategory === cat ? colors.primary : colors.textMuted,
+                              fontWeight: issueCategory === cat ? "700" : "500",
+                            },
+                          ]}
+                        >
+                          {cat}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
                 </View>
-              </View>
 
-              <View style={styles.formGroup}>
-                <Text style={[styles.formLabel, { color: colors.text }]}>Detailed Explanation *</Text>
-                <TextInput
-                  style={[
-                    styles.issueTextarea,
-                    { color: colors.text, borderColor: colors.border, backgroundColor: colors.secondary + "40" },
-                  ]}
-                  placeholder="Explain the problem with pages, faded print, or location..."
-                  placeholderTextColor={colors.textMuted}
-                  value={issueReason}
-                  onChangeText={setIssueReason}
-                  multiline
-                  numberOfLines={4}
-                />
-              </View>
+                <View style={styles.formGroup}>
+                  <Text style={[styles.formLabel, { color: colors.text }]}>Detailed Explanation *</Text>
+                  <TextInput
+                    style={[
+                      styles.issueTextarea,
+                      { color: colors.text, borderColor: colors.border, backgroundColor: colors.secondary + "40" },
+                    ]}
+                    placeholder="Explain the problem with pages, faded print, or location..."
+                    placeholderTextColor={colors.textMuted}
+                    value={issueReason}
+                    onChangeText={setIssueReason}
+                    multiline
+                    numberOfLines={4}
+                  />
+                </View>
 
-              <View style={styles.modalFooter}>
-                <Button
-                  title="Cancel"
-                  variant="outline"
-                  size="sm"
-                  onPress={() => setReportingOrder(null)}
-                />
-                <Button
-                  title={isSubmittingIssue ? "Submitting..." : "Submit Report"}
-                  variant="default"
-                  size="sm"
-                  onPress={handleReportIssue}
-                  disabled={isSubmittingIssue}
-                />
-              </View>
+                <View style={styles.modalFooter}>
+                  <Button
+                    title="Cancel"
+                    variant="outline"
+                    size="sm"
+                    onPress={() => setReportingOrder(null)}
+                  />
+                  <Button
+                    title={isSubmittingIssue ? "Submitting..." : "Submit Report"}
+                    variant="default"
+                    size="sm"
+                    onPress={handleReportIssue}
+                    disabled={isSubmittingIssue}
+                  />
+                </View>
+              </ScrollView>
             </View>
           </KeyboardAvoidingView>
         </Modal>
@@ -1724,12 +1753,22 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.65)",
     justifyContent: "flex-end",
   },
+  modalBackdropTouch: {
+    flex: 1,
+  },
+  modalScroll: {
+    flexGrow: 0,
+  },
+  modalScrollContent: {
+    paddingBottom: 28,
+  },
   checkoutModalContent: {
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     borderTopWidth: 1,
     padding: 20,
-    paddingBottom: 36,
+    paddingBottom: 24,
+    maxHeight: "88%",
     gap: 12,
   },
   checkoutSummaryCard: {
@@ -1801,11 +1840,12 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
   modalContent: {
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     borderTopWidth: 1,
     padding: 20,
-    paddingBottom: 36,
+    paddingBottom: 24,
+    maxHeight: "88%",
     gap: 12,
   },
   modalHeader: {

@@ -10,6 +10,8 @@ import {
   ActivityIndicator,
   Alert,
   Linking,
+  Platform,
+  KeyboardAvoidingView,
 } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import { Feather, Ionicons } from "@expo/vector-icons";
@@ -156,7 +158,15 @@ export function WalletRechargeModal({
       transparent
       onRequestClose={onClose}
     >
-      <View style={styles.modalOverlay}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={styles.keyboardAvoidingModal}
+      >
+        <TouchableOpacity
+          style={styles.modalBackdropTouch}
+          activeOpacity={1}
+          onPress={onClose}
+        />
         <View style={[styles.modalSheet, { backgroundColor: colors.card, borderColor: colors.border }]}>
           {/* Header */}
           <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
@@ -218,7 +228,12 @@ export function WalletRechargeModal({
           </View>
 
           {/* Body Content */}
-          <ScrollView contentContainerStyle={styles.scrollBody}>
+          <ScrollView
+            style={styles.modalScroll}
+            contentContainerStyle={styles.scrollBody}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
             {activeTab === "topup" ? (
               <View style={styles.formContainer}>
                 {/* Pending Recharges Notification */}
@@ -455,16 +470,22 @@ export function WalletRechargeModal({
             )}
           </ScrollView>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  modalOverlay: {
+  keyboardAvoidingModal: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.6)",
     justifyContent: "flex-end",
+  },
+  modalBackdropTouch: {
+    flex: 1,
+  },
+  modalScroll: {
+    flexGrow: 0,
   },
   modalSheet: {
     borderTopLeftRadius: 24,

@@ -20,8 +20,11 @@ import { THEMES, ThemeId } from "../../theme/themes";
 import { Card } from "../../components/ui/Card";
 import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { apiClient } from "../../services/apiClient";
 import { useUser } from "../../context/UserContext";
+
+const STORAGE_KEY_COLLEGES = "@otium_cached_colleges";
 
 export function ProfileScreen() {
   const { theme: currentThemeId, colors, setTheme, isDark } = useTheme();
@@ -40,6 +43,19 @@ export function ProfileScreen() {
   const [editCollegeId, setEditCollegeId] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
+  // 1. Instant 0ms college list hydration
+  useEffect(() => {
+    AsyncStorage.getItem(STORAGE_KEY_COLLEGES).then((cached: string | null) => {
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setColleges(parsed);
+        }
+      }
+    }).catch(() => {});
+    fetchProfile();
+  }, []);
+
   const fetchProfile = async () => {
     try {
       const [profRes, colRes] = await Promise.all([
@@ -54,15 +70,12 @@ export function ProfileScreen() {
 
       if (colRes.success && Array.isArray(colRes.data)) {
         setColleges(colRes.data);
+        AsyncStorage.setItem(STORAGE_KEY_COLLEGES, JSON.stringify(colRes.data)).catch(() => {});
       }
     } catch (e) {
       console.warn("Failed to fetch profile details:", e);
     }
   };
-
-  useEffect(() => {
-    fetchProfile();
-  }, []);
 
   const onRefresh = async () => {
     setIsRefreshing(true);

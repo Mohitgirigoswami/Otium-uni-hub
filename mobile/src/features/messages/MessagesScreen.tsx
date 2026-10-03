@@ -24,6 +24,7 @@ import { useUser } from "../../context/UserContext";
 import { apiClient } from "../../services/apiClient";
 import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
+import { useDebounce } from "../../hooks/useDebounce";
 import {
   joinMobileSocketConversation,
   leaveMobileSocketConversation,
@@ -58,6 +59,7 @@ export function MessagesScreen({ navigation, route }: any) {
   // New Classmate Chat Modal
   const [isNewChatOpen, setIsNewChatOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const debouncedSearchQuery = useDebounce(searchQuery, 350);
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearchingUsers, setIsSearchingUsers] = useState(false);
   const [isStartingChat, setIsStartingChat] = useState(false);
@@ -75,18 +77,6 @@ export function MessagesScreen({ navigation, route }: any) {
   const [isKeyboardOpen, setIsKeyboardOpen] = useState(false);
 
   const flatListRef = useRef<FlatList>(null);
-  const chatContainerRef = useRef<View>(null);
-  const [keyboardOffset, setKeyboardOffset] = useState(
-    insets.top + (Platform.OS === "android" ? 56 : 60)
-  );
-
-  const handleChatContainerLayout = () => {
-    chatContainerRef.current?.measureInWindow((x, y) => {
-      if (typeof y === "number" && y >= 0) {
-        setKeyboardOffset(y);
-      }
-    });
-  };
 
   // Keyboard state listener
   useEffect(() => {
@@ -117,29 +107,44 @@ export function MessagesScreen({ navigation, route }: any) {
     return () => sub.remove();
   }, [activeConv]);
 
-  // Search classmates by name or @username (zero emails)
-  const searchClassmates = async (q: string) => {
-    setSearchQuery(q);
-    if (!q.trim()) {
+  // Debounced search for classmates by name or @username (zero emails)
+  useEffect(() => {
+    if (!debouncedSearchQuery.trim()) {
       setSearchResults([]);
+      setIsSearchingUsers(false);
       return;
     }
+
+    let isCancelled = false;
     setIsSearchingUsers(true);
-    try {
-      const userParam = user?.id ? `&userId=${encodeURIComponent(user.id)}` : "";
-      const collegeParam = user?.collegeId ? `&collegeId=${encodeURIComponent(user.collegeId)}` : "";
-      const res = await apiClient.get(
-        `/users?search=${encodeURIComponent(q.trim())}${userParam}${collegeParam}`
-      );
-      if (res.success && Array.isArray(res.data)) {
-        setSearchResults(res.data.filter((u: any) => u.id !== user?.id));
+
+    const performSearch = async () => {
+      try {
+        const userParam = user?.id ? `&userId=${encodeURIComponent(user.id)}` : "";
+        const collegeParam = user?.collegeId ? `&collegeId=${encodeURIComponent(user.collegeId)}` : "";
+        const res = await apiClient.get(
+          `/users?search=${encodeURIComponent(debouncedSearchQuery.trim())}${userParam}${collegeParam}`
+        );
+        if (!isCancelled) {
+          if (res.success && Array.isArray(res.data)) {
+            setSearchResults(res.data.filter((u: any) => u.id !== user?.id));
+          } else {
+            setSearchResults([]);
+          }
+        }
+      } catch {
+        if (!isCancelled) setSearchResults([]);
+      } finally {
+        if (!isCancelled) setIsSearchingUsers(false);
       }
-    } catch {
-      setSearchResults([]);
-    } finally {
-      setIsSearchingUsers(false);
-    }
-  };
+    };
+
+    performSearch();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [debouncedSearchQuery, user?.id, user?.collegeId]);
 
   const handleStartClassmateChat = async (classmate: any) => {
     setIsStartingChat(true);
@@ -546,15 +551,11 @@ export function MessagesScreen({ navigation, route }: any) {
       : "Campus Peer Chat";
 
     return (
-      <View
-        ref={chatContainerRef}
-        style={[styles.container, { backgroundColor: colors.background }]}
-        onLayout={handleChatContainerLayout}
-      >
+      <View style={[styles.container, { backgroundColor: colors.background }]}>
         <KeyboardAvoidingView
           style={styles.container}
           behavior={Platform.OS === "ios" ? "padding" : "height"}
-          keyboardVerticalOffset={keyboardOffset}
+          keyboardVerticalOffset={Platform.OS === "ios" ? insets.top : 0}
         >
           {/* Chat Header */}
         <View style={[styles.chatHeader, { borderBottomColor: colors.border, backgroundColor: colors.card }]}>
@@ -1056,6 +1057,11 @@ export function MessagesScreen({ navigation, route }: any) {
           style={styles.modalOverlay}
           behavior={Platform.OS === "ios" ? "padding" : "height"}
         >
+          <TouchableOpacity
+            style={styles.modalBackdropTouch}
+            activeOpacity={1}
+            onPress={() => setIsNewChatOpen(false)}
+          />
           <View style={[styles.newChatModalContent, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <View style={styles.modalHeader}>
               <View>
@@ -1079,11 +1085,11 @@ export function MessagesScreen({ navigation, route }: any) {
                 placeholder="Search by name or @username..."
                 placeholderTextColor={colors.textMuted}
                 value={searchQuery}
-                onChangeText={searchClassmates}
+                onChangeText={setSearchQuery}
                 autoFocus
               />
               {searchQuery.length > 0 && (
-                <TouchableOpacity onPress={() => searchClassmates("")}>
+                <TouchableOpacity onPress={() => setSearchQuery("")}>
                   <Ionicons name="close-circle" size={16} color={colors.textMuted} />
                 </TouchableOpacity>
               )}
@@ -1400,13 +1406,16 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.6)",
     justifyContent: "flex-end",
   },
+  modalBackdropTouch: {
+    flex: 1,
+  },
   newChatModalContent: {
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     borderTopWidth: 1,
     padding: 20,
-    paddingBottom: 36,
-    maxHeight: "85%",
+    paddingBottom: 28,
+    maxHeight: "88%",
     gap: 12,
   },
   modalHeader: {

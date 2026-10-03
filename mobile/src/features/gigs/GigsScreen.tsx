@@ -23,6 +23,7 @@ import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { Input } from "../../components/ui/Input";
 import { ClientServiceGuard } from "../../components/ClientServiceGuard";
+import { useDebounce } from "../../hooks/useDebounce";
 
 const CATEGORIES = [
   { label: "All Categories", value: "ALL" },
@@ -47,6 +48,7 @@ export function GigsScreen({ navigation }: any) {
   const [refreshing, setRefreshing] = useState(false);
   const [activeCategory, setActiveCategory] = useState("ALL");
   const [searchQuery, setSearchQuery] = useState("");
+  const debouncedSearchQuery = useDebounce(searchQuery, 350);
   const [statusFilter, setStatusFilter] = useState("ALL");
 
   // Post Task Modal State
@@ -59,33 +61,37 @@ export function GigsScreen({ navigation }: any) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [claimingGigId, setClaimingGigId] = useState<string | null>(null);
 
-  const fetchGigs = async (isPull = false) => {
+  // 0. Immediate 0ms cache restore on mount
+  useEffect(() => {
+    AsyncStorage.getItem(STORAGE_KEY_GIGS)
+      .then((cached) => {
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setGigs(parsed);
+          }
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const fetchGigs = async (isPull = false, search = debouncedSearchQuery) => {
     if (isPull) setRefreshing(true);
 
-    // 1. Immediate offline cache restore
-    try {
-      const cached = await AsyncStorage.getItem(STORAGE_KEY_GIGS);
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          setGigs(parsed);
-        }
-      }
-    } catch {}
-
-    // 2. Fetch fresh gigs from server
     try {
       let url = "/gigs";
       const params = [];
       if (activeCategory !== "ALL") params.push(`category=${activeCategory}`);
       if (statusFilter !== "ALL") params.push(`status=${statusFilter}`);
-      if (searchQuery.trim()) params.push(`search=${encodeURIComponent(searchQuery.trim())}`);
+      if (search.trim()) params.push(`search=${encodeURIComponent(search.trim())}`);
       if (params.length > 0) url += `?${params.join("&")}`;
 
       const res = await apiClient.get(url);
       if (res.success && Array.isArray(res.data)) {
         setGigs(res.data);
-        AsyncStorage.setItem(STORAGE_KEY_GIGS, JSON.stringify(res.data)).catch(() => {});
+        if (!search.trim() && activeCategory === "ALL" && statusFilter === "ALL") {
+          AsyncStorage.setItem(STORAGE_KEY_GIGS, JSON.stringify(res.data)).catch(() => {});
+        }
       }
     } catch (err) {
       console.log("[Fetch Gigs Note]: Operating in offline cached mode");
@@ -96,8 +102,9 @@ export function GigsScreen({ navigation }: any) {
   };
 
   useEffect(() => {
-    fetchGigs();
-  }, [activeCategory, statusFilter, searchQuery]);
+    setLoading(true);
+    fetchGigs(false, debouncedSearchQuery);
+  }, [activeCategory, statusFilter, debouncedSearchQuery]);
 
   const handleCreateGig = async () => {
     const budget = Number(budgetRupees);
@@ -297,7 +304,7 @@ export function GigsScreen({ navigation }: any) {
       </View>
 
       {/* Tasks List */}
-      {loading ? (
+      {loading && gigs.length === 0 ? (
         <View style={styles.loadingWrap}>
           <ActivityIndicator size="small" color={colors.primary} />
           <Text style={[styles.loadingText, { color: colors.textMuted }]}>
@@ -428,6 +435,11 @@ export function GigsScreen({ navigation }: any) {
           style={styles.modalOverlay}
           behavior={Platform.OS === "ios" ? "padding" : "height"}
         >
+          <TouchableOpacity
+            style={styles.modalBackdropTouch}
+            activeOpacity={1}
+            onPress={() => setIsPostModalOpen(false)}
+          />
           <View
             style={[
               styles.modalContent,
@@ -449,7 +461,12 @@ export function GigsScreen({ navigation }: any) {
               </TouchableOpacity>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 440 }}>
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              style={styles.modalScroll}
+              contentContainerStyle={styles.modalScrollContent}
+            >
               <View style={styles.formGroup}>
                 <Text style={[styles.formLabel, { color: colors.text }]}>Task Title *</Text>
                 <Input
@@ -519,23 +536,23 @@ export function GigsScreen({ navigation }: any) {
                   placeholder="Explain assignment specifications, requirements, and deliverable format..."
                 />
               </View>
-            </ScrollView>
 
-            <View style={styles.modalFooter}>
-              <Button
-                title="Cancel"
-                variant="outline"
-                size="sm"
-                onPress={() => setIsPostModalOpen(false)}
-              />
-              <Button
-                title={isSubmitting ? "Posting..." : "Post Task to Campus"}
-                variant="default"
-                size="sm"
-                onPress={handleCreateGig}
-                disabled={isSubmitting}
-              />
-            </View>
+              <View style={styles.modalFooter}>
+                <Button
+                  title="Cancel"
+                  variant="outline"
+                  size="sm"
+                  onPress={() => setIsPostModalOpen(false)}
+                />
+                <Button
+                  title={isSubmitting ? "Posting..." : "Post Task to Campus"}
+                  variant="default"
+                  size="sm"
+                  onPress={handleCreateGig}
+                  disabled={isSubmitting}
+                />
+              </View>
+            </ScrollView>
           </View>
         </KeyboardAvoidingView>
       </Modal>
@@ -718,12 +735,21 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.65)",
     justifyContent: "flex-end",
   },
+  modalBackdropTouch: {
+    flex: 1,
+  },
   modalContent: {
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     borderTopWidth: 1,
     padding: 20,
-    paddingBottom: 36,
+    maxHeight: "88%",
+  },
+  modalScroll: {
+    flexGrow: 0,
+  },
+  modalScrollContent: {
+    paddingBottom: 28,
   },
   modalHeader: {
     flexDirection: "row",

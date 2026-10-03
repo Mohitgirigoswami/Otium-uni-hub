@@ -23,6 +23,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "../../context/ThemeContext";
 import { useUser } from "../../context/UserContext";
 import { apiClient } from "../../services/apiClient";
+import { API_BASE_URL } from "../../utils/constants";
 import { Card } from "../../components/ui/Card";
 import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
@@ -74,11 +75,12 @@ export const resolveMediaUri = (uri?: string) => {
   if (uri.startsWith("http://") || uri.startsWith("https://") || uri.startsWith("file://") || uri.startsWith("content://")) {
     return uri;
   }
+  const origin = API_BASE_URL.replace(/\/api\/?$/, "");
   if (uri.startsWith("/uploads/")) {
-    return `http://192.168.31.146:3000${uri}`;
+    return `${origin}${uri}`;
   }
   if (uri.startsWith("uploads/")) {
-    return `http://192.168.31.146:3000/${uri}`;
+    return `${origin}/${uri}`;
   }
   return uri;
 };
@@ -152,21 +154,25 @@ export function WhisperWallScreen({ navigation }: any) {
     setComposeImages((prev) => prev.filter((_, idx) => idx !== idxToRemove));
   };
 
+  // 0. Instant 0ms cache restore on mount
+  useEffect(() => {
+    AsyncStorage.getItem(STORAGE_KEY_WHISPERS)
+      .then((cached) => {
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setPosts(parsed);
+            setLoading(false);
+          }
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   const fetchPosts = async (isPull = false) => {
     if (isPull) setRefreshing(true);
 
-    // 1. Load cached whispers on initial mount
-    try {
-      const cached = await AsyncStorage.getItem(STORAGE_KEY_WHISPERS);
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          setPosts(parsed);
-        }
-      }
-    } catch {}
-
-    // 2. Fetch fresh whispers from server
+    // Fetch fresh whispers from server
     try {
       let url = "/incognito";
       const params = [];
@@ -644,7 +650,7 @@ export function WhisperWallScreen({ navigation }: any) {
         </View>
 
         {/* 3. Whispers Feed */}
-        {loading ? (
+        {loading && posts.length === 0 ? (
           <View style={styles.loadingWrap}>
             <ActivityIndicator size="small" color={colors.primary} />
             <Text style={[styles.loadingText, { color: colors.textMuted }]}>
@@ -871,8 +877,7 @@ export function WhisperWallScreen({ navigation }: any) {
               onPress={() => !isSubmitting && setIsComposeOpen(false)}
             />
             <KeyboardAvoidingView
-              behavior="padding"
-              keyboardVerticalOffset={Platform.OS === "android" ? insets.top + 56 : 0}
+              behavior={Platform.OS === "ios" ? "padding" : "height"}
               style={styles.sheetWrapper}
             >
               <View
@@ -899,8 +904,8 @@ export function WhisperWallScreen({ navigation }: any) {
                 <ScrollView
                   showsVerticalScrollIndicator={false}
                   keyboardShouldPersistTaps="handled"
-                  style={{ maxHeight: SCREEN_HEIGHT * 0.52 }}
-                  contentContainerStyle={{ paddingBottom: 12 }}
+                  style={styles.modalScroll}
+                  contentContainerStyle={{ paddingBottom: 28 }}
                 >
                   {/* Category Selection */}
                   <View style={styles.formGroup}>
@@ -1033,24 +1038,24 @@ export function WhisperWallScreen({ navigation }: any) {
                       </View>
                     )}
                   </View>
-                </ScrollView>
 
-                <View style={styles.modalFooter}>
-                  <Button
-                    title="Cancel"
-                    variant="outline"
-                    size="sm"
-                    onPress={() => setIsComposeOpen(false)}
-                    disabled={isSubmitting}
-                  />
-                  <Button
-                    title={isSubmitting ? "Posting..." : "Post Whisper"}
-                    variant="default"
-                    size="sm"
-                    onPress={handleCreateWhisper}
-                    disabled={isSubmitting}
-                  />
-                </View>
+                  <View style={styles.modalFooter}>
+                    <Button
+                      title="Cancel"
+                      variant="outline"
+                      size="sm"
+                      onPress={() => setIsComposeOpen(false)}
+                      disabled={isSubmitting}
+                    />
+                    <Button
+                      title={isSubmitting ? "Posting..." : "Post Whisper"}
+                      variant="default"
+                      size="sm"
+                      onPress={handleCreateWhisper}
+                      disabled={isSubmitting}
+                    />
+                  </View>
+                </ScrollView>
               </View>
             </KeyboardAvoidingView>
           </View>
@@ -1065,8 +1070,7 @@ export function WhisperWallScreen({ navigation }: any) {
               onPress={() => setCommentsModalPost(null)}
             />
             <KeyboardAvoidingView
-              behavior="padding"
-              keyboardVerticalOffset={Platform.OS === "android" ? insets.top + 56 : 0}
+              behavior={Platform.OS === "ios" ? "padding" : "height"}
               style={styles.sheetWrapper}
             >
               <View
@@ -1606,12 +1610,16 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
   },
   modalContent: {
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     borderTopWidth: 1,
     padding: 18,
-    paddingBottom: Platform.OS === "ios" ? 36 : 24,
+    maxHeight: "88%",
     gap: 12,
+  },
+  modalScroll: {
+    flexGrow: 0,
+    maxHeight: SCREEN_HEIGHT * 0.6,
   },
   modalHeader: {
     flexDirection: "row",
