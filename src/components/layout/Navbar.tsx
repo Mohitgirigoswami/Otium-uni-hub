@@ -30,16 +30,25 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 
-const NAV_LINKS = [
-  { href: "/dashboard", label: "Dashboard" },
+const PRIMARY_NAV_LINKS = [
+  { href: "/dashboard", label: "Dashboard", icon: Building2 },
   { href: "/print-station", label: "Print Station", icon: Printer },
   { href: "/attendance", label: "Attendance", icon: CalendarCheck },
-  { href: "/cgpa", label: "CGPA", icon: GraduationCap },
-  { href: "/gigs", label: "Gigs", icon: Briefcase },
-  { href: "/marketplace", label: "Marketplace", icon: ShoppingBag },
   { href: "/incognito", label: "Whisper Wall", icon: EyeOff },
-  { href: "/rideshare", label: "Cab Split", icon: Car },
-  { href: "/messages", label: "Messages", icon: MessageSquare },
+  { href: "/marketplace", label: "Marketplace", icon: ShoppingBag },
+];
+
+const MORE_NAV_LINKS = [
+  { href: "/cgpa", label: "CGPA Forecaster", desc: "Target grades & transcript", icon: GraduationCap },
+  { href: "/gigs", label: "Campus Gigs", desc: "Freelance tasks & micro-jobs", icon: Briefcase },
+  { href: "/rideshare", label: "Cab Split", desc: "Carpooling & travel split", icon: Car },
+  { href: "/messages", label: "Messages", desc: "Direct classmate & whisper chat", icon: MessageSquare },
+  { href: "/lost-and-found", label: "Lost & Found", desc: "Report & claim campus items", icon: Search },
+];
+
+const ALL_NAV_LINKS = [
+  ...PRIMARY_NAV_LINKS,
+  ...MORE_NAV_LINKS,
 ];
 
 export function Navbar() {
@@ -48,9 +57,11 @@ export function Navbar() {
   const { user, handleSignOut } = useUser();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
+  const [moreDropdownOpen, setMoreDropdownOpen] = useState(false);
   const userDropdownRef = useRef<HTMLDivElement>(null);
+  const moreDropdownRef = useRef<HTMLDivElement>(null);
 
-  // Close dropdown on outside click
+  // Close dropdowns on outside click
   useEffect(() => {
     const handleOutside = (e: MouseEvent) => {
       if (
@@ -59,30 +70,37 @@ export function Navbar() {
       ) {
         setUserDropdownOpen(false);
       }
+      if (
+        moreDropdownRef.current &&
+        !moreDropdownRef.current.contains(e.target as Node)
+      ) {
+        setMoreDropdownOpen(false);
+      }
     };
-    if (userDropdownOpen) {
-      document.addEventListener("mousedown", handleOutside);
-    }
+    document.addEventListener("mousedown", handleOutside);
     return () => document.removeEventListener("mousedown", handleOutside);
-  }, [userDropdownOpen]);
+  }, []);
 
-  // Close mobile menu on route change
+  // Close menus on route change
   useEffect(() => {
     setMobileMenuOpen(false);
+    setUserDropdownOpen(false);
+    setMoreDropdownOpen(false);
   }, [pathname]);
 
   const campusName = user?.college?.name || "All Campuses";
   const isSuperAdmin = user?.role === "SUPER_ADMIN" || session?.user?.role === "SUPER_ADMIN";
   const isPrintManager = user?.role === "PRINT_MANAGER" || session?.user?.role === "PRINT_MANAGER";
   const hasAdminAccess = isSuperAdmin || isPrintManager;
+  const isMoreActive = MORE_NAV_LINKS.some((link) => pathname.startsWith(link.href));
 
   return (
-    <header className="sticky top-0 z-40 w-full border-b border-border bg-card/90 backdrop-blur-md">
-      <div className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16 gap-3">
+    <header className="sticky top-0 z-40 w-full border-b border-border bg-card/90 backdrop-blur-md overflow-x-clip">
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
+        <div className="flex items-center justify-between h-16 gap-2 sm:gap-4">
           {/* Brand Logo & Campus Badge */}
-          <div className="flex items-center gap-3 flex-shrink-0">
-            <Link href="/" className="flex items-center gap-2.5 flex-shrink-0 group">
+          <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+            <Link href="/" className="flex items-center gap-2 sm:gap-2.5 flex-shrink-0 group">
               <div className="w-8 h-8 rounded-lg bg-primary text-primary-foreground flex items-center justify-center p-1.5 font-bold shadow-sm group-hover:scale-105 transition-transform flex-shrink-0">
                 <img
                   src="/logo.png"
@@ -94,13 +112,13 @@ export function Navbar() {
                 <span className="font-heading font-extrabold text-base tracking-tight text-foreground leading-none">
                   OTIUM
                 </span>
-                <span className="text-[10px] font-medium tracking-wide text-muted-foreground uppercase">
+                <span className="text-[10px] font-medium tracking-wide text-muted-foreground uppercase hidden sm:inline">
                   Uni Hub
                 </span>
               </div>
             </Link>
 
-            {/* Active Campus Indicator - Shown on spacious desktop viewports */}
+            {/* Active Campus Indicator - Shown on very spacious viewports */}
             <div className="hidden 2xl:flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-secondary/80 border border-border text-[11px] text-muted-foreground max-w-xs truncate flex-shrink-0">
               <Building2 className="w-3.5 h-3.5 text-primary flex-shrink-0" />
               <span className="truncate">{campusName}</span>
@@ -108,17 +126,17 @@ export function Navbar() {
           </div>
 
           {/* Desktop Navigation Links */}
-          <nav className="hidden xl:flex items-center gap-0.5 flex-shrink-0">
-            {NAV_LINKS.map((link) => {
+          <nav className="hidden lg:flex items-center gap-1 flex-shrink-0">
+            {PRIMARY_NAV_LINKS.map((link) => {
               const isActive = pathname === link.href;
               return (
                 <Link
                   key={link.href}
                   href={link.href}
                   className={cn(
-                    "px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors whitespace-nowrap flex-shrink-0 select-none",
+                    "px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap select-none",
                     isActive
-                      ? "bg-secondary text-foreground font-semibold"
+                      ? "bg-secondary text-primary font-bold shadow-xs border border-border/60"
                       : "text-muted-foreground hover:text-foreground hover:bg-secondary/60"
                   )}
                 >
@@ -126,10 +144,64 @@ export function Navbar() {
                 </Link>
               );
             })}
+
+            {/* "More" Utilities Dropdown */}
+            <div className="relative" ref={moreDropdownRef}>
+              <button
+                type="button"
+                onClick={() => setMoreDropdownOpen(!moreDropdownOpen)}
+                className={cn(
+                  "flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all select-none",
+                  isMoreActive
+                    ? "bg-secondary text-primary font-bold shadow-xs border border-border/60"
+                    : "text-muted-foreground hover:text-foreground hover:bg-secondary/60"
+                )}
+                aria-expanded={moreDropdownOpen}
+              >
+                <span>More</span>
+                <ChevronDown className={cn("w-3.5 h-3.5 transition-transform duration-200", moreDropdownOpen && "rotate-180")} />
+              </button>
+
+              {moreDropdownOpen && (
+                <div className="absolute left-0 mt-2 w-64 rounded-xl border border-border bg-popover/95 backdrop-blur-md text-popover-foreground shadow-2xl z-50 p-1.5 space-y-0.5 animate-in fade-in-0 zoom-in-95">
+                  <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground border-b border-border/40 mb-1">
+                    Campus Utilities
+                  </div>
+                  {MORE_NAV_LINKS.map((item) => {
+                    const Icon = item.icon;
+                    const isActive = pathname === item.href;
+                    return (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        onClick={() => setMoreDropdownOpen(false)}
+                        className={cn(
+                          "flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs transition-colors",
+                          isActive
+                            ? "bg-secondary text-primary font-bold"
+                            : "text-muted-foreground hover:text-foreground hover:bg-secondary/70"
+                        )}
+                      >
+                        <div className={cn(
+                          "w-7 h-7 rounded-md flex items-center justify-center flex-shrink-0 border",
+                          isActive ? "bg-primary/10 text-primary border-primary/20" : "bg-secondary text-muted-foreground border-border"
+                        )}>
+                          <Icon className="w-3.5 h-3.5" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold truncate text-foreground">{item.label}</p>
+                          <p className="text-[10px] text-muted-foreground truncate">{item.desc}</p>
+                        </div>
+                      </Link>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </nav>
 
           {/* Right Action Items */}
-          <div className="flex items-center gap-2 flex-shrink-0">
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
             {/* Campus Wallet Pill */}
             <WalletPill />
 
@@ -139,8 +211,8 @@ export function Navbar() {
             {/* Admin Console Shortcut */}
             {hasAdminAccess && (
               <Link href="/admin">
-                <Button variant="outline" size="sm" className="hidden sm:inline-flex">
-                  <ShieldCheck className="w-3.5 h-3.5 mr-1.5 text-primary" />
+                <Button variant="outline" size="sm" className="hidden sm:inline-flex text-xs h-8 px-2.5">
+                  <ShieldCheck className="w-3.5 h-3.5 mr-1 text-primary" />
                   Admin
                 </Button>
               </Link>
@@ -151,13 +223,13 @@ export function Navbar() {
               <div className="relative" ref={userDropdownRef}>
                 <button
                   onClick={() => setUserDropdownOpen(!userDropdownOpen)}
-                  className="flex items-center gap-2 p-1 rounded-lg hover:bg-secondary border border-transparent hover:border-border transition-colors text-xs font-medium"
+                  className="flex items-center gap-1.5 p-1 rounded-lg hover:bg-secondary border border-transparent hover:border-border transition-colors text-xs font-medium"
                   aria-expanded={userDropdownOpen}
                 >
-                  <div className="w-7 h-7 rounded-md bg-primary/20 text-primary border border-primary/30 flex items-center justify-center font-bold text-xs">
+                  <div className="w-7 h-7 rounded-md bg-primary/20 text-primary border border-primary/30 flex items-center justify-center font-bold text-xs flex-shrink-0">
                     {user.name ? user.name[0].toUpperCase() : "S"}
                   </div>
-                  <span className="hidden md:inline max-w-28 truncate text-foreground">
+                  <span className="hidden xl:inline max-w-24 truncate text-foreground">
                     {user.name || "Student"}
                   </span>
                   <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
@@ -214,7 +286,7 @@ export function Navbar() {
               </div>
             ) : (
               <Link href="/login">
-                <Button size="sm" leftIcon={<LogIn className="w-3.5 h-3.5" />}>
+                <Button size="sm" leftIcon={<LogIn className="w-3.5 h-3.5" />} className="h-8 text-xs">
                   Sign In
                 </Button>
               </Link>
@@ -223,7 +295,7 @@ export function Navbar() {
             {/* Mobile Hamburger Button */}
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="xl:hidden p-2 rounded-lg border border-border hover:bg-secondary text-muted-foreground hover:text-foreground"
+              className="lg:hidden p-1.5 sm:p-2 rounded-lg border border-border hover:bg-secondary text-muted-foreground hover:text-foreground"
               aria-label="Toggle navigation menu"
             >
               {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
@@ -234,14 +306,14 @@ export function Navbar() {
 
       {/* Mobile Drawer Menu */}
       {mobileMenuOpen && (
-        <div className="xl:hidden border-t border-border bg-card p-4 space-y-3 animate-in slide-in-from-top duration-200">
+        <div className="lg:hidden border-t border-border bg-card p-4 space-y-3 animate-in slide-in-from-top duration-200 shadow-xl">
           <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-secondary/80 border border-border text-xs text-muted-foreground">
             <Building2 className="w-4 h-4 text-primary flex-shrink-0" />
             <span className="truncate">{campusName}</span>
           </div>
 
           <nav className="grid grid-cols-2 gap-1.5">
-            {NAV_LINKS.map((link) => {
+            {ALL_NAV_LINKS.map((link) => {
               const Icon = link.icon;
               const isActive = pathname === link.href;
               return (
@@ -255,8 +327,8 @@ export function Navbar() {
                       : "text-muted-foreground hover:text-foreground hover:bg-secondary/60"
                   )}
                 >
-                  {Icon && <Icon className="w-4 h-4 text-primary" />}
-                  <span>{link.label}</span>
+                  {Icon && <Icon className="w-4 h-4 text-primary flex-shrink-0" />}
+                  <span className="truncate">{link.label}</span>
                 </Link>
               );
             })}

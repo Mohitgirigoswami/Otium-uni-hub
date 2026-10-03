@@ -88,9 +88,11 @@ graph TD
     J --> K[Server Actions - Database Operations]
 ```
 
-1. **Root Layout (`src/app/layout.tsx`)**:
+1. **Root Layout & Responsive Navbar Navigation (`src/app/layout.tsx` & `src/components/layout/Navbar.tsx`)**:
    - Executes `ThemeScript` inline in the document head to read `otium-theme` from `localStorage` before paint, preventing white flash on dark modes.
-   - Wraps the application tree in `SessionProvider` (NextAuth), `UserProvider` (global user context), and `Toaster` (Sonner toast notifications).
+   - Enforces `overflow-x-hidden` on `html` and `body` to eliminate horizontal page scrolling across all viewport widths.
+   - **Horizontal Overflow Eradication**: Replaced the overcrowded 9-link single-row desktop navbar with a focused 5-link primary dock (`Dashboard`, `Print Station`, `Attendance`, `Whisper Wall`, `Marketplace`) accompanied by an interactive `"More ▾"` utilities dropdown (`CGPA Calculator`, `Campus Gigs`, `Cab Split`, `Messages`, `Lost & Found`). Total header width shrank from ~1,380px to ~910px, fitting effortlessly on laptops, standard PC displays (1024px–1440px), and mobile viewports with zero horizontal overflow.
+   - **Mobile Drawer Parity**: On mobile screens (`< lg`), the hamburger drawer reveals all 10 campus services in a 2-column grid.
    - Mounts the global `<CommandPalette />` for `Ctrl+K` navigation and `<OnboardingModal />`.
 
 2. **Client State & Hydration (`src/components/providers/UserContext.tsx`)**:
