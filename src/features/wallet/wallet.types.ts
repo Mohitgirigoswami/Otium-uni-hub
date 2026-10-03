@@ -1,3 +1,9 @@
+export const MIN_TOPUP_PAISE = 2000; // ₹20.00
+export const MAX_TOPUP_PAISE = 500000; // ₹5,000.00
+export const MIN_TOPUP_RUPEES = 20;
+export const MAX_TOPUP_RUPEES = 5000;
+export const MAX_WALLET_BALANCE_PAISE = 1000000; // ₹10,000.00 maximum balance ceiling
+
 export type WalletTransactionType =
   | "TOPUP"
   | "PRINT_PAYMENT"

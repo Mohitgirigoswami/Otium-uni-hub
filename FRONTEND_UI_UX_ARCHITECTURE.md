@@ -293,6 +293,13 @@ Otium maintains a strict 1:1 component design equivalence between shadcn/ui on W
 - **Universal Fix**: All web modals (including generic `src/components/ui/modal.tsx` and `src/components/wallet/TopupModal.tsx`) render via `createPortal(jsx, document.body)` with an SSR-safe `mounted` state check (`useEffect(() => setMounted(true), [])`).
 - **Body Scroll Lock & Keyboard Handling**: Modals lock `document.body.style.overflow = "hidden"` on open, restore on unmount, and support global `Escape` key dismissal. All flex wrappers use `min-h-full items-center justify-center` with `my-auto max-h-[85vh]` on the card to guarantee vertical centering on all screen sizes.
 
+### 4.3 Campus E-Wallet Top-Up UI & Ceiling Enforcement (Web & Mobile Parity)
+- **Visible Limit Indicators**: Header section renders an explicit `Min ₹20 • Max ₹5,000` pill badge alongside `1. Select Recharge Amount`.
+- **Input Guardrails**: Custom numeric input explicitly declares `min={20}` and `max={5000}` with descriptive placeholder `Or custom amount (₹20 - ₹5,000)...`.
+- **Inline Real-Time Warning**: Entering an amount $> ₹5,000$ or $< ₹20$ triggers instant destructive border highlighting and an inline error label (`Amount exceeds maximum allowed recharge limit of ₹5,000.00 per transaction`).
+- **Amount-Locked QR Code Guard**: QR codes are masked/disabled when amounts are outside the ₹20–₹5,000 bounds, preventing students from scanning or paying unapproved amounts.
+- **Dynamic Submit Button States**: Action buttons automatically reflect invalid ranges (e.g. `Amount Exceeds ₹5,000 Limit`), disabling submission until inputs satisfy both client and backend invariants.
+
 ---
 
 ## 5. Core Screen Layouts, UI Hierarchy & UX Workflows

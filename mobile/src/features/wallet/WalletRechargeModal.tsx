@@ -62,11 +62,25 @@ export function WalletRechargeModal({
   }, [visible]);
 
   const currentRechargeAmount = customAmount ? Number(customAmount) : selectedAmount;
-  const isAmountValid = currentRechargeAmount >= 20;
+  const isOverMax = !isNaN(currentRechargeAmount) && currentRechargeAmount > 5000;
+  const isUnderMin = !isNaN(currentRechargeAmount) && currentRechargeAmount < 20;
+  const isAmountValid =
+    !isNaN(currentRechargeAmount) &&
+    currentRechargeAmount >= 20 &&
+    currentRechargeAmount <= 5000;
 
-  const upiUrl = `upi://pay?pa=${encodeURIComponent(platformUpiId)}&pn=OtiumCampusWallet&am=${currentRechargeAmount || 100}&cu=INR&tn=TopUp_${currentRechargeAmount || 100}`;
+  const validQrAmount = isAmountValid ? currentRechargeAmount : 100;
+  const upiUrl = `upi://pay?pa=${encodeURIComponent(platformUpiId)}&pn=OtiumCampusWallet&am=${validQrAmount}&cu=INR&tn=TopUp_${validQrAmount}`;
 
   const handleOpenUpiApp = async () => {
+    if (isUnderMin) {
+      Alert.alert("Invalid Amount", "Minimum recharge amount is ₹20.00.");
+      return;
+    }
+    if (isOverMax) {
+      Alert.alert("Ceiling Exceeded", "Maximum single top-up amount is ₹5,000.00.");
+      return;
+    }
     try {
       const supported = await Linking.canOpenURL(upiUrl);
       if (supported) {
@@ -88,8 +102,16 @@ export function WalletRechargeModal({
   };
 
   const handleSubmitTopup = async () => {
-    if (!isAmountValid) {
+    if (isUnderMin) {
       Alert.alert("Invalid Amount", "Minimum recharge amount is ₹20.00.");
+      return;
+    }
+    if (isOverMax) {
+      Alert.alert("Limit Exceeded", "Maximum single top-up amount is ₹5,000.00.");
+      return;
+    }
+    if (!isAmountValid) {
+      Alert.alert("Invalid Amount", "Please enter an amount between ₹20.00 and ₹5,000.00.");
       return;
     }
 
@@ -211,7 +233,17 @@ export function WalletRechargeModal({
                 )}
 
                 {/* Amount Selection */}
-                <Text style={[styles.sectionLabel, { color: colors.text }]}>1. Select Top-Up Amount</Text>
+                <View style={styles.amountHeaderRow}>
+                  <Text style={[styles.sectionLabel, { color: colors.text, marginBottom: 0 }]}>
+                    1. Select Top-Up Amount
+                  </Text>
+                  <View style={[styles.limitBadge, { backgroundColor: colors.cardSecondary, borderColor: colors.border }]}>
+                    <Text style={[styles.limitBadgeText, { color: colors.textMuted }]}>
+                      Min ₹20 • Max ₹5,000
+                    </Text>
+                  </View>
+                </View>
+
                 <View style={styles.presetGrid}>
                   {PRESET_AMOUNTS.map((amt) => {
                     const isSelected = !customAmount && selectedAmount === amt;
@@ -244,21 +276,33 @@ export function WalletRechargeModal({
                 </View>
 
                 {/* Custom Amount */}
-                <TextInput
-                  placeholder="Or enter custom amount (Min ₹20)..."
-                  placeholderTextColor={colors.textMuted}
-                  keyboardType="numeric"
-                  value={customAmount}
-                  onChangeText={setCustomAmount}
-                  style={[
-                    styles.customInput,
-                    {
-                      backgroundColor: colors.backgroundSecondary,
-                      borderColor: colors.border,
-                      color: colors.text,
-                    },
-                  ]}
-                />
+                <View style={{ gap: 4 }}>
+                  <TextInput
+                    placeholder="Or enter custom amount (₹20 - ₹5,000)..."
+                    placeholderTextColor={colors.textMuted}
+                    keyboardType="numeric"
+                    value={customAmount}
+                    onChangeText={setCustomAmount}
+                    style={[
+                      styles.customInput,
+                      {
+                        backgroundColor: colors.backgroundSecondary,
+                        borderColor: isOverMax || (customAmount !== "" && isUnderMin) ? colors.destructive : colors.border,
+                        color: colors.text,
+                      },
+                    ]}
+                  />
+                  {isOverMax && (
+                    <Text style={[styles.helperErrorText, { color: colors.destructive }]}>
+                      ⚠️ Maximum top-up is ₹5,000.00 per transaction.
+                    </Text>
+                  )}
+                  {customAmount !== "" && isUnderMin && (
+                    <Text style={[styles.helperErrorText, { color: colors.destructive }]}>
+                      ⚠️ Minimum recharge amount is ₹20.00.
+                    </Text>
+                  )}
+                </View>
 
                 {/* UPI Deep Link Payment Action */}
                 <View style={[styles.upiCard, { borderColor: colors.border, backgroundColor: colors.backgroundSecondary }]}>
@@ -269,11 +313,31 @@ export function WalletRechargeModal({
 
                   <TouchableOpacity
                     onPress={handleOpenUpiApp}
-                    style={[styles.openUpiBtn, { backgroundColor: colors.primary }]}
+                    disabled={!isAmountValid}
+                    style={[
+                      styles.openUpiBtn,
+                      {
+                        backgroundColor: isAmountValid ? colors.primary : colors.destructive + "20",
+                        opacity: isAmountValid ? 1 : 0.6,
+                      },
+                    ]}
                   >
-                    <Feather name="external-link" size={14} color={colors.primaryForeground} />
-                    <Text style={[styles.openUpiBtnText, { color: colors.primaryForeground }]}>
-                      Pay ₹{currentRechargeAmount || 100} via UPI App
+                    <Feather
+                      name={isAmountValid ? "external-link" : "alert-circle"}
+                      size={14}
+                      color={isAmountValid ? colors.primaryForeground : colors.destructive}
+                    />
+                    <Text
+                      style={[
+                        styles.openUpiBtnText,
+                        { color: isAmountValid ? colors.primaryForeground : colors.destructive },
+                      ]}
+                    >
+                      {isAmountValid
+                        ? `Pay ₹${currentRechargeAmount || 100} via UPI App`
+                        : isOverMax
+                        ? "Amount Exceeds ₹5,000 Limit"
+                        : "Min ₹20 Required"}
                     </Text>
                   </TouchableOpacity>
                 </View>
@@ -315,7 +379,11 @@ export function WalletRechargeModal({
                     <ActivityIndicator size="small" color={colors.primaryForeground} />
                   ) : (
                     <Text style={[styles.submitBtnText, { color: colors.primaryForeground }]}>
-                      Submit ₹{currentRechargeAmount || 100} Top-Up Request
+                      {isOverMax
+                        ? "Amount Exceeds ₹5,000 Limit"
+                        : isUnderMin && customAmount !== ""
+                        ? "Amount Below ₹20 Minimum"
+                        : `Submit ₹${currentRechargeAmount || 100} Top-Up Request`}
                     </Text>
                   )}
                 </TouchableOpacity>
@@ -467,11 +535,31 @@ const styles = StyleSheet.create({
     fontSize: 12,
     flex: 1,
   },
+  amountHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  limitBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  limitBadgeText: {
+    fontSize: 10,
+    fontWeight: "700",
+  },
   sectionLabel: {
     fontSize: 12,
     fontWeight: "700",
     textTransform: "uppercase",
     letterSpacing: 0.5,
+  },
+  helperErrorText: {
+    fontSize: 11,
+    fontWeight: "600",
+    marginTop: 2,
   },
   presetGrid: {
     flexDirection: "row",

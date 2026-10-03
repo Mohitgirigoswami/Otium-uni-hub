@@ -6,6 +6,9 @@ import {
   WalletTopupRequestDTO,
   SubmitTopupParams,
   WalletAdminOverviewDTO,
+  MIN_TOPUP_PAISE,
+  MAX_TOPUP_PAISE,
+  MAX_WALLET_BALANCE_PAISE,
 } from "./wallet.types";
 import { sendTopupTelegramAlert, isTelegramConfigured } from "@/lib/telegram";
 
@@ -95,13 +98,24 @@ export async function submitWalletTopupRequest(
       return { success: false, error: "Authentication required to recharge wallet." };
     }
 
-    if (!amountPaise || amountPaise < 2000) {
+    if (!amountPaise || amountPaise < MIN_TOPUP_PAISE) {
       return { success: false, error: "Minimum wallet top-up amount is ₹20.00." };
     }
 
-    const MAX_TOPUP_PAISE = 500000; // ₹5,000.00 maximum per single transaction to prevent integer overflow
     if (amountPaise > MAX_TOPUP_PAISE) {
       return { success: false, error: "Maximum single top-up amount is ₹5,000.00." };
+    }
+
+    // Guard against total wallet balance exceeding platform ceiling
+    const existingUser = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { walletBalancePaise: true },
+    });
+    if (existingUser && existingUser.walletBalancePaise + amountPaise > MAX_WALLET_BALANCE_PAISE) {
+      return {
+        success: false,
+        error: `This recharge would exceed the maximum wallet balance ceiling of ₹${(MAX_WALLET_BALANCE_PAISE / 100).toFixed(2)}. Your current balance is ₹${(existingUser.walletBalancePaise / 100).toFixed(2)}.`,
+      };
     }
 
     const cleanUtr = String(utr || "").trim().replace(/\D/g, "");
