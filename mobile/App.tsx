@@ -121,6 +121,11 @@ function AppContent() {
         } catch (storageErr) {
           console.warn("SecureStore unavailable on web/test:", storageErr);
         }
+        if (!token) {
+          try {
+            token = await AsyncStorage.getItem("@otium_auth_token");
+          } catch {}
+        }
 
         // 1. Immediately restore cached user from AsyncStorage (works 100% offline!)
         let localUser: any = null;
@@ -128,7 +133,6 @@ function AppContent() {
           const storedUser = await AsyncStorage.getItem(STORAGE_KEYS.CACHED_USER);
           if (storedUser) {
             localUser = JSON.parse(storedUser);
-            setCurrentUser(localUser);
           }
         } catch (e) {
           console.log("Could not load local cached user:", e);
@@ -136,6 +140,9 @@ function AppContent() {
 
         if (token) {
           apiClient.setAuthToken(token);
+          if (localUser) {
+            setCurrentUser(localUser);
+          }
 
           // 2. Verify token against backend non-destructively
           try {
@@ -151,6 +158,7 @@ function AppContent() {
               try {
                 await SecureStore.deleteItemAsync("jwt");
                 await AsyncStorage.removeItem(STORAGE_KEYS.CACHED_USER);
+                await AsyncStorage.removeItem("@otium_auth_token");
               } catch {}
               apiClient.clearAuthToken();
               setCurrentUser(null);
@@ -159,7 +167,8 @@ function AppContent() {
             // Bad network / offline: NEVER log out user! Keep local cached session active.
             console.log("Network unreachable during auth check, preserving local offline session");
           }
-        } else if (!localUser) {
+        } else {
+          // If no token exists in either SecureStore or AsyncStorage, clear phantom session
           setCurrentUser(null);
         }
       } catch (err) {

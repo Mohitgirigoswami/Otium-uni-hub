@@ -3,7 +3,7 @@
     "name": "Otium Uni Hub",
     "slug": "otium-uni-hub",
     "scheme": "otium",
-    "version": "1.0.3",
+    "version": "1.0.4",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
     "backgroundColor": "#0A0F1D",
@@ -17,7 +17,7 @@
     },
     "android": {
       "package": "com.otium.unihub",
-      "versionCode": 5,
+      "versionCode": 6,
       "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",

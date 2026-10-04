@@ -1,4 +1,8 @@
 import { API_BASE_URL } from "../utils/constants";
+import * as SecureStore from "expo-secure-store";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
+export const STORAGE_KEY_AUTH_TOKEN = "@otium_auth_token";
 
 export interface ApiResponse<T = any> {
   success: boolean;
@@ -21,10 +25,43 @@ class ApiClient {
   }
 
   /**
-   * Set bearer authentication token for subsequent requests
+   * Lazily restore authentication token from SecureStore or AsyncStorage if in-memory cache is empty
+   */
+  public async getOrRestoreAuthToken(): Promise<string | null> {
+    if (this.authToken) return this.authToken;
+    try {
+      let token = await SecureStore.getItemAsync("jwt");
+      if (!token) {
+        token = await AsyncStorage.getItem(STORAGE_KEY_AUTH_TOKEN);
+      }
+      if (token) {
+        this.authToken = token;
+        return token;
+      }
+    } catch {
+      try {
+        const token = await AsyncStorage.getItem(STORAGE_KEY_AUTH_TOKEN);
+        if (token) {
+          this.authToken = token;
+          return token;
+        }
+      } catch {}
+    }
+    return null;
+  }
+
+  /**
+   * Set bearer authentication token for subsequent requests and persist to SecureStore & AsyncStorage
    */
   public setAuthToken(token: string | null) {
     this.authToken = token;
+    if (token) {
+      SecureStore.setItemAsync("jwt", token).catch(() => {});
+      AsyncStorage.setItem(STORAGE_KEY_AUTH_TOKEN, token).catch(() => {});
+    } else {
+      SecureStore.deleteItemAsync("jwt").catch(() => {});
+      AsyncStorage.removeItem(STORAGE_KEY_AUTH_TOKEN).catch(() => {});
+    }
   }
 
   /**
@@ -38,7 +75,7 @@ class ApiClient {
    * Remove active bearer authentication token
    */
   public clearAuthToken() {
-    this.authToken = null;
+    this.setAuthToken(null);
   }
 
   /**
@@ -51,20 +88,30 @@ class ApiClient {
     const cleanEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
     const url = `${this.baseUrl}${cleanEndpoint}`;
 
-    const isFormData = options.body instanceof FormData;
+    const isFormData =
+      Boolean(options.body) &&
+      (options.body instanceof FormData ||
+        (typeof options.body === "object" && typeof (options.body as any).append === "function") ||
+        typeof (options.body as any)?._parts !== "undefined");
 
     const headers: Record<string, string> = {
       Accept: "application/json",
       ...(options.headers as Record<string, string>),
     };
 
-    if (!isFormData && !headers["Content-Type"]) {
+    if (isFormData) {
+      delete headers["Content-Type"];
+      delete headers["content-type"];
+    } else if (!headers["Content-Type"]) {
       headers["Content-Type"] = "application/json";
     }
 
-    // Inject Bearer Authorization header if token is available
-    if (this.authToken && !options.skipAuth) {
-      headers["Authorization"] = `Bearer ${this.authToken}`;
+    // Lazily restore and inject Bearer Authorization header if token is available
+    if (!options.skipAuth) {
+      const token = await this.getOrRestoreAuthToken();
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
     }
 
     const timeout = options.timeoutMs || 15000;
@@ -94,7 +141,21 @@ class ApiClient {
       }
 
       if (!response.ok) {
-        let rawError = responseData?.error || responseData?.message;
+        let rawError: any = responseData?.error;
+        if (typeof rawError === "object" && rawError !== null) {
+          rawError = rawError.message || rawError.error || rawError.name || JSON.stringify(rawError);
+        }
+        if (!rawError) {
+          let rawMsg: any = responseData?.message;
+          if (typeof rawMsg === "object" && rawMsg !== null) {
+            rawMsg = rawMsg.message || JSON.stringify(rawMsg);
+          }
+          rawError = rawMsg;
+        }
+        if (typeof rawError !== "string" || !rawError) {
+          rawError = `HTTP ${response.status}: Request failed.`;
+        }
+
         if (
           typeof rawError === "string" &&
           (rawError.trim().startsWith("<") || rawError.includes("<!DOCTYPE") || rawError.includes("<html"))
@@ -108,17 +169,40 @@ class ApiClient {
           }
         }
 
+        // Sanitize database / connection pool errors for security and clean UI
+        if (
+          typeof rawError === "string" &&
+          (rawError.includes("prisma.") || rawError.includes("connection pool") || rawError.includes("Invocation:") || rawError.includes("P2024"))
+        ) {
+          rawError = "Campus server is temporarily busy. Please try again in a few moments.";
+        }
+
         return {
           success: false,
-          error: rawError || `HTTP ${response.status}: Request failed.`,
+          error: String(rawError),
           status: response.status,
           data: responseData,
         };
       }
 
+      const isSuccess = responseData?.success !== undefined ? Boolean(responseData.success) : true;
+      let respError: string | undefined = undefined;
+      if (!isSuccess && responseData?.error) {
+        respError = typeof responseData.error === "object"
+          ? responseData.error.message || JSON.stringify(responseData.error)
+          : String(responseData.error);
+        if (
+          respError &&
+          (respError.includes("prisma.") || respError.includes("connection pool") || respError.includes("Invocation:") || respError.includes("P2024"))
+        ) {
+          respError = "Campus server is temporarily busy. Please try again in a few moments.";
+        }
+      }
+
       return {
-        success: true,
+        success: isSuccess,
         data: responseData?.data !== undefined ? responseData.data : responseData,
+        error: respError,
         status: response.status,
       };
     } catch (error: any) {
@@ -132,12 +216,32 @@ class ApiClient {
         };
       }
 
+      let errMessage = error?.message;
+      if (typeof errMessage === "object" && errMessage !== null) {
+        errMessage = (errMessage as any).message || JSON.stringify(errMessage);
+      }
+      if (typeof errMessage !== "string" || !errMessage) {
+        errMessage = "Network request failed. Is the server running?";
+      }
+
       return {
         success: false,
-        error: error?.message || "Network request failed. Is the server running?",
+        error: String(errMessage),
         status: 0,
       };
     }
+  }
+
+  /**
+   * Helper to check if body is FormData
+   */
+  private isFormDataBody(body: any): boolean {
+    return Boolean(
+      body &&
+      (body instanceof FormData ||
+        (typeof body === "object" && typeof body.append === "function") ||
+        typeof body?._parts !== "undefined")
+    );
   }
 
   /**
@@ -161,10 +265,11 @@ class ApiClient {
     body?: any,
     options?: RequestOptions
   ): Promise<ApiResponse<T>> {
+    const isFormData = this.isFormDataBody(body);
     return this.request<T>(endpoint, {
       ...options,
       method: "POST",
-      body: body !== undefined ? JSON.stringify(body) : undefined,
+      body: isFormData ? body : body !== undefined ? JSON.stringify(body) : undefined,
     });
   }
 
@@ -176,10 +281,11 @@ class ApiClient {
     body?: any,
     options?: RequestOptions
   ): Promise<ApiResponse<T>> {
+    const isFormData = this.isFormDataBody(body);
     return this.request<T>(endpoint, {
       ...options,
       method: "PUT",
-      body: body !== undefined ? JSON.stringify(body) : undefined,
+      body: isFormData ? body : body !== undefined ? JSON.stringify(body) : undefined,
     });
   }
 
@@ -191,10 +297,11 @@ class ApiClient {
     body?: any,
     options?: RequestOptions
   ): Promise<ApiResponse<T>> {
+    const isFormData = this.isFormDataBody(body);
     return this.request<T>(endpoint, {
       ...options,
       method: "PATCH",
-      body: body !== undefined ? JSON.stringify(body) : undefined,
+      body: isFormData ? body : body !== undefined ? JSON.stringify(body) : undefined,
     });
   }
 

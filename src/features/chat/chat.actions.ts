@@ -61,27 +61,25 @@ export async function getOrCreateConversation(
       const blindIdOne = await getBlindParticipantId(participantOneId);
       const blindIdTwo = await getBlindParticipantId(targetUserId);
 
-      // Ensure both users have IncognitoProfiles created
-      const [profileOne, profileTwo] = await Promise.all([
-        prisma.incognitoProfile.upsert({
-          where: { userId: participantOneId },
-          create: {
-            userId: participantOneId,
-            handle: `Anon_${Math.floor(1000 + Math.random() * 9000)}`,
-            avatarUrl: `https://api.dicebear.com/9.x/bottts/svg?seed=${blindIdOne.slice(0, 10)}`,
-          },
-          update: {},
-        }),
-        prisma.incognitoProfile.upsert({
-          where: { userId: targetUserId },
-          create: {
-            userId: targetUserId,
-            handle: `Anon_${Math.floor(1000 + Math.random() * 9000)}`,
-            avatarUrl: `https://api.dicebear.com/9.x/bottts/svg?seed=${blindIdTwo.slice(0, 10)}`,
-          },
-          update: {},
-        }),
-      ]);
+      // Ensure both users have IncognitoProfiles created (sequential to avoid pool exhaustion)
+      const profileOne = await prisma.incognitoProfile.upsert({
+        where: { userId: participantOneId },
+        create: {
+          userId: participantOneId,
+          handle: `Anon_${Math.floor(1000 + Math.random() * 9000)}`,
+          avatarUrl: `https://api.dicebear.com/9.x/bottts/svg?seed=${blindIdOne.slice(0, 10)}`,
+        },
+        update: {},
+      });
+      const profileTwo = await prisma.incognitoProfile.upsert({
+        where: { userId: targetUserId },
+        create: {
+          userId: targetUserId,
+          handle: `Anon_${Math.floor(1000 + Math.random() * 9000)}`,
+          avatarUrl: `https://api.dicebear.com/9.x/bottts/svg?seed=${blindIdTwo.slice(0, 10)}`,
+        },
+        update: {},
+      });
 
       // Check existing anonymous conversation by blind IDs
       let conversation = await prisma.conversation.findFirst({
@@ -226,8 +224,13 @@ export async function getOrCreateConversation(
     };
   } catch (error: any) {
     console.error("Error in getOrCreateConversation:", error);
+    const msg = error?.message || "";
+    const cleanError =
+      msg.includes("connection pool") || msg.includes("timed out") || msg.includes("prisma")
+        ? "Campus server is temporarily busy. Please try again in a few moments."
+        : "Failed to initialize conversation.";
     return {
-      error: error?.message || "Failed to initialize conversation.",
+      error: cleanError,
     };
   }
 }

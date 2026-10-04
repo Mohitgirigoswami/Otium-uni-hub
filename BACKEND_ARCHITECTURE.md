@@ -487,6 +487,17 @@ export async function getBlindParticipantId(userId: string): Promise<string> {
 #### Dynamic Express Print Pricing (`GET /api/print/rates`):
 - Dynamically resolves live page rates from `prisma.printSetting` (B&W double/single sided, color double/single sided) in integer Paise and floating-point Rupees, preventing stale hardcoded pricing assumptions on both Web and Mobile.
 
+#### Database Connection Pool Configuration & Error Sanitization Standard:
+- **Connection Pool Tuning**: `DATABASE_URL` is configured with `connection_limit=10&pool_timeout=30` alongside `pgbouncer=true` on Supabase's transaction pooler (port 6543). This eliminates connection starvation during mobile parallel dashboard queries (`Promise.allSettled`) where low connection limits previously caused `P2024` connection timeouts.
+- **Client Error Sanitization**: Catch blocks across `verifyAuth`, `getOrCreateConversation`, and API routes intercept database engine errors (`prisma.`, `connection pool`, `timed out`, `P2024`). The server logs full stack traces internally to `console.error` while returning safe, user-friendly error strings to clients, strictly preventing infrastructure/schema disclosure.
+- **Sequential Incognito Profile Upserts**: `getOrCreateConversation` executes student `incognitoProfile.upsert` queries sequentially rather than concurrently via `Promise.all`, preventing concurrent connection exhaustion when connection pool limits are tight.
+
+#### Express Print Storage Streaming Architecture (`uploadPrintFile` & `POST /api/print/upload`):
+- **Core Processing (`uploadPrintFile`)**: Extracted from Server Action to support both Web browser File instances and Mobile REST binary streams. Reads array buffer, invokes `pdf-lib` to calculate page counts server-side with fallback resilience, generates sanitized file paths, and streams directly to Supabase Storage bucket `print-documents`.
+- **Pre-Execution Auth & Zero FormData Mutation (`POST /api/print/upload`)**:
+  - `verifyAuth(req)` runs *before* multipart parsing to reject unauthenticated requests immediately.
+  - Passes parsed `file`, `campusId`, and `auth.user.id` directly to `uploadPrintFile`, eliminating read-only `FormData.set()` runtime mutations in Next.js / Undici.
+
 ---
 
 ### 3. Managed Proxy Escrow & Campus Freelance Gigs

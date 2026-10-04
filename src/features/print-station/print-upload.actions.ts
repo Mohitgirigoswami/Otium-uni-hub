@@ -6,20 +6,24 @@ import { ActionResponse } from "@/lib/types";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { PrintUploadResult } from "./print.types";
 
+export interface UploadPrintFileParams {
+  file: File | Blob;
+  campusId?: string;
+  userId?: string;
+}
+
 /**
- * SERVER ACTION: UPLOAD PRINT DOCUMENT TO SUPABASE STORAGE
+ * CORE LOGIC: UPLOAD PRINT FILE TO SUPABASE STORAGE
  * - Auto-calculates PDF page count server-side via pdf-lib
  * - Uploads buffer to 'print-documents' bucket in Supabase Storage
- * - Returns raw public Supabase Storage fileUrl & detected pageCount (Zero Cloudinary wrappers)
+ * - Returns raw public Supabase Storage fileUrl & detected pageCount
  */
-export async function uploadPrintDocument(
-  formData: FormData
-): Promise<ActionResponse<PrintUploadResult>> {
+export async function uploadPrintFile({
+  file,
+  campusId = "global",
+  userId = "student",
+}: UploadPrintFileParams): Promise<ActionResponse<PrintUploadResult>> {
   try {
-    const file = formData.get("file") as File | null;
-    const campusId = (formData.get("campusId") as string) || "global";
-    const userId = (formData.get("userId") as string) || "student";
-
     if (!file) {
       return { success: false, error: "No PDF file provided for upload." };
     }
@@ -49,7 +53,8 @@ export async function uploadPrintDocument(
     }
 
     // Step 2: Generate unique file path in Supabase Storage
-    const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9.-]/g, "_");
+    const originalName = (file as any).name || "document.pdf";
+    const sanitizedFileName = originalName.replace(/[^a-zA-Z0-9.-]/g, "_");
     const uniqueFileName = `${userId}_${Date.now()}_${sanitizedFileName}`;
     const filePath = `${campusId}/${uniqueFileName}`;
 
@@ -86,7 +91,7 @@ export async function uploadPrintDocument(
       console.error("[Supabase Storage Upload Error]:", uploadError.message);
       return {
         success: false,
-        error: `Supabase Storage rejected upload (${uploadError.message}). Please verify that SUPABASE_SERVICE_ROLE_KEY in .env matches your Supabase Dashboard API settings.`,
+        error: `Supabase Storage rejected upload (${uploadError.message}). Please verify storage settings.`,
       };
     }
 
@@ -94,19 +99,37 @@ export async function uploadPrintDocument(
       success: true,
       data: {
         fileUrl: rawPublicUrl,
-        fileName: file.name,
+        fileName: originalName,
         pageCount,
         fileSizeBytes: file.size,
         filePath,
       },
     };
   } catch (error: any) {
-    console.error("[uploadPrintDocument] Fatal Error:", error);
+    console.error("[uploadPrintFile] Fatal Error:", error);
     return {
       success: false,
       error: error?.message || "Failed to process and upload print document.",
     };
   }
+}
+
+/**
+ * SERVER ACTION: UPLOAD PRINT DOCUMENT TO SUPABASE STORAGE
+ * Accepts FormData from browser Server Action invocations
+ */
+export async function uploadPrintDocument(
+  formData: FormData
+): Promise<ActionResponse<PrintUploadResult>> {
+  const file = formData.get("file") as File | null;
+  const campusId = (formData.get("campusId") as string) || "global";
+  const userId = (formData.get("userId") as string) || "student";
+
+  if (!file) {
+    return { success: false, error: "No PDF file provided for upload." };
+  }
+
+  return uploadPrintFile({ file, campusId, userId });
 }
 
 /**

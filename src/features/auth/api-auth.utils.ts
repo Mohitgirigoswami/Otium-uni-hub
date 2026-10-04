@@ -90,10 +90,16 @@ export async function verifyAuth(request: Request): Promise<VerifyAuthResult> {
       user,
     };
   } catch (error: any) {
+    console.error("[verifyAuth Error]:", error);
+    const msg = error?.message || "";
+    const cleanError =
+      msg.includes("connection pool") || msg.includes("timed out") || msg.includes("prisma")
+        ? "Campus authentication server is temporarily busy. Please retry in a few seconds."
+        : "Authentication verification failed. Please sign in again.";
     return {
       authenticated: false,
       user: null,
-      error: error?.message || "Authentication verification failed.",
+      error: cleanError,
     };
   }
 }

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { uploadPrintDocument } from "@/actions/print-upload.actions";
+import { uploadPrintFile } from "@/actions/print-upload.actions";
 import { verifyAuth } from "@/utils/auth";
 
 export async function OPTIONS() {
@@ -8,6 +8,16 @@ export async function OPTIONS() {
 
 export async function POST(req: NextRequest) {
   try {
+    // 1. Verify Authentication first
+    const auth = await verifyAuth(req);
+    if (!auth.authenticated || !auth.user) {
+      return NextResponse.json(
+        { success: false, error: auth.error || "Authentication required." },
+        { status: 401 }
+      );
+    }
+
+    // 2. Parse Multipart FormData
     const formData = await req.formData();
     const file = formData.get("file") as File | null;
 
@@ -18,20 +28,19 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const auth = await verifyAuth(req);
-    if (!auth.authenticated || !auth.user) {
-      return NextResponse.json(
-        { success: false, error: auth.error || "Authentication required." },
-        { status: 401 }
-      );
-    }
-    formData.set("userId", auth.user.id);
+    const campusId = (formData.get("campusId") as string) || auth.user.collegeId || "global";
 
-    const res = await uploadPrintDocument(formData);
+    // 3. Upload file directly without modifying read-only FormData
+    const res = await uploadPrintFile({
+      file,
+      campusId,
+      userId: auth.user.id,
+    });
 
     if (!res.success) {
+      const errStr = typeof res.error === "string" ? res.error : (res.error as any)?.message || "Upload failed.";
       return NextResponse.json(
-        { success: false, error: res.error || "Upload failed." },
+        { success: false, error: errStr },
         { status: 400 }
       );
     }
@@ -43,8 +52,15 @@ export async function POST(req: NextRequest) {
     });
   } catch (error: any) {
     console.error("[POST /api/print/upload Error]:", error);
+    const msg = error?.message || "";
+    const cleanError =
+      msg.includes("connection pool") || msg.includes("timed out") || msg.includes("prisma")
+        ? "Database connection is temporarily busy. Please retry in a few moments."
+        : typeof error === "string"
+        ? error
+        : error?.message || "Internal server error during upload.";
     return NextResponse.json(
-      { success: false, error: error?.message || "Internal server error." },
+      { success: false, error: cleanError },
       { status: 500 }
     );
   }

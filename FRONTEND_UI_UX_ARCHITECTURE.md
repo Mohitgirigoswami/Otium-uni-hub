@@ -715,6 +715,27 @@ Otium uses physics-based spring transitions rather than linear CSS fades:
   - **Express Print Station Web (`src/app/print-station/page.tsx`)**: Dual payment rail with 1-click Otium E-Wallet (+2% cashback), amount-locked "Pay with UPI App" link (`upi://pay`), 1-click "📋 Paste UTR" button, and 3-step checkout guide.
   - **Gigs Escrow System (`src/app/gigs/[id]/page.tsx`)**: Step 1 50% Advance Escrow and Step 2 Final Settlement equipped with direct "Pay with UPI App" deep-link buttons, 1-click "📋 Paste UTR" buttons, and input numeric sanitization.
 
+### 8.15 Mobile Auth Token Auto-Healing & Robust Error Normalization Standard
+- **Dual-Storage Token Auto-Healing (`mobile/src/services/apiClient.ts`)**:
+  - Eliminates `Missing or invalid Authorization header` errors during cold app launches or background resumes.
+  - `apiClient.setAuthToken()` dual-persists tokens to both `SecureStore` (`jwt`) and `AsyncStorage` (`@otium_auth_token`) for bulletproof device vendor resilience.
+  - `apiClient.request()` lazily checks `getOrRestoreAuthToken()` before sending any authenticated request, ensuring in-memory token loss never breaks network calls.
+- **Deep Error Unwrapping & `[object Object]` Eradication**:
+  - `apiClient` normalizes non-2xx responses: recursively unwraps nested `{ error: { message: ... } }` and `{ message: { ... } }` objects to clean string values.
+  - Guarantees `rawError` is always an informative human-readable string, preventing JavaScript `new Error(object)` casting to `[object Object]`.
+  - Automatically intercepts raw database connection errors (`connection pool`, `timed out`, `P2024`) and displays a clean user notification (*"Campus server is temporarily busy. Please try again in a few moments."*).
+- **Phantom Session Eradication (`mobile/App.tsx`)**:
+  - App boot bootstrap verifies that if no JWT exists in either `SecureStore` or `AsyncStorage`, phantom cached user records are purged, guaranteeing the user is prompted to sign in fresh rather than failing on subsequent mutations.
+
+### 8.16 Mobile Multipart Upload & FormData Boundary Management
+- **Automatic Boundary Injection (`mobile/src/services/apiClient.ts`)**:
+  - React Native / OkHttp requires that `Content-Type` NOT be manually set on `fetch` requests containing `FormData`, so the native networking stack can automatically append the dynamic multipart boundary delimiter (`multipart/form-data; boundary=...`).
+  - `apiClient.ts` strictly detects `FormData` payloads across all HTTP methods and explicitly deletes `headers["Content-Type"]`.
+  - In `apiClient.post()`, `apiClient.put()`, and `apiClient.patch()`, payloads detected as `FormData` bypass `JSON.stringify(body)` to prevent payload serialization into empty `{}` objects.
+- **Client-Side File Sanitization (`mobile/src/features/print-station/PrintStationScreen.tsx`)**:
+  - Enforces client-side 50MB file size checks prior to network transmission.
+  - Sanitizes picked PDF filenames (`safeFileName = (asset.name || "document.pdf").replace(/[^a-zA-Z0-9._-]/g, "_")`) to prevent multipart header parsing failures.
+
 ---
 *Document maintained by Antigravity AI Engineering Suite.*
 

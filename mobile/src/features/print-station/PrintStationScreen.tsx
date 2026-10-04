@@ -391,16 +391,23 @@ export function PrintStationScreen({ navigation }: any) {
       if (result.canceled || !result.assets || result.assets.length === 0) return;
 
       const asset = result.assets[0];
+
+      if (asset.size && asset.size > 50 * 1024 * 1024) {
+        Alert.alert("File Too Large", "Please select a PDF document under 50 MB.");
+        return;
+      }
+
       setIsUploadingFile(true);
 
       const fileSizeMb = asset.size ? (asset.size / (1024 * 1024)).toFixed(2) : "0.5";
+      const safeFileName = (asset.name || "document.pdf").replace(/[^a-zA-Z0-9._-]/g, "_");
 
       // Upload PDF directly to secure cloud print storage and receive server-verified page count
       const formData = new FormData();
       formData.append("file", {
         uri: asset.uri,
-        name: asset.name || "document.pdf",
-        type: "application/pdf",
+        name: safeFileName,
+        type: asset.mimeType || "application/pdf",
       } as any);
       if (user?.collegeId) {
         formData.append("campusId", user.collegeId);
@@ -417,10 +424,22 @@ export function PrintStationScreen({ navigation }: any) {
           fileUrl: uploadRes.data.fileUrl,
         });
       } else {
-        throw new Error(uploadRes.error || "Failed to upload document to print station.");
+        const errorMsg =
+          typeof uploadRes.error === "string"
+            ? uploadRes.error
+            : (uploadRes.error as any)?.message ||
+              (uploadRes.data as any)?.error ||
+              "Failed to upload document to print station.";
+        throw new Error(String(errorMsg));
       }
     } catch (uploadErr: any) {
-      Alert.alert("Upload Failed", uploadErr.message || "Could not upload the selected PDF file.");
+      const displayMsg =
+        typeof uploadErr?.message === "string" && uploadErr.message !== "[object Object]"
+          ? uploadErr.message
+          : typeof uploadErr === "string"
+          ? uploadErr
+          : "Could not upload the selected PDF file.";
+      Alert.alert("Upload Failed", displayMsg);
     } finally {
       setIsUploadingFile(false);
     }
