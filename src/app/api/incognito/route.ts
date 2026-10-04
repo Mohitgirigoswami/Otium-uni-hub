@@ -30,7 +30,10 @@ export async function GET(req: NextRequest) {
     const scope = (searchParams.get("scope") as "CAMPUS" | "GLOBAL") || "GLOBAL";
     const collegeId = searchParams.get("collegeId") || undefined;
 
-    const res = await getIncognitoPosts({ feedType, scope, collegeId });
+    const auth = await verifyAuth(req);
+    const userId = auth.authenticated && auth.user ? auth.user.id : undefined;
+
+    const res = await getIncognitoPosts({ feedType, scope, collegeId, userId });
     return NextResponse.json(res);
   } catch (error: any) {
     console.error("[GET /api/incognito Error]:", error);

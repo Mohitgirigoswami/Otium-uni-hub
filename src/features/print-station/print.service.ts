@@ -28,6 +28,8 @@ export async function getDynamicPrintRates(): Promise<PrintRatesData> {
       colorDoublePaise: 800,
       singleSidedRupees: setting.singleSidedRate / 100,
       doubleSidedRupees: setting.doubleSidedRate / 100,
+      colorSingleRupees: 10.0,
+      colorDoubleRupees: 8.0,
     };
   } catch (error) {
     console.error("Error fetching dynamic print rates:", error);
@@ -39,6 +41,8 @@ export async function getDynamicPrintRates(): Promise<PrintRatesData> {
       colorDoublePaise: 800,
       singleSidedRupees: 2.5,
       doubleSidedRupees: 2.0,
+      colorSingleRupees: 10.0,
+      colorDoubleRupees: 8.0,
     };
   }
 }

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   View,
   Text,
@@ -14,6 +14,7 @@ import {
   PanResponder,
   Vibration,
 } from "react-native";
+import { useFocusEffect } from "@react-navigation/native";
 import { Ionicons, Feather } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useTheme } from "../../context/ThemeContext";
@@ -315,7 +316,7 @@ export function AttendanceScreen() {
       const remaining: any[] = [];
       for (const item of queue) {
         try {
-          await apiClient.post("/attendance", { ...item, userId: user?.id }, { timeoutMs: 2500 });
+          await apiClient.post("/attendance", { ...item, userId: user?.id });
         } catch {
           remaining.push(item);
         }
@@ -346,30 +347,13 @@ export function AttendanceScreen() {
           action: "SYNC_OFFLINE",
           userId: activeUserId,
           subjects: activeList,
-        },
-        { timeoutMs: 3500 }
+        }
       );
 
-      if (res.success && Array.isArray(res.data) && res.data.length > 0) {
-        const mapped: SubjectItem[] = res.data.map((s: any) => ({
-          id: s.id,
-          name: s.name,
-          code: s.code || "SUB",
-          attended: s.attendedClasses ?? 0,
-          total: s.totalClasses ?? 0,
-          periodWeight: s.periodWeight ?? 1,
-        }));
-        setSubjects(mapped);
+      if (res.success && Array.isArray(res.data)) {
         setIsOfflineMode(false);
-        await AsyncStorage.setItem(STORAGE_KEY_ATTENDANCE, JSON.stringify(mapped));
-        await AsyncStorage.removeItem(STORAGE_KEY_SYNC_QUEUE);
-      } else {
-        const fallbackRes = await apiClient.get(
-          activeUserId ? `/attendance?userId=${activeUserId}` : "/attendance",
-          { timeoutMs: 3500 }
-        );
-        if (fallbackRes.success && Array.isArray(fallbackRes.data) && fallbackRes.data.length > 0) {
-          const mapped: SubjectItem[] = fallbackRes.data.map((s: any) => ({
+        if (res.data.length > 0) {
+          const mapped: SubjectItem[] = res.data.map((s: any) => ({
             id: s.id,
             name: s.name,
             code: s.code || "SUB",
@@ -378,12 +362,31 @@ export function AttendanceScreen() {
             periodWeight: s.periodWeight ?? 1,
           }));
           setSubjects(mapped);
-          setIsOfflineMode(false);
           await AsyncStorage.setItem(STORAGE_KEY_ATTENDANCE, JSON.stringify(mapped));
+        }
+        await AsyncStorage.removeItem(STORAGE_KEY_SYNC_QUEUE);
+      } else {
+        const fallbackRes = await apiClient.get(
+          activeUserId ? `/attendance?userId=${activeUserId}` : "/attendance"
+        );
+        if (fallbackRes.success && Array.isArray(fallbackRes.data)) {
+          setIsOfflineMode(false);
+          if (fallbackRes.data.length > 0) {
+            const mapped: SubjectItem[] = fallbackRes.data.map((s: any) => ({
+              id: s.id,
+              name: s.name,
+              code: s.code || "SUB",
+              attended: s.attendedClasses ?? 0,
+              total: s.totalClasses ?? 0,
+              periodWeight: s.periodWeight ?? 1,
+            }));
+            setSubjects(mapped);
+            await AsyncStorage.setItem(STORAGE_KEY_ATTENDANCE, JSON.stringify(mapped));
+          }
         }
       }
     } catch (e) {
-      console.log("Offline mode: using local cached subjects");
+      console.log("Offline mode: using local cached subjects", e);
       setIsOfflineMode(true);
     } finally {
       setIsSyncing(false);
@@ -420,12 +423,14 @@ export function AttendanceScreen() {
     loadCache();
   }, []);
 
-  // Re-sync immediately once user auth token restores
-  useEffect(() => {
-    if (user?.id) {
-      syncWithBackend();
-    }
-  }, [user?.id]);
+  // Re-sync whenever the screen gains focus
+  useFocusEffect(
+    useCallback(() => {
+      if (user?.id) {
+        syncWithBackend();
+      }
+    }, [user?.id])
+  );
 
   const handleTargetChange = (val: number) => {
     setTargetPercentage(val);
@@ -576,6 +581,7 @@ export function AttendanceScreen() {
       action: "LOG_SESSION",
       subjectId: id,
       status: attended ? "PRESENT" : "ABSENT",
+      isPresent: attended,
       count: weight,
     };
 

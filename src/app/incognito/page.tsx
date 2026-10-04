@@ -403,12 +403,12 @@ export default function IncognitoWallPage() {
                     </div>
 
                     {/* Anonymous 1-on-1 Whisper DM */}
-                    {(post.profileId || post.profile?.id) && post.profile?.userId !== user?.id && (
+                    {(post.authorAnonymousId || post.profileId || post.profile?.id) && !post.isAuthor && (
                       <Button
                         variant="outline"
                         size="sm"
-                        isLoading={chatLoadingId === (post.profileId || post.profile?.id)}
-                        onClick={() => handleAnonymousChat(post.profileId || post.profile?.id)}
+                        isLoading={chatLoadingId === (post.authorAnonymousId || post.profileId || post.profile?.id)}
+                        onClick={() => handleAnonymousChat(post.authorAnonymousId || post.profileId || post.profile?.id)}
                         leftIcon={<EyeOff className="w-3.5 h-3.5 text-primary" />}
                       >
                         Whisper DM

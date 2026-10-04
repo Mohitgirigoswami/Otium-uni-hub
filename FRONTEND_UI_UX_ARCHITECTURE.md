@@ -149,6 +149,11 @@ graph TD
    > - The generic Expo Go client runs under `host.exp.exponent` with Expo's shared debug key, which Google OAuth rejects with `DEVELOPER_ERROR` (Status Code 10).
    > - Therefore, mobile testing and production use **MUST** be compiled into a standalone APK via EAS Build (`npx eas-cli build --platform android --profile preview`) or a local development client (`npx expo run:android`), which embeds `@react-native-google-signin/google-signin` and native Gradle plugins.
 
+4. **Android Sideloading, In-Place Upgrades & `versionCode` Management**:
+   - **Strict Integer Increment Rule**: When distributing standalone APKs via EAS internal preview, `android.versionCode` in `mobile/app.json` must be strictly incremented for every build (e.g. `versionCode: 3` ➔ `4`, `version: 1.0.2`). Android package managers will reject APK installations with "Invalid package" or "App not installed" if attempting to overwrite an installed APK with an identical or lower version code signed by a different build keystore.
+   - **Ghost Profile & Keystore Conflict Resolution**: If switching from a local dev build (signed by debug keystore) to an EAS preview APK (signed by Expo Cloud keystore), previous installations must be completely uninstalled from the device. On multi-profile Android OS skins (Samsung Secure Folder, Xiaomi Dual Apps, OnePlus Parallel Apps), users must use **Settings > Apps > Otium Uni Hub > 3-dots > Uninstall for all users** to prevent lingering package cache rejections.
+   - **Samsung Auto-Blocker & Unknown Sources**: On Android 14+ (One UI 6+), Samsung's "Auto Blocker" must be temporarily disabled in **Settings > Security and privacy > Auto Blocker** when sideloading internal preview APKs.
+
 ---
 
 ## 3. Universal Theme System & Multi-Theme Engine
@@ -301,6 +306,11 @@ Otium maintains a strict 1:1 component design equivalence between shadcn/ui on W
 - **Inline Real-Time Warning**: Entering an amount $> ₹5,000$ or $< ₹20$ triggers instant destructive border highlighting and an inline error label (`Amount exceeds maximum allowed recharge limit of ₹5,000.00 per transaction`).
 - **Amount-Locked QR Code Guard**: QR codes are masked/disabled when amounts are outside the ₹20–₹5,000 bounds, preventing students from scanning or paying unapproved amounts.
 - **Dynamic Submit Button States**: Action buttons automatically reflect invalid ranges (e.g. `Amount Exceeds ₹5,000 Limit`), disabling submission until inputs satisfy both client and backend invariants.
+- **Strict Integer Paise Currency Cache (`@otium_cached_wallet_paise`)**:
+  - Eliminates currency unit mismatch bugs between floating-point Rupees and integer Paise.
+  - `WalletHeaderBadge`, `PrintStationScreen`, and `WalletRechargeModal` strictly reconcile via `@otium_cached_wallet_paise` and `useUser()`.
+- **Integrated 1-Tap UTR Paste UX**:
+  - Top-up modal includes a one-tap **"Paste UTR"** button (`Clipboard.getStringAsync()`) with automated non-digit stripping alongside clear 3-step guidance.
 
 ---
 
@@ -324,18 +334,21 @@ Otium maintains a strict 1:1 component design equivalence between shadcn/ui on W
   - **Client Service Guard**: Wrapped in `<ClientServiceGuard serviceKey="PRINT_STATION">` checking real-time printer availability per campus.
   - **Document Selection**: PDF upload with direct-to-cloud resumable streaming and client-side page detection (`pdf-lib`).
   - **Configuration**: Duplex selection (B&W Double, B&W Single, Color Single, Color Double). Single-page discount bypass prevention is enforced on the server.
-  - **Guaranteed Dynamic UPI ID**: Defaults to `8307798816@upi`, migrates legacy dummy DB values in `getPlatformSettingsAction`, caches locally in `@otium_cached_upi_id`, and refreshes dynamically from `GET /api/settings`.
+  - **Guaranteed Dynamic UPI ID & Dynamic Print Rates**:
+    - Defaults to `8307798816@upi`, migrates legacy dummy DB values in `getPlatformSettingsAction`, caches locally in `@otium_cached_upi_id`, and refreshes dynamically from `GET /api/settings`.
+    - **Live Dynamic Print Rates**: Eliminates fixed pricing assumptions. Rates per page are loaded instantaneously from `@otium_cached_print_rates`, dynamically refreshed from `GET /api/print/rates`, and kept in sync on screen focus via `useFocusEffect`.
   - **₹5.00 Minimum Campus Order Floor**: Enforces a ₹5.00 minimum threshold (`Math.max(5.0, rawCost)`) on both client and server (`MINIMUM_ORDER_PAISE = 500`) to deter pranks and cover hostel courier handling fees. The UI visibly illustrates the floor adjustment item (+₹X.XX) if subtotal is under ₹5.
-  - **Dedicated Full Checkout Modal (`isCheckoutModalOpen`)**: Replaces cluttered inline forms with a dedicated checkout bottom-sheet modal:
-    - Itemized summary breakdown (PDF filename, page count, format, copies, drop location, delivery window).
-    - Subtotal and Minimum Floor adjustment line.
-    - 1-tap UPI ID Copy button & deep-link `"Pay with UPI App"`.
-    - 12-digit transaction UTR number validation.
+  - **Dedicated Full Checkout Modal & Integrated Payment UX (`isCheckoutModalOpen`)**:
+    - Replaces cluttered inline forms with a dedicated checkout bottom-sheet modal:
+      - Itemized summary breakdown (PDF filename, page count, format, copies, drop location, delivery window).
+      - Subtotal and Minimum Floor adjustment line.
+      - **1-Click Campus Wallet Deduction**: Direct instant deduction if balance is sufficient (`@otium_cached_wallet_paise`), unlocking +2% cashback without leaving the app.
+      - **Seamless UPI Deep-Link & 1-Tap "Paste UTR"**: Tapping "Pay with UPI App" launches the student's UPI app (GPay/PhonePe/Paytm). Right beside the 12-digit UTR input, a one-tap **"Paste UTR"** button (`Clipboard.getStringAsync()`) automatically extracts the UTR number from clipboard, eliminating manual typing errors.
   - **Hermes-Safe PDF Page Calculation & Interactive Stepper**:
     - Replaced the unsupported `FileReader.prototype.readAsBinaryString` (which threw exceptions in React Native Hermes and defaulted to 1 page) with `FileReader.readAsText` and robust multi-regex page detection (`/\/Type\s*\/Page[^s]/g` and `/\/Count\s+(\d+)/`).
     - Added an interactive **Page Count Stepper** `[-] [ N Page(s) ] [+]` on the picked document card, giving students full control to verify or adjust page counts instantly.
   - **Animated Order Refresh**: An animated 360° spinning icon on the refresh button (`Animated.Value`) along with `RefreshControl` on the `ScrollView` gives users immediate visual confirmation that the campus order queue is refreshing.
-  - **Auto-Loading on Boot**: Orders auto-query `/api/print/order?userId=${user.id}` on `[user?.id]`, eliminating 401 unauthenticated errors and blank states.
+  - **Auto-Loading on Boot & Tab Focus**: Orders auto-query `/api/print/order?userId=${user.id}` on `[user?.id]` and screen focus via `useFocusEffect`, eliminating 401 unauthenticated errors and blank states.
   - **Anti-Spam 4-Second Submission Cooldown**:
     ```tsx
     setCooldownSeconds(4);
@@ -372,10 +385,10 @@ Otium maintains a strict 1:1 component design equivalence between shadcn/ui on W
     - Weight duration badge (`3h Lab` / `2 Periods`) is displayed cleanly in the header next to the subject name.
   - **Strict Semantic Theming**:
     - Purged all hardcoded `#ef4444` / `#22c55e` across all themes; strictly consumes semantic tokens (`colors.success`, `colors.destructive`, `colors.primary`, `colors.border`).
-  - **Non-Destructive Reconciled Fast Live Sync**:
-    - In `POST /api/attendance`, passes `userId: user?.id` with a 3.5s timeout.
-    - Merges offline logged counts non-destructively: local attended/total increments are added to remote base counts rather than being wiped by stale server responses.
-    - Prevents falling into offline mode on app boot by hooking sync triggers to `[user?.id]`.
+  - **Resilient Background Synchronization & False Offline Eradication**:
+    - Removed aggressive 3.5s/2.5s network timeouts that triggered false "Offline Mode" badges on cellular data and serverless cold starts.
+    - Any successful 200 response immediately re-engages live synced status (`setIsOfflineMode(false)`).
+    - Incorporates `useFocusEffect` to automatically flush the offline sync queue and reconcile attendance counts whenever the screen gains focus.
 
 ---
 
@@ -383,6 +396,12 @@ Otium maintains a strict 1:1 component design equivalence between shadcn/ui on W
 * **Web**: `src/app/incognito/page.tsx` & `src/app/incognito/[postId]/page.tsx`
 * **Mobile**: `mobile/src/screens/WhisperWallScreen.tsx`
 * **UX Principles, Multi-Image Carousel & Responsive Likes**:
+  - **Soft-Keyboard Adaptive Native Modals**:
+    - Replaced in-place absolute overlays with native `<Modal transparent animationType="slide">` wrapping `<KeyboardAvoidingView style={styles.keyboardAvoidingModal}>`.
+    - Android soft keyboards seamlessly resize the modal dialog via `softwareKeyboardLayoutMode: "resize"`, ensuring input textareas, category chips, and comment bars remain 100% visible and un-occluded while typing.
+  - **Zero-Knowledge Whisper DMs**:
+    - Both Web and Mobile determine Whisper DM action visibility using `!post.isAuthor` (server-evaluated).
+    - Initiates Whisper DMs using `authorAnonymousId` (opaque `cuid`), which backend resolves to HMAC Blind IDs without ever leaking `User.id`.
   - **Instant 0ms Lag-Free Heart Like**:
     - Replaced laggy up/down voting with a responsive Heart / Like button matching Web and the database `PostLike` schema.
     - Backed by `/api/incognito` handling `action === "LIKE"`, updating UI instantly with 0ms lag without full-feed reloads.
@@ -422,7 +441,8 @@ Otium maintains a strict 1:1 component design equivalence between shadcn/ui on W
 * **Mobile**: `mobile/src/screens/ProfileScreen.tsx`
 * **UX Principles**:
   - **Interactive Theme Grid**: Cards showing theme swatches, title, tagline, and active selection indicator. Tapping switches the active theme immediately and persists to storage.
-  - **Anonymous Pseudonym Management**: Edit Whisper Wall handle and re-seed avatar identity.
+  - **Whisper Wall Anonymous Alias Configuration**: Dedicated detail row and modal input allowing students to view and set their unique anonymous alias (`anonymousAlias`) with live validation against `/api/profile`, immediately updating both Web and Mobile identity badges.
+  - **Live Campus Wallet Overview**: Displays student's live balance in rupees and paise, synced with `UserContext`.
   - **Academic & Contact Meta**: Manage campus affiliation, department, and SMS delivery phone.
 
 ---
@@ -668,5 +688,33 @@ Otium uses physics-based spring transitions rather than linear CSS fades:
     - **Internal Scroll Container**: Form controls and action buttons reside **inside** a `ScrollView` with `style={styles.modalScroll}` (`flexGrow: 0`), `keyboardShouldPersistTaps="handled"`, and `contentContainerStyle={{ paddingBottom: 28 }}` (or `paddingBottom: 40`).
     - **In-Scroll Action Buttons**: Action buttons reside strictly inside the `ScrollView` beneath inputs. As the virtual keyboard opens, the container adapts smoothly, and users can scroll directly to the submit button with full visibility on all device screen sizes.
 
+### 8.14 Unified Checkout Modal & Consistent Cross-Platform Payment Architecture
+- **Unified Mobile Checkout Modal (`mobile/src/components/checkout/UnifiedCheckoutModal.tsx`)**:
+  - Replaces fragmented inline payment modals with an atomic, re-usable bottom-sheet checkout component adhering to the Universal Adaptive Keyboard standard.
+  - **Modes Supported**:
+    - `PAYMENT`: Used for Express Print Station, Gigs Escrow, and Campus Marketplace.
+    - `WALLET_TOPUP`: Dedicated mode for E-Wallet deposits.
+  - **Itemized Specifications Breakdown**:
+    - Renders document/item metadata (pages, copies, format, delivery slot, campus drop location).
+    - Features explicit minimum floor line item adjustment (+₹X.XX) and bold final total badge.
+  - **Dual-Rail Payment Selector**:
+    - **⚡ Otium E-Wallet (+2% Instant Cashback)**: Performs live integer Paise balance check against `@otium_cached_wallet_paise` and `useUser()`. Displays 1-click payment CTA with cashback credit preview. If balance is deficient, calculates exact shortage in Rupees and offers a 1-tap "Top Up Wallet" button.
+    - **📱 Direct UPI App**: Generates amount-locked deep-link URI (`upi://pay?pa=...`) directly launching installed UPI apps (Google Pay, PhonePe, Paytm, BHIM) with transaction note and amount pre-filled.
+  - **1-Tap "📋 Paste UTR" Action**:
+    - Reads clipboard via `Clipboard.getStringAsync()`, purges all non-digit formatting characters, and populates the 12-digit UTR input, eliminating tedious app-switching typing friction.
+  - **3-Step Integrated Guidance Card**:
+    - Direct instructions: 1. Launch payment in UPI App -> 2. Copy 12-digit UTR from receipt -> 3. Tap "Paste UTR" and click Confirm & Submit.
+  - **Anti-Spam State Machine**:
+    - Integrates `isSubmitting` activity indicator and 4-second placement cooldown timer (`✓ Placed (4s)`), preventing duplicate orders or double-charge race conditions.
+  - **Integrated Implementations**:
+    - Plugged into `mobile/src/features/print-station/PrintStationScreen.tsx` via `handlePayWithWallet` and `handlePayWithUpi`.
+    - Synchronized with `mobile/src/features/wallet/WalletRechargeModal.tsx` and `WalletHeaderBadge.tsx`.
+
+- **Web Payment Parity (`src/components/wallet/TopupModal.tsx`, `src/app/print-station/page.tsx`, `src/app/gigs/[id]/page.tsx`)**:
+  - **E-Wallet Top-Up Modal (`TopupModal.tsx`)**: Upgraded 12-digit UTR input with 1-click **"📋 Paste UTR"** button reading from `navigator.clipboard.readText()`.
+  - **Express Print Station Web (`src/app/print-station/page.tsx`)**: Dual payment rail with 1-click Otium E-Wallet (+2% cashback), amount-locked "Pay with UPI App" link (`upi://pay`), 1-click "📋 Paste UTR" button, and 3-step checkout guide.
+  - **Gigs Escrow System (`src/app/gigs/[id]/page.tsx`)**: Step 1 50% Advance Escrow and Step 2 Final Settlement equipped with direct "Pay with UPI App" deep-link buttons, 1-click "📋 Paste UTR" buttons, and input numeric sanitization.
+
 ---
 *Document maintained by Antigravity AI Engineering Suite.*
+

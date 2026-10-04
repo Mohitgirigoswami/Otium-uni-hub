@@ -14,6 +14,7 @@ import {
   ScrollView,
   Dimensions,
   KeyboardAvoidingView,
+  Modal,
 } from "react-native";
 import { Ionicons, Feather } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
@@ -45,6 +46,7 @@ interface WhisperPost {
   userVote?: "UP" | "DOWN";
   commentCount: number;
   authorId?: string;
+  isAuthor?: boolean;
 }
 
 interface WhisperComment {
@@ -216,7 +218,8 @@ export function WhisperWallScreen({ navigation }: any) {
             downvotes: down,
             userVote: userHasLiked ? "UP" : undefined,
             commentCount: p._count?.comments ?? (typeof p.commentCount === "number" ? p.commentCount : 0),
-            authorId: p.profile?.userId || p.authorId,
+            authorId: p.authorAnonymousId || p.profile?.id || p.profileId || p.authorId,
+            isAuthor: p.isAuthor ?? false,
           };
         });
         setPosts(mapped);
@@ -366,7 +369,8 @@ export function WhisperWallScreen({ navigation }: any) {
           downvotes: 0,
           commentCount: 0,
           userVote: "UP",
-          authorId: user?.id,
+          authorId: user?.incognitoProfile?.id || user?.id,
+          isAuthor: true,
         };
         const updated = [localPost, ...posts];
         setPosts(updated);
@@ -392,7 +396,8 @@ export function WhisperWallScreen({ navigation }: any) {
         downvotes: 0,
         commentCount: 0,
         userVote: "UP",
-        authorId: user?.id,
+        authorId: user?.incognitoProfile?.id || user?.id,
+        isAuthor: true,
       };
       const updated = [localPost, ...posts];
       setPosts(updated);
@@ -515,7 +520,7 @@ export function WhisperWallScreen({ navigation }: any) {
       Alert.alert("Notice", "Unable to start whisper direct chat with this author.");
       return;
     }
-    if (post.authorId === user?.id) {
+    if (post.isAuthor || post.authorId === user?.id) {
       Alert.alert("Your Whisper", "You cannot send a Whisper DM to your own anonymous post.");
       return;
     }
@@ -695,7 +700,7 @@ export function WhisperWallScreen({ navigation }: any) {
               const avatarUri = `https://api.dicebear.com/9.x/bottts/png?seed=${encodeURIComponent(seed)}&size=80`;
               const mediaList = item.mediaUrls && item.mediaUrls.length > 0 ? item.mediaUrls : item.imageUrl ? [item.imageUrl] : [];
               const isLiked = item.userVote === "UP";
-              const isAuthor = (item.authorId && user?.id && item.authorId === user.id) || (user?.role === "SUPER_ADMIN");
+              const isAuthor = !!item.isAuthor || (item.authorId && user?.id && item.authorId === user.id) || (user?.role === "SUPER_ADMIN");
 
               return (
                 <Card style={styles.postCard}>
@@ -851,15 +856,17 @@ export function WhisperWallScreen({ navigation }: any) {
                         </Text>
                       </TouchableOpacity>
 
-                      <TouchableOpacity
-                        style={[styles.whisperDmBtn, { backgroundColor: colors.primary + "15", borderColor: colors.primary + "30" }]}
-                        onPress={() => handleStartWhisperChat(item)}
-                      >
-                        <Ionicons name="chatbubble-ellipses-outline" size={13} color={colors.primary} />
-                        <Text style={[styles.whisperDmText, { color: colors.primary }]}>
-                          Whisper DM
-                        </Text>
-                      </TouchableOpacity>
+                      {!isAuthor && (
+                        <TouchableOpacity
+                          style={[styles.whisperDmBtn, { backgroundColor: colors.primary + "15", borderColor: colors.primary + "30" }]}
+                          onPress={() => handleStartWhisperChat(item)}
+                        >
+                          <Ionicons name="chatbubble-ellipses-outline" size={13} color={colors.primary} />
+                          <Text style={[styles.whisperDmText, { color: colors.primary }]}>
+                            Whisper DM
+                          </Text>
+                        </TouchableOpacity>
+                      )}
                     </View>
                   </View>
                 </Card>
@@ -868,24 +875,28 @@ export function WhisperWallScreen({ navigation }: any) {
           />
         )}
 
-        {/* 4. In-Place Compose Whisper Bottom Sheet (No Android Modal Glitches, Soft Keyboard Safe) */}
-        {isComposeOpen && (
-          <View style={styles.inPlaceOverlay}>
+        {/* 4. Compose Whisper Modal (Adaptive Soft Keyboard Support) */}
+        <Modal
+          visible={isComposeOpen}
+          animationType="slide"
+          transparent
+          onRequestClose={() => !isSubmitting && setIsComposeOpen(false)}
+        >
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            style={styles.keyboardAvoidingModal}
+          >
             <TouchableOpacity
-              style={styles.inPlaceBackdrop}
+              style={styles.modalBackdropTouch}
               activeOpacity={1}
               onPress={() => !isSubmitting && setIsComposeOpen(false)}
             />
-            <KeyboardAvoidingView
-              behavior={Platform.OS === "ios" ? "padding" : "height"}
-              style={styles.sheetWrapper}
+            <View
+              style={[
+                styles.modalSheet,
+                { backgroundColor: colors.card, borderColor: colors.border },
+              ]}
             >
-              <View
-                style={[
-                  styles.modalContent,
-                  { backgroundColor: colors.card, borderColor: colors.border },
-                ]}
-              >
                 <View style={styles.modalHeader}>
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.modalTitle, { color: colors.text }]}>Post Anonymous Whisper</Text>
@@ -1058,24 +1069,28 @@ export function WhisperWallScreen({ navigation }: any) {
                 </ScrollView>
               </View>
             </KeyboardAvoidingView>
-          </View>
-        )}
+        </Modal>
 
-        {/* 5. In-Place Comments Bottom Sheet (Soft Keyboard Safe) */}
-        {commentsModalPost && (
-          <View style={styles.inPlaceOverlay}>
+        {/* 5. Comments Modal (Adaptive Soft Keyboard Support) */}
+        <Modal
+          visible={!!commentsModalPost}
+          animationType="slide"
+          transparent
+          onRequestClose={() => setCommentsModalPost(null)}
+        >
+          <KeyboardAvoidingView
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+            style={styles.keyboardAvoidingModal}
+          >
             <TouchableOpacity
-              style={styles.inPlaceBackdrop}
+              style={styles.modalBackdropTouch}
               activeOpacity={1}
               onPress={() => setCommentsModalPost(null)}
             />
-            <KeyboardAvoidingView
-              behavior={Platform.OS === "ios" ? "padding" : "height"}
-              style={styles.sheetWrapper}
-            >
+            {commentsModalPost && (
               <View
                 style={[
-                  styles.modalContent,
+                  styles.modalSheet,
                   { backgroundColor: colors.card, borderColor: colors.border },
                 ]}
               >
@@ -1181,21 +1196,27 @@ export function WhisperWallScreen({ navigation }: any) {
                   </TouchableOpacity>
                 </View>
               </View>
-            </KeyboardAvoidingView>
-          </View>
-        )}
+            )}
+          </KeyboardAvoidingView>
+        </Modal>
 
-        {/* 6. In-Place Full-Screen Post View */}
-        {activeModalPost && (
-          <View style={styles.inPlaceOverlay}>
+        {/* 6. Full-Screen Post View Modal */}
+        <Modal
+          visible={!!activeModalPost}
+          animationType="fade"
+          transparent
+          onRequestClose={() => setActiveModalPost(null)}
+        >
+          <View style={styles.keyboardAvoidingModal}>
             <TouchableOpacity
-              style={styles.inPlaceBackdrop}
+              style={styles.modalBackdropTouch}
               activeOpacity={1}
               onPress={() => setActiveModalPost(null)}
             />
-            <View style={styles.sheetWrapper}>
+            {activeModalPost && (
               <View
                 style={[
+                  styles.modalSheet,
                   styles.fullViewContent,
                   { backgroundColor: colors.card, borderColor: colors.border },
                 ]}
@@ -1316,9 +1337,9 @@ export function WhisperWallScreen({ navigation }: any) {
                   />
                 </View>
               </View>
-            </View>
+            )}
           </View>
-        )}
+        </Modal>
       </View>
     </ClientServiceGuard>
   );
@@ -1594,22 +1615,16 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "700",
   },
-  /* In-Place Overlay Styles (Replacing Modal to eliminate Android Soft Keyboard bugs) */
-  inPlaceOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    zIndex: 9999,
-    elevation: 9999,
+  /* Modal & Keyboard Adaptive Styles */
+  keyboardAvoidingModal: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.65)",
     justifyContent: "flex-end",
   },
-  inPlaceBackdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.6)",
+  modalBackdropTouch: {
+    flex: 1,
   },
-  sheetWrapper: {
-    width: "100%",
-    justifyContent: "flex-end",
-  },
-  modalContent: {
+  modalSheet: {
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     borderTopWidth: 1,

@@ -34,6 +34,7 @@ import {
   Save,
   Zap,
   Wallet,
+  Clipboard,
 } from "lucide-react";
 import { PrintTypeEnum } from "@/lib/types";
 import { DocumentUpload } from "@/components/ui/DocumentUpload";
@@ -248,6 +249,24 @@ export default function PrintStationPage() {
     setCopiedUpi(true);
     toast.success("UPI ID copied to clipboard.");
     setTimeout(() => setCopiedUpi(false), 2500);
+  };
+
+  const handlePasteUtr = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      const digits = text.replace(/\D/g, "");
+      if (digits.length >= 12) {
+        setUtrNumber(digits.slice(0, 12));
+        toast.success("12-digit UTR pasted from clipboard!");
+      } else if (digits.length > 0) {
+        setUtrNumber(digits);
+        toast.success("Pasted numbers from clipboard!");
+      } else {
+        toast.error("No numbers found in clipboard.");
+      }
+    } catch {
+      toast.error("Could not read clipboard. Please paste manually.");
+    }
   };
 
   const handleOrderSubmit = async (e: React.FormEvent) => {
@@ -729,21 +748,46 @@ export default function PrintStationPage() {
                                 {copiedUpi ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
                               </button>
                             </div>
+
+                            <a
+                              href={upiUrl}
+                              className="inline-flex items-center justify-center gap-1.5 w-full mt-2 py-2 px-3 rounded-lg border border-primary/30 bg-primary/10 hover:bg-primary/20 text-primary font-semibold text-xs transition-colors"
+                            >
+                              <ExternalLink className="w-3.5 h-3.5" />
+                              Pay ₹{totalCostRupees.toFixed(2)} with UPI App
+                            </a>
                           </div>
                         </div>
                       </div>
 
                       <div className="space-y-1.5">
-                        <span className="text-xs font-medium text-foreground">
-                          Transaction UTR (12 digits from bank SMS / UPI receipt):
-                        </span>
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-foreground">
+                            12-Digit Transaction UTR Number:
+                          </span>
+                          <button
+                            type="button"
+                            onClick={handlePasteUtr}
+                            className="inline-flex items-center gap-1 text-[11px] font-semibold text-primary hover:text-primary/80 bg-primary/10 px-2 py-0.5 rounded-md transition-colors"
+                          >
+                            <Clipboard className="w-3 h-3" />
+                            <span>Paste UTR</span>
+                          </button>
+                        </div>
                         <Input
                           type="text"
                           placeholder="e.g. 423187654321"
                           value={utrNumber}
-                          onChange={(e) => setUtrNumber(e.target.value.replace(/\s/g, ""))}
-                          maxLength={18}
+                          onChange={(e) => setUtrNumber(e.target.value.replace(/\D/g, ""))}
+                          maxLength={12}
                         />
+                      </div>
+
+                      {/* 3-Step Integrated Guide */}
+                      <div className="p-3 rounded-lg border border-border bg-secondary/20 text-[11px] text-muted-foreground space-y-1">
+                        <p><strong className="text-foreground">1.</strong> Tap &quot;Pay with UPI App&quot; or scan the QR code above.</p>
+                        <p><strong className="text-foreground">2.</strong> Copy the 12-digit UTR from your UPI payment success screen.</p>
+                        <p><strong className="text-foreground">3.</strong> Tap &quot;Paste UTR&quot; above and click &quot;Submit Print Job&quot;.</p>
                       </div>
                     </div>
                   )}

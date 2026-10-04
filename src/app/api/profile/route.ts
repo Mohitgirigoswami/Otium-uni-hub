@@ -57,6 +57,8 @@ export async function GET(req: NextRequest) {
         collegeId: user.collegeId,
         college: user.college,
         incognitoProfile: user.incognitoProfile,
+        walletBalancePaise: user.walletBalancePaise,
+        walletBalanceRupees: (user.walletBalancePaise || 0) / 100,
         stats: {
           printOrders: user._count.printOrders,
           attendanceSubjects: user._count.subjects,
@@ -130,6 +132,46 @@ export async function PATCH(req: NextRequest) {
       }
     }
 
+    if (body.anonymousAlias !== undefined) {
+      const cleanAlias = String(body.anonymousAlias).trim().replace(/^@/, "").replace(/[^a-zA-Z0-9_]/g, "");
+      if (cleanAlias.length > 0) {
+        if (!/^[a-zA-Z0-9_]{3,25}$/.test(cleanAlias)) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: "Anonymous alias must be 3-25 characters containing only letters, numbers, or underscores.",
+            },
+            { status: 400 }
+          );
+        }
+        const existingProfile = await prisma.incognitoProfile.findUnique({
+          where: { handle: cleanAlias },
+        });
+        if (existingProfile && existingProfile.userId !== userId) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: `The anonymous alias "@${cleanAlias}" is already taken. Please choose another alias.`,
+            },
+            { status: 400 }
+          );
+        }
+        const avatarUrl = `https://api.dicebear.com/9.x/bottts/svg?seed=${encodeURIComponent(cleanAlias)}`;
+        await prisma.incognitoProfile.upsert({
+          where: { userId },
+          create: {
+            userId,
+            handle: cleanAlias,
+            avatarUrl,
+          },
+          update: {
+            handle: cleanAlias,
+            avatarUrl,
+          },
+        });
+      }
+    }
+
     const updatedUser = await prisma.user.update({
       where: { id: userId },
       data: updateData,
@@ -141,7 +183,11 @@ export async function PATCH(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      data: updatedUser,
+      data: {
+        ...updatedUser,
+        walletBalancePaise: updatedUser.walletBalancePaise,
+        walletBalanceRupees: (updatedUser.walletBalancePaise || 0) / 100,
+      },
       message: "Profile updated successfully.",
     });
   } catch (error: any) {

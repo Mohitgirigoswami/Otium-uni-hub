@@ -3,10 +3,11 @@ import { TouchableOpacity, Text, StyleSheet, View } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
 import { useTheme } from "../../context/ThemeContext";
+import { useUser } from "../../context/UserContext";
 import { apiClient } from "../../services/apiClient";
 import { WalletRechargeModal } from "../../features/wallet/WalletRechargeModal";
 
-const STORAGE_KEY_WALLET_BALANCE = "@otium_cached_wallet_balance";
+export const STORAGE_KEY_WALLET_PAISE = "@otium_cached_wallet_paise";
 
 interface WalletHeaderBadgeProps {
   onBalanceUpdated?: (balanceRupees: number) => void;
@@ -14,29 +15,40 @@ interface WalletHeaderBadgeProps {
 
 export function WalletHeaderBadge({ onBalanceUpdated }: WalletHeaderBadgeProps) {
   const { colors } = useTheme();
-  const [balanceRupees, setBalanceRupees] = useState<number | null>(null);
+  const { user, refreshUser } = useUser();
+  const [balanceRupees, setBalanceRupees] = useState<number | null>(
+    user?.walletBalanceRupees !== undefined ? Number(user.walletBalanceRupees) : null
+  );
   const [modalVisible, setModalVisible] = useState(false);
 
   // 1. Instant 0ms cache restore on mount
   useEffect(() => {
-    AsyncStorage.getItem(STORAGE_KEY_WALLET_BALANCE).then((cached) => {
+    AsyncStorage.getItem(STORAGE_KEY_WALLET_PAISE).then((cached) => {
       if (cached !== null) {
-        const val = parseFloat(cached);
-        if (!isNaN(val)) {
-          setBalanceRupees(val);
+        const paise = parseInt(cached, 10);
+        if (!isNaN(paise)) {
+          setBalanceRupees(paise / 100);
         }
       }
     }).catch(() => {});
   }, []);
 
+  // Sync if user context balance updates
+  useEffect(() => {
+    if (user?.walletBalanceRupees !== undefined && user.walletBalanceRupees !== null) {
+      setBalanceRupees(Number(user.walletBalanceRupees));
+    }
+  }, [user?.walletBalanceRupees]);
+
   const fetchBalance = async () => {
     try {
-      const res = await apiClient.get("/wallet");
+      const res = await apiClient.get<any>("/wallet");
       if (res.success && res.data) {
-        const bal = Number(res.data.balanceRupees);
-        setBalanceRupees(bal);
-        onBalanceUpdated?.(bal);
-        AsyncStorage.setItem(STORAGE_KEY_WALLET_BALANCE, bal.toString()).catch(() => {});
+        const paise = Number(res.data.balancePaise ?? 0);
+        const rupees = paise / 100;
+        setBalanceRupees(rupees);
+        onBalanceUpdated?.(rupees);
+        AsyncStorage.setItem(STORAGE_KEY_WALLET_PAISE, paise.toString()).catch(() => {});
       }
     } catch {
       // Ignore network errors on background fetch
@@ -75,9 +87,13 @@ export function WalletHeaderBadge({ onBalanceUpdated }: WalletHeaderBadgeProps) 
 
       <WalletRechargeModal
         visible={modalVisible}
-        onClose={() => setModalVisible(false)}
+        onClose={() => {
+          setModalVisible(false);
+          fetchBalance();
+        }}
         onSuccess={() => {
           fetchBalance();
+          refreshUser();
         }}
       />
     </>

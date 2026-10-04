@@ -41,6 +41,7 @@ export function ProfileScreen() {
   const [editDepartment, setEditDepartment] = useState("");
   const [editYear, setEditYear] = useState("2");
   const [editCollegeId, setEditCollegeId] = useState("");
+  const [editAnonymousAlias, setEditAnonymousAlias] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
   // 1. Instant 0ms college list hydration
@@ -91,6 +92,7 @@ export function ProfileScreen() {
     setEditDepartment(active.department || "");
     setEditYear(active.year ? String(active.year) : "2");
     setEditCollegeId(active.collegeId || "");
+    setEditAnonymousAlias(active.incognitoProfile?.handle || "");
     setIsEditModalOpen(true);
   };
 
@@ -111,6 +113,17 @@ export function ProfileScreen() {
       }
     }
 
+    if (editAnonymousAlias.trim()) {
+      const aRegex = /^[a-zA-Z0-9_]{3,25}$/;
+      if (!aRegex.test(editAnonymousAlias.trim().replace(/^@/, ""))) {
+        Alert.alert(
+          "Invalid Alias",
+          "Anonymous alias must be 3-25 characters long and contain only letters, numbers, or underscores."
+        );
+        return;
+      }
+    }
+
     setIsSaving(true);
     try {
       const payload: any = {
@@ -122,6 +135,9 @@ export function ProfileScreen() {
       };
       if (editCollegeId) {
         payload.collegeId = editCollegeId;
+      }
+      if (editAnonymousAlias.trim()) {
+        payload.anonymousAlias = editAnonymousAlias.trim().replace(/^@/, "");
       }
 
       const res = await apiClient.patch("/profile", payload);
@@ -447,19 +463,27 @@ export function ProfileScreen() {
           </View>
         </View>
 
-        <View style={[styles.detailRow, { borderBottomWidth: 0 }]}>
+        <TouchableOpacity
+          activeOpacity={0.7}
+          onPress={openEditModal}
+          style={[styles.detailRow, { borderBottomWidth: 0 }]}
+        >
           <View style={[styles.detailIconBox, { backgroundColor: colors.cardSecondary }]}>
             <Ionicons name="shield-checkmark-outline" size={15} color={colors.primary} />
           </View>
-          <View style={styles.detailTextBox}>
+          <View style={[styles.detailTextBox, { flex: 1 }]}>
             <Text style={[styles.detailLabel, { color: colors.textMuted }]}>
-              Anonymous Alias
+              Anonymous Alias (Whisper Wall)
             </Text>
             <Text style={[styles.detailValue, { color: colors.text }]}>
-              {currentUser.incognitoProfile?.handle || "Auto-assigned on first whisper"}
+              {currentUser.incognitoProfile?.handle ? `@${currentUser.incognitoProfile.handle}` : "Tap to set alias"}
             </Text>
           </View>
-        </View>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+            <Text style={{ fontSize: 11, color: colors.primary, fontWeight: "600" }}>Change</Text>
+            <Ionicons name="chevron-forward" size={14} color={colors.primary} />
+          </View>
+        </TouchableOpacity>
       </Card>
 
       {/* App & Connectivity Settings */}
@@ -611,6 +635,43 @@ export function ProfileScreen() {
                 </View>
                 <Text style={{ fontSize: 11, color: colors.textMuted, marginTop: 3 }}>
                   Classmates can search and chat with you via @{editUsername || currentUser.username || "username"} without ever seeing your email.
+                </Text>
+              </View>
+
+              <View style={styles.formGroup}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                  <Text style={[styles.formLabel, { color: colors.textMuted, marginBottom: 0 }]}>
+                    Anonymous Alias (Whisper Wall)
+                  </Text>
+                  {currentUser.incognitoProfile?.handle ? (
+                    <Text style={{ fontSize: 11, color: colors.primary, fontWeight: "700" }}>
+                      Current: @{currentUser.incognitoProfile.handle}
+                    </Text>
+                  ) : null}
+                </View>
+                <View style={{ position: "relative", justifyContent: "center" }}>
+                  <Text style={{ position: "absolute", left: 12, zIndex: 1, color: colors.primary, fontWeight: "700", fontSize: 14 }}>
+                    @
+                  </Text>
+                  <TextInput
+                    value={editAnonymousAlias}
+                    onChangeText={(t) => setEditAnonymousAlias(t.replace(/[^a-zA-Z0-9_]/g, ""))}
+                    placeholder="Anon_Ghost"
+                    placeholderTextColor={colors.textMuted}
+                    autoCapitalize="none"
+                    style={[
+                      styles.input,
+                      {
+                        backgroundColor: colors.cardSecondary,
+                        borderColor: colors.border,
+                        color: colors.text,
+                        paddingLeft: 28,
+                      },
+                    ]}
+                  />
+                </View>
+                <Text style={{ fontSize: 11, color: colors.textMuted, marginTop: 3 }}>
+                  Your public alias when sharing confessions or whispers. Identity remains 100% untraceable.
                 </Text>
               </View>
 

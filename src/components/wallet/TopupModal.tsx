@@ -16,6 +16,7 @@ import {
   ShieldCheck,
   AlertCircle,
   Sparkles,
+  Clipboard,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -113,6 +114,24 @@ export function TopupModal({ isOpen, onClose, onSuccess }: TopupModalProps) {
     setCopiedUpi(true);
     toast.success("Platform UPI ID copied to clipboard!");
     setTimeout(() => setCopiedUpi(false), 2500);
+  };
+
+  const handlePasteUtr = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      const digits = text.replace(/\D/g, "");
+      if (digits.length >= 12) {
+        setUtrNumber(digits.slice(0, 12));
+        toast.success("UTR pasted from clipboard!");
+      } else if (digits.length > 0) {
+        setUtrNumber(digits);
+        toast.success("Pasted numbers from clipboard!");
+      } else {
+        toast.error("No numbers found in clipboard.");
+      }
+    } catch {
+      toast.error("Could not read clipboard. Please paste manually.");
+    }
   };
 
   const handleSubmitTopup = async (e: React.FormEvent) => {
@@ -372,9 +391,19 @@ export function TopupModal({ isOpen, onClose, onSuccess }: TopupModalProps) {
 
               {/* 3. 12-Digit UTR Input */}
               <div className="space-y-2">
-                <label className="text-xs font-bold uppercase tracking-wider text-foreground block">
-                  2. Enter 12-Digit UTR Number
-                </label>
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold uppercase tracking-wider text-foreground block">
+                    2. Enter 12-Digit UTR Number
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handlePasteUtr}
+                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-primary hover:text-primary/80 bg-primary/10 px-2 py-0.5 rounded-md transition-colors"
+                  >
+                    <Clipboard className="w-3 h-3" />
+                    <span>Paste UTR</span>
+                  </button>
+                </div>
                 <input
                   type="text"
                   maxLength={12}

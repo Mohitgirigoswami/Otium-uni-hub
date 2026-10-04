@@ -39,6 +39,8 @@ import {
   XCircle,
   Copy,
   Check,
+  Clipboard,
+  ExternalLink,
 } from "lucide-react";
 import { ClientServiceGuard } from "@/components/ClientServiceGuard";
 
@@ -147,6 +149,42 @@ export default function GigEscrowDetailsPage() {
     setCopiedUpi(true);
     toast.success("UPI ID copied to clipboard.");
     setTimeout(() => setCopiedUpi(false), 2000);
+  };
+
+  const handlePasteAdvanceUtr = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      const digits = text.replace(/\D/g, "");
+      if (digits.length >= 12) {
+        setAdvanceUtrInput(digits.slice(0, 12));
+        toast.success("12-digit UTR pasted from clipboard!");
+      } else if (digits.length > 0) {
+        setAdvanceUtrInput(digits);
+        toast.success("Pasted numbers from clipboard!");
+      } else {
+        toast.error("No numbers found in clipboard.");
+      }
+    } catch {
+      toast.error("Could not read clipboard. Please paste manually.");
+    }
+  };
+
+  const handlePasteFinalUtr = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      const digits = text.replace(/\D/g, "");
+      if (digits.length >= 12) {
+        setFinalUtrInput(digits.slice(0, 12));
+        toast.success("12-digit UTR pasted from clipboard!");
+      } else if (digits.length > 0) {
+        setFinalUtrInput(digits);
+        toast.success("Pasted numbers from clipboard!");
+      } else {
+        toast.error("No numbers found in clipboard.");
+      }
+    } catch {
+      toast.error("Could not read clipboard. Please paste manually.");
+    }
   };
 
   const handleClaim = async () => {
@@ -460,7 +498,7 @@ export default function GigEscrowDetailsPage() {
                   <img src={advanceQr} alt="UPI QR" className="w-32 h-32 object-contain" />
                 </div>
 
-                <form onSubmit={handleAdvanceSubmit} className="flex-1 space-y-2 w-full">
+                <form onSubmit={handleAdvanceSubmit} className="flex-1 space-y-3 w-full">
                   <div className="text-xs space-y-1">
                     <span className="text-muted-foreground">UPI ID:</span>
                     <div className="flex items-center gap-2 font-mono text-xs text-foreground bg-secondary px-2.5 py-1.5 rounded-md">
@@ -475,14 +513,38 @@ export default function GigEscrowDetailsPage() {
                     </div>
                   </div>
 
-                  <Input
-                    placeholder="Enter 12-digit transaction UTR..."
-                    value={advanceUtrInput}
-                    onChange={(e) => setAdvanceUtrInput(e.target.value)}
-                    required
-                  />
+                  <a
+                    href={advanceUpiUrl}
+                    className="inline-flex items-center justify-center gap-1.5 w-full py-2 px-3 rounded-lg border border-primary/30 bg-primary/10 hover:bg-primary/20 text-primary font-semibold text-xs transition-colors"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    Pay ₹{escrowCalc.advanceRequired.toFixed(2)} with UPI App
+                  </a>
 
-                  <Button type="submit" size="sm" isLoading={isPending}>
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-semibold text-foreground">
+                        12-Digit Transaction UTR:
+                      </span>
+                      <button
+                        type="button"
+                        onClick={handlePasteAdvanceUtr}
+                        className="inline-flex items-center gap-1 text-[11px] font-semibold text-primary hover:text-primary/80 bg-primary/10 px-2 py-0.5 rounded-md transition-colors"
+                      >
+                        <Clipboard className="w-3 h-3" />
+                        <span>Paste UTR</span>
+                      </button>
+                    </div>
+                    <Input
+                      placeholder="Enter 12-digit transaction UTR..."
+                      value={advanceUtrInput}
+                      onChange={(e) => setAdvanceUtrInput(e.target.value.replace(/\D/g, ""))}
+                      maxLength={12}
+                      required
+                    />
+                  </div>
+
+                  <Button type="submit" size="sm" className="w-full" isLoading={isPending}>
                     Confirm Advance Payment
                   </Button>
                 </form>
@@ -504,14 +566,39 @@ export default function GigEscrowDetailsPage() {
                   <img src={finalQr} alt="UPI QR" className="w-32 h-32 object-contain" />
                 </div>
 
-                <form onSubmit={handleFinalSubmit} className="flex-1 space-y-2 w-full">
-                  <Input
-                    placeholder="Enter 12-digit transaction UTR..."
-                    value={finalUtrInput}
-                    onChange={(e) => setFinalUtrInput(e.target.value)}
-                    required
-                  />
-                  <Button type="submit" size="sm" isLoading={isPending}>
+                <form onSubmit={handleFinalSubmit} className="flex-1 space-y-3 w-full">
+                  <a
+                    href={finalUpiUrl}
+                    className="inline-flex items-center justify-center gap-1.5 w-full py-2 px-3 rounded-lg border border-primary/30 bg-primary/10 hover:bg-primary/20 text-primary font-semibold text-xs transition-colors"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    Pay ₹{escrowCalc.finalSettlement.toFixed(2)} with UPI App
+                  </a>
+
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-semibold text-foreground">
+                        12-Digit Transaction UTR:
+                      </span>
+                      <button
+                        type="button"
+                        onClick={handlePasteFinalUtr}
+                        className="inline-flex items-center gap-1 text-[11px] font-semibold text-primary hover:text-primary/80 bg-primary/10 px-2 py-0.5 rounded-md transition-colors"
+                      >
+                        <Clipboard className="w-3 h-3" />
+                        <span>Paste UTR</span>
+                      </button>
+                    </div>
+                    <Input
+                      placeholder="Enter 12-digit transaction UTR..."
+                      value={finalUtrInput}
+                      onChange={(e) => setFinalUtrInput(e.target.value.replace(/\D/g, ""))}
+                      maxLength={12}
+                      required
+                    />
+                  </div>
+
+                  <Button type="submit" size="sm" className="w-full" isLoading={isPending}>
                     Release Final Escrow to Freelancer
                   </Button>
                 </form>

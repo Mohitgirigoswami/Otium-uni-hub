@@ -117,6 +117,7 @@ export async function getIncognitoPosts(params?: GetPostsParams | string): Promi
             id: true,
             handle: true,
             avatarUrl: true,
+            userId: true, // Internal server check only
           },
         },
         college: {
@@ -145,9 +146,24 @@ export async function getIncognitoPosts(params?: GetPostsParams | string): Promi
       orderBy: { createdAt: "desc" },
     });
 
+    // Sanitize to guarantee Zero-Knowledge Privacy (raw User.id never leaves server)
+    const sanitizedPosts = posts.map((post) => {
+      const isAuthor = currentUserId ? post.profile.userId === currentUserId : false;
+      return {
+        ...post,
+        authorAnonymousId: post.profile.id,
+        isAuthor,
+        profile: {
+          id: post.profile.id,
+          handle: post.profile.handle,
+          avatarUrl: post.profile.avatarUrl,
+        },
+      };
+    });
+
     return {
       success: true,
-      data: posts,
+      data: sanitizedPosts,
     };
   } catch (error: any) {
     console.error("Error in getIncognitoPosts:", error);
@@ -175,6 +191,7 @@ export async function getIncognitoPostById(
             id: true,
             handle: true,
             avatarUrl: true,
+            userId: true, // Internal server check only
           },
         },
         college: {
@@ -200,6 +217,7 @@ export async function getIncognitoPostById(
                 id: true,
                 handle: true,
                 avatarUrl: true,
+                userId: true, // Internal server check only
               },
             },
           },
@@ -218,9 +236,32 @@ export async function getIncognitoPostById(
       return { success: false, error: "Post not found." };
     }
 
+    const isAuthor = userId ? post.profile.userId === userId : false;
+    const sanitizedPost = {
+      ...post,
+      authorAnonymousId: post.profile.id,
+      authorProfileId: post.profile.id,
+      isAuthor,
+      profile: {
+        id: post.profile.id,
+        handle: post.profile.handle,
+        avatarUrl: post.profile.avatarUrl,
+      },
+      comments: post.comments.map((c) => ({
+        ...c,
+        authorAnonymousId: c.profile.id,
+        isAuthor: userId ? c.profile.userId === userId : false,
+        profile: {
+          id: c.profile.id,
+          handle: c.profile.handle,
+          avatarUrl: c.profile.avatarUrl,
+        },
+      })),
+    };
+
     return {
       success: true,
-      data: post,
+      data: sanitizedPost,
     };
   } catch (error: any) {
     console.error("Error in getIncognitoPostById:", error);

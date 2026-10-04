@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   View,
   Text,
@@ -17,6 +17,7 @@ import {
   Easing,
   KeyboardAvoidingView,
 } from "react-native";
+import { useFocusEffect } from "@react-navigation/native";
 import * as DocumentPicker from "expo-document-picker";
 import * as Clipboard from "expo-clipboard";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -31,6 +32,7 @@ import { ClientServiceGuard } from "../../components/ClientServiceGuard";
 import { useUser } from "../../context/UserContext";
 import { apiClient } from "../../services/apiClient";
 import { WalletRechargeModal } from "../wallet/WalletRechargeModal";
+import { UnifiedCheckoutModal } from "../../components/checkout/UnifiedCheckoutModal";
 
 interface PrintOption {
   id: string;
@@ -40,7 +42,7 @@ interface PrintOption {
   pricePerUnit: number;
 }
 
-const PRINT_FORMATS: PrintOption[] = [
+const DEFAULT_PRINT_FORMATS: PrintOption[] = [
   {
     id: "BW_DOUBLE",
     name: "B&W Double-Sided",
@@ -88,7 +90,8 @@ const QUICK_LOCATION_CHIPS = [
 const STORAGE_KEY_PRINT_ORDERS = "@otium_cached_print_orders";
 const STORAGE_KEY_PRINT_SYNC_QUEUE = "@otium_print_pending_sync";
 const STORAGE_KEY_UPI_ID = "@otium_cached_upi_id";
-const STORAGE_KEY_WALLET_BALANCE = "@otium_cached_wallet_balance";
+const STORAGE_KEY_WALLET_PAISE = "@otium_cached_wallet_paise";
+const STORAGE_KEY_PRINT_RATES = "@otium_cached_print_rates";
 
 export function PrintStationScreen({ navigation }: any) {
   const { colors, isDark } = useTheme();
@@ -102,6 +105,7 @@ export function PrintStationScreen({ navigation }: any) {
   } | null>(null);
 
   const [isUploadingFile, setIsUploadingFile] = useState(false);
+  const [printFormats, setPrintFormats] = useState<PrintOption[]>(DEFAULT_PRINT_FORMATS);
   const [selectedFormat, setSelectedFormat] = useState<string>("BW_DOUBLE");
   const [copies, setCopies] = useState<number>(1);
   const [deliveryWindow, setDeliveryWindow] = useState<string>("Morning Drop (8:30 AM - 9:00 AM)");
@@ -126,26 +130,102 @@ export function PrintStationScreen({ navigation }: any) {
   const [walletBalancePaise, setWalletBalancePaise] = useState<number | null>(null);
   const [isWalletModalOpen, setIsWalletModalOpen] = useState(false);
 
+  const fetchPrintRates = async () => {
+    try {
+      const res = await apiClient.get<any>("/print/rates");
+      if (res.success && res.data) {
+        const d = res.data;
+        const updated: PrintOption[] = [
+          {
+            id: "BW_DOUBLE",
+            name: "B&W Double-Sided",
+            desc: "Duplex printing on 75 GSM paper",
+            rate: `₹${Number(d.doubleSidedRupees ?? 2.0).toFixed(2)} / page`,
+            pricePerUnit: Number(d.doubleSidedRupees ?? 2.0),
+          },
+          {
+            id: "BW_SINGLE",
+            name: "B&W Single-Sided",
+            desc: "Single-sided for official forms",
+            rate: `₹${Number(d.singleSidedRupees ?? 2.5).toFixed(2)} / page`,
+            pricePerUnit: Number(d.singleSidedRupees ?? 2.5),
+          },
+          {
+            id: "COLOR_DOUBLE",
+            name: "Color Double-Sided",
+            desc: "Vibrant duplex for reports",
+            rate: `₹${Number(d.colorDoubleRupees ?? 8.0).toFixed(2)} / page`,
+            pricePerUnit: Number(d.colorDoubleRupees ?? 8.0),
+          },
+          {
+            id: "COLOR_SINGLE",
+            name: "Color Single-Sided",
+            desc: "High-res presentation slides",
+            rate: `₹${Number(d.colorSingleRupees ?? 10.0).toFixed(2)} / page`,
+            pricePerUnit: Number(d.colorSingleRupees ?? 10.0),
+          },
+        ];
+        setPrintFormats(updated);
+        AsyncStorage.setItem(STORAGE_KEY_PRINT_RATES, JSON.stringify(updated)).catch(() => {});
+      }
+    } catch {
+      // Keep cached or default rates on offline/error
+    }
+  };
+
   const fetchWalletBalance = async () => {
     try {
       const res = await apiClient.get<any>("/wallet");
       if (res.success && res.data) {
         setWalletBalancePaise(res.data.balancePaise);
-        AsyncStorage.setItem(STORAGE_KEY_WALLET_BALANCE, String(res.data.balancePaise)).catch(() => {});
+        AsyncStorage.setItem(STORAGE_KEY_WALLET_PAISE, String(res.data.balancePaise)).catch(() => {});
       }
     } catch (err) {
       console.warn("Could not fetch wallet balance:", err);
     }
   };
 
+  const handlePasteUtr = async () => {
+    try {
+      const text = await Clipboard.getStringAsync();
+      const digits = text.replace(/\D/g, "");
+      if (digits.length >= 12) {
+        setUtrNumber(digits.slice(0, 12));
+      } else if (digits.length > 0) {
+        setUtrNumber(digits);
+      } else {
+        Alert.alert("Clipboard Empty", "No numeric UTR found in clipboard.");
+      }
+    } catch {
+      Alert.alert("Error", "Could not read from clipboard.");
+    }
+  };
+
   useEffect(() => {
-    AsyncStorage.getItem(STORAGE_KEY_WALLET_BALANCE)
+    AsyncStorage.getItem(STORAGE_KEY_PRINT_RATES)
+      .then((cached) => {
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) setPrintFormats(parsed);
+        }
+      })
+      .catch(() => {});
+    fetchPrintRates();
+
+    AsyncStorage.getItem(STORAGE_KEY_WALLET_PAISE)
       .then((val) => {
         if (val !== null) setWalletBalancePaise(Number(val));
       })
       .catch(() => {});
     fetchWalletBalance();
   }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      fetchPrintRates();
+      fetchWalletBalance();
+    }, [])
+  );
 
   // Animated spin for refresh button
   const spinAnim = useRef(new Animated.Value(0)).current;
@@ -371,7 +451,7 @@ export function PrintStationScreen({ navigation }: any) {
   };
 
   // Pricing calculations with ₹5.00 Minimum Campus Order Floor
-  const activeFormatObj = PRINT_FORMATS.find((f) => f.id === selectedFormat) || PRINT_FORMATS[0];
+  const activeFormatObj = printFormats.find((f) => f.id === selectedFormat) || printFormats[0];
   const pages = selectedFile?.pages || 1;
   const rawCost = pages * copies * activeFormatObj.pricePerUnit;
   const isFloorApplied = rawCost < 5.0;
@@ -382,20 +462,6 @@ export function PrintStationScreen({ navigation }: any) {
   const cashbackRupees = (cashbackPaise / 100).toFixed(2);
   const hasSufficientWalletBalance =
     walletBalancePaise !== null && walletBalancePaise >= finalCostPaise;
-
-  const handleCopyUpi = async () => {
-    await Clipboard.setStringAsync(upiId);
-    setCopiedUpi(true);
-    setTimeout(() => setCopiedUpi(false), 3000);
-    Alert.alert("Copied! 📋", `UPI ID "${upiId}" copied to clipboard.`);
-  };
-
-  const handleOpenUpiApp = () => {
-    const uri = `upi://pay?pa=${encodeURIComponent(upiId)}&pn=OtiumUniHub&am=${finalCost}&cu=INR&tn=PrintOrder_${encodeURIComponent(selectedFile?.name?.slice(0, 12) || "doc")}`;
-    Linking.openURL(uri).catch(() => {
-      Alert.alert("Notice", "No default UPI app detected. Please manually transfer to UPI ID: " + upiId);
-    });
-  };
 
   const handleOpenCheckoutModal = () => {
     if (!selectedFile) {
@@ -410,7 +476,7 @@ export function PrintStationScreen({ navigation }: any) {
     setIsCheckoutModalOpen(true);
   };
 
-  const handleSubmitOrder = async () => {
+  const processOrderSubmission = async (method: "WALLET" | "UPI", cleanUtr: string) => {
     if (!selectedFile) {
       Alert.alert("Missing PDF", "Please upload a document to proceed.");
       return;
@@ -421,27 +487,7 @@ export function PrintStationScreen({ navigation }: any) {
       return;
     }
 
-    const isWallet = paymentMethod === "WALLET";
-    const cleanUtr = isWallet ? "WALLET_PAYMENT" : utrNumber.trim();
-
-    if (isWallet) {
-      if (!hasSufficientWalletBalance) {
-        Alert.alert(
-          "Insufficient Wallet Balance",
-          `Your wallet balance is ₹${((walletBalancePaise || 0) / 100).toFixed(2)}, but this print order costs ₹${finalCost}. Please top up your wallet.`,
-          [
-            { text: "Cancel", style: "cancel" },
-            { text: "Top Up Wallet", onPress: () => setIsWalletModalOpen(true) },
-          ]
-        );
-        return;
-      }
-    } else {
-      if (!cleanUtr || cleanUtr.length < 6) {
-        Alert.alert("Missing UTR", "Please enter the 12-digit transaction UTR number from your payment receipt.");
-        return;
-      }
-    }
+    const isWallet = method === "WALLET";
 
     setIsSubmitting(true);
     const orderPayload = {
@@ -453,9 +499,9 @@ export function PrintStationScreen({ navigation }: any) {
       deliveryLocation: deliveryLocation.trim(),
       deliverySlot: deliveryWindow,
       phoneNumber: phone ? phone.replace(/\D/g, "") : undefined,
-      utr: isWallet ? undefined : utrNumber.trim(),
-      utrNumber: isWallet ? undefined : utrNumber.trim(),
-      paymentMethod: isWallet ? "WALLET" : "UPI",
+      utr: isWallet ? undefined : cleanUtr,
+      utrNumber: isWallet ? undefined : cleanUtr,
+      paymentMethod: method,
       fileUrl: selectedFile.fileUrl || "https://otiumhub.in/placeholder-doc.pdf",
     };
 
@@ -483,7 +529,6 @@ export function PrintStationScreen({ navigation }: any) {
         Alert.alert("Order Placed! 🚀", successMsg);
         setIsCheckoutModalOpen(false);
         setSelectedFile(null);
-        setUtrNumber("");
         triggerCooldown();
         fetchOrders(true);
       } else {
@@ -527,11 +572,18 @@ export function PrintStationScreen({ navigation }: any) {
       );
       setIsCheckoutModalOpen(false);
       setSelectedFile(null);
-      setUtrNumber("");
       triggerCooldown();
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handlePayWithWallet = async () => {
+    await processOrderSubmission("WALLET", "WALLET_PAYMENT");
+  };
+
+  const handlePayWithUpi = async (cleanUtr: string) => {
+    await processOrderSubmission("UPI", cleanUtr);
   };
 
   return (
@@ -665,7 +717,7 @@ export function PrintStationScreen({ navigation }: any) {
           </Text>
 
           <View style={styles.formatGrid}>
-            {PRINT_FORMATS.map((opt) => {
+            {printFormats.map((opt) => {
               const isSelected = selectedFormat === opt.id;
               return (
                 <TouchableOpacity
@@ -981,264 +1033,33 @@ export function PrintStationScreen({ navigation }: any) {
           })
         )}
 
-        {/* 7. Dedicated Full Checkout Modal */}
-        <Modal
+        {/* 7. Dedicated Full Unified Checkout Modal */}
+        <UnifiedCheckoutModal
           visible={isCheckoutModalOpen}
-          animationType="slide"
-          transparent={true}
-          onRequestClose={() => setIsCheckoutModalOpen(false)}
-        >
-          <KeyboardAvoidingView
-            style={styles.modalOverlay}
-            behavior={Platform.OS === "ios" ? "padding" : "height"}
-          >
-            <TouchableOpacity
-              style={styles.modalBackdropTouch}
-              activeOpacity={1}
-              onPress={() => setIsCheckoutModalOpen(false)}
-            />
-            <View style={[styles.checkoutModalContent, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <View style={styles.modalHeader}>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.modalTitle, { color: colors.text }]}>Print Order Checkout</Text>
-                  <Text style={[styles.modalSubtitle, { color: colors.textMuted }]}>
-                    Review order specifications & verify UPI payment
-                  </Text>
-                </View>
-                <TouchableOpacity onPress={() => setIsCheckoutModalOpen(false)} style={{ padding: 4 }}>
-                  <Ionicons name="close" size={22} color={colors.textMuted} />
-                </TouchableOpacity>
-              </View>
-
-              <ScrollView
-                showsVerticalScrollIndicator={false}
-                keyboardShouldPersistTaps="handled"
-                style={styles.modalScroll}
-                contentContainerStyle={styles.modalScrollContent}
-              >
-                {/* Itemized Order Summary */}
-                <View style={[styles.checkoutSummaryCard, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
-                  <View style={styles.checkoutItemRow}>
-                    <Feather name="file-text" size={14} color={colors.primary} />
-                    <Text style={[styles.checkoutItemLabel, { color: colors.text }]} numberOfLines={1}>
-                      {selectedFile?.name}
-                    </Text>
-                  </View>
-
-                  <View style={styles.checkoutDetailGrid}>
-                    <View style={styles.detailCol}>
-                      <Text style={[styles.detailKey, { color: colors.textMuted }]}>Pages</Text>
-                      <Text style={[styles.detailVal, { color: colors.text }]}>{selectedFile?.pages} pages</Text>
-                    </View>
-                    <View style={styles.detailCol}>
-                      <Text style={[styles.detailKey, { color: colors.textMuted }]}>Format</Text>
-                      <Text style={[styles.detailVal, { color: colors.text }]}>{activeFormatObj.name}</Text>
-                    </View>
-                    <View style={styles.detailCol}>
-                      <Text style={[styles.detailKey, { color: colors.textMuted }]}>Copies</Text>
-                      <Text style={[styles.detailVal, { color: colors.text }]}>{copies} copy</Text>
-                    </View>
-                  </View>
-
-                  <View style={[styles.checkoutDropRow, { borderTopColor: colors.border }]}>
-                    <Feather name="map-pin" size={12} color={colors.primary} />
-                    <Text style={[styles.checkoutDropText, { color: colors.textMuted }]}>
-                      Drop: <Text style={{ color: colors.text, fontWeight: "600" }}>{deliveryLocation}</Text> ({deliveryWindow.split(" (")[0]})
-                    </Text>
-                  </View>
-
-                  {/* Pricing row in modal */}
-                  <View style={[styles.modalPricingRow, { borderTopColor: colors.border }]}>
-                    <View>
-                      <Text style={[styles.modalBaseCost, { color: colors.textMuted }]}>
-                        Base: ₹{rawCost.toFixed(2)} {isFloorApplied ? `+ ₹${minFloorAdjustment.toFixed(2)} (Min Floor)` : ""}
-                      </Text>
-                      <Text style={[styles.modalTotalDue, { color: colors.primary }]}>
-                        Total: ₹{finalCost}
-                      </Text>
-                    </View>
-                    <Badge variant="primary" size="md">
-                      ₹{finalCost}
-                    </Badge>
-                  </View>
-                </View>
-
-                {/* Payment Method Selector */}
-                <View style={{ marginTop: 14 }}>
-                  <Text style={[styles.subLabel, { color: colors.text, marginBottom: 8 }]}>
-                    Select Payment Method
-                  </Text>
-                  
-                  <View style={{ flexDirection: "row", gap: 8, marginBottom: 12 }}>
-                    {/* Option 1: Otium Wallet */}
-                    <TouchableOpacity
-                      onPress={() => setPaymentMethod("WALLET")}
-                      style={{
-                        flex: 1,
-                        padding: 10,
-                        borderRadius: 10,
-                        borderWidth: 2,
-                        borderColor: paymentMethod === "WALLET" ? colors.primary : colors.border,
-                        backgroundColor: paymentMethod === "WALLET" ? colors.primary + "15" : colors.secondary,
-                      }}
-                    >
-                      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-                        <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
-                          <Feather name="zap" size={13} color={paymentMethod === "WALLET" ? colors.primary : colors.textMuted} />
-                          <Text style={{ fontSize: 12, fontWeight: "700", color: colors.text }}>E-Wallet</Text>
-                        </View>
-                        <View style={{ backgroundColor: "#059669", paddingHorizontal: 5, paddingVertical: 2, borderRadius: 4 }}>
-                          <Text style={{ fontSize: 8, fontWeight: "800", color: "#fff" }}>+2% CASHBACK</Text>
-                        </View>
-                      </View>
-                      <Text style={{ fontSize: 11, color: colors.textMuted, marginTop: 6 }}>
-                        Bal: <Text style={{ fontWeight: "700", color: colors.text }}>₹{((walletBalancePaise || 0) / 100).toFixed(2)}</Text>
-                      </Text>
-                    </TouchableOpacity>
-
-                    {/* Option 2: Direct UPI */}
-                    <TouchableOpacity
-                      onPress={() => setPaymentMethod("UPI")}
-                      style={{
-                        flex: 1,
-                        padding: 10,
-                        borderRadius: 10,
-                        borderWidth: 2,
-                        borderColor: paymentMethod === "UPI" ? colors.primary : colors.border,
-                        backgroundColor: paymentMethod === "UPI" ? colors.primary + "15" : colors.secondary,
-                      }}
-                    >
-                      <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
-                        <Ionicons name="qr-code-outline" size={14} color={paymentMethod === "UPI" ? colors.primary : colors.textMuted} />
-                        <Text style={{ fontSize: 12, fontWeight: "700", color: colors.text }}>Direct UPI</Text>
-                      </View>
-                      <Text style={{ fontSize: 11, color: colors.textMuted, marginTop: 6 }}>
-                        Pay & Enter UTR
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-
-                {/* If Wallet Selected */}
-                {paymentMethod === "WALLET" && (
-                  <View style={{ padding: 12, borderRadius: 10, borderWidth: 1, borderColor: hasSufficientWalletBalance ? colors.primary + "40" : "#d9770640", backgroundColor: hasSufficientWalletBalance ? colors.primary + "10" : "#d9770610", marginBottom: 10 }}>
-                    {hasSufficientWalletBalance ? (
-                      <View>
-                        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                          <Ionicons name="checkmark-circle" size={16} color="#059669" />
-                          <Text style={{ fontSize: 12, fontWeight: "700", color: colors.text }}>1-Click Payment Available</Text>
-                        </View>
-                        <Text style={{ fontSize: 11, color: colors.textMuted, marginTop: 4 }}>
-                          ⚡ Instant confirmation without leaving the app. You'll earn +₹{cashbackRupees} (2%) cashback credited directly to your wallet!
-                        </Text>
-                      </View>
-                    ) : (
-                      <View>
-                        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-                          <Text style={{ fontSize: 12, fontWeight: "700", color: "#d97706" }}>Insufficient Balance</Text>
-                          <TouchableOpacity
-                            onPress={() => setIsWalletModalOpen(true)}
-                            style={{ backgroundColor: colors.primary, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 }}
-                          >
-                            <Text style={{ fontSize: 11, fontWeight: "700", color: "#fff" }}>Top Up Wallet</Text>
-                          </TouchableOpacity>
-                        </View>
-                        <Text style={{ fontSize: 11, color: colors.textMuted, marginTop: 4 }}>
-                          Short by ₹{(((finalCostPaise - (walletBalancePaise || 0))) / 100).toFixed(2)}. Recharge now to unlock 1-click checkout + 2% cashback.
-                        </Text>
-                      </View>
-                    )}
-                  </View>
-                )}
-
-                {/* If UPI Selected */}
-                {paymentMethod === "UPI" && (
-                  <View>
-                    {/* Campus UPI Section */}
-                    <View style={[styles.checkoutUpiSection, { borderColor: colors.border }]}>
-                      <View style={styles.upiHeader}>
-                        <Ionicons name="qr-code-outline" size={16} color={colors.primary} />
-                        <Text style={[styles.upiTitle, { color: colors.text }]}>Pay via Campus UPI ID</Text>
-                      </View>
-
-                      <View style={[styles.upiIdRow, { backgroundColor: colors.secondary, borderColor: colors.border }]}>
-                        <Text style={[styles.upiIdText, { color: colors.text }]} numberOfLines={1}>
-                          {upiId}
-                        </Text>
-                        <TouchableOpacity onPress={handleCopyUpi} style={styles.copyBtn}>
-                          <Feather name={copiedUpi ? "check" : "copy"} size={14} color={colors.primary} />
-                          <Text style={[styles.copyText, { color: colors.primary }]}>
-                            {copiedUpi ? "Copied" : "Copy"}
-                          </Text>
-                        </TouchableOpacity>
-                      </View>
-
-                      <Button
-                        title={`Pay ₹${finalCost} with UPI App`}
-                        variant="outline"
-                        size="sm"
-                        onPress={handleOpenUpiApp}
-                        style={{ marginTop: 8 }}
-                        leftIcon={<Feather name="external-link" size={13} color={colors.primary} />}
-                      />
-                    </View>
-
-                    {/* 12-digit UTR Input */}
-                    <View style={{ marginTop: 14 }}>
-                      <Text style={[styles.subLabel, { color: colors.text }]}>12-Digit Transaction UTR Number *</Text>
-                      <Text style={[styles.utrHint, { color: colors.textMuted }]}>
-                        Found on your Google Pay, PhonePe, or Paytm success screen
-                      </Text>
-                      <Input
-                        placeholder="e.g. 425619283741"
-                        value={utrNumber}
-                        onChangeText={setUtrNumber}
-                        keyboardType="numeric"
-                        maxLength={20}
-                        containerStyle={{ marginTop: 4 }}
-                      />
-                    </View>
-                  </View>
-                )}
-
-                {/* Modal Confirmation Footer */}
-                <View style={styles.modalFooter}>
-                  <Button
-                    title="Back"
-                    variant="outline"
-                    size="sm"
-                    onPress={() => setIsCheckoutModalOpen(false)}
-                  />
-                  <Button
-                    title={
-                      isSubmitting
-                        ? "Authorizing..."
-                        : cooldownSeconds > 0
-                        ? `✓ Placed (${cooldownSeconds}s)`
-                        : paymentMethod === "WALLET"
-                        ? hasSufficientWalletBalance
-                          ? `⚡ Pay ₹${finalCost} (+₹${cashbackRupees})`
-                          : `Top Up (Short ₹${(((finalCostPaise - (walletBalancePaise || 0))) / 100).toFixed(2)})`
-                        : `Confirm & Submit (₹${finalCost})`
-                    }
-                    variant="default"
-                    size="sm"
-                    onPress={
-                      paymentMethod === "WALLET" && !hasSufficientWalletBalance
-                        ? () => setIsWalletModalOpen(true)
-                        : handleSubmitOrder
-                    }
-                    disabled={
-                      isSubmitting ||
-                      cooldownSeconds > 0 ||
-                      (paymentMethod === "UPI" && !utrNumber.trim())
-                    }
-                  />
-                </View>
-              </ScrollView>
-            </View>
-          </KeyboardAvoidingView>
-        </Modal>
+          onClose={() => setIsCheckoutModalOpen(false)}
+          title="Print Order Checkout"
+          subtitle="Review document specifications & complete payment"
+          amountRupees={Number(finalCost)}
+          amountPaise={finalCostPaise}
+          itemTitle={selectedFile?.name || "Document Print Job"}
+          itemDetails={[
+            { label: "Pages", value: `${selectedFile?.pages || 1} pages` },
+            { label: "Copies", value: `${copies}x` },
+            { label: "Format", value: activeFormatObj?.name || "Standard" },
+            { label: "Delivery Slot", value: deliveryWindow ? deliveryWindow.split(" (")[0] + " Slot" : "Standard" },
+            { label: "Drop Location", value: deliveryLocation || "Campus" },
+          ]}
+          floorAdjustmentRupees={minFloorAdjustment}
+          allowWalletPayment={true}
+          cashbackPercentage={2}
+          upiId={upiId}
+          upiTransactionNote={`Print_${selectedFile?.name?.replace(/[^a-zA-Z0-9]/g, "").slice(0, 10) || "doc"}`}
+          onOpenTopup={() => setIsWalletModalOpen(true)}
+          onPayWithWallet={handlePayWithWallet}
+          onPayWithUpi={handlePayWithUpi}
+          isSubmitting={isSubmitting}
+          cooldownSeconds={cooldownSeconds}
+        />
 
         {/* E-Wallet Recharge Modal */}
         <WalletRechargeModal
@@ -1889,6 +1710,30 @@ const styles = StyleSheet.create({
     fontSize: 12,
     minHeight: 80,
     textAlignVertical: "top",
+  },
+  pasteChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  pasteChipText: {
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  stepsCard: {
+    padding: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    gap: 4,
+    marginTop: 8,
+  },
+  stepItem: {
+    fontSize: 11,
+    lineHeight: 16,
   },
   modalFooter: {
     flexDirection: "row",

@@ -74,6 +74,22 @@ export function WalletRechargeModal({
   const validQrAmount = isAmountValid ? currentRechargeAmount : 100;
   const upiUrl = `upi://pay?pa=${encodeURIComponent(platformUpiId)}&pn=OtiumCampusWallet&am=${validQrAmount}&cu=INR&tn=TopUp_${validQrAmount}`;
 
+  const handlePasteUtr = async () => {
+    try {
+      const text = await Clipboard.getStringAsync();
+      const digits = text.replace(/\D/g, "");
+      if (digits.length >= 12) {
+        setUtrNumber(digits.slice(0, 12));
+      } else if (digits.length > 0) {
+        setUtrNumber(digits);
+      } else {
+        Alert.alert("Clipboard Empty", "No numeric UTR found in clipboard.");
+      }
+    } catch {
+      Alert.alert("Error", "Could not read from clipboard.");
+    }
+  };
+
   const handleOpenUpiApp = async () => {
     if (isUnderMin) {
       Alert.alert("Invalid Amount", "Minimum recharge amount is ₹20.00.");
@@ -91,14 +107,14 @@ export function WalletRechargeModal({
         await Clipboard.setStringAsync(platformUpiId);
         Alert.alert(
           "UPI ID Copied 📋",
-          `Please open your UPI payment app (GPay/PhonePe/Paytm) and pay to:\n\n${platformUpiId}\n\nAmount: ₹${currentRechargeAmount}`
+          `Please open your UPI payment app (GPay/PhonePe/Paytm) and pay to:\n\n${platformUpiId}\n\nAmount: ₹${currentRechargeAmount}\n\nAfter paying, copy the 12-digit UTR from your receipt and tap "Paste UTR" below.`
         );
       }
     } catch {
       await Clipboard.setStringAsync(platformUpiId);
       Alert.alert(
         "UPI ID Copied 📋",
-        `Could not open UPI app directly. Pay to:\n\n${platformUpiId}`
+        `Could not open UPI app directly. Pay to:\n\n${platformUpiId}\n\nAfter paying, copy the 12-digit UTR from your receipt and tap "Paste UTR" below.`
       );
     }
   };
@@ -358,9 +374,21 @@ export function WalletRechargeModal({
                 </View>
 
                 {/* 12-Digit UTR Input */}
-                <Text style={[styles.sectionLabel, { color: colors.text, marginTop: 12 }]}>
-                  2. Enter 12-Digit UTR Number
-                </Text>
+                <View style={styles.utrHeaderRow}>
+                  <Text style={[styles.sectionLabel, { color: colors.text, marginBottom: 0 }]}>
+                    2. Enter 12-Digit UTR Number
+                  </Text>
+                  <TouchableOpacity
+                    onPress={handlePasteUtr}
+                    style={[
+                      styles.pasteChip,
+                      { backgroundColor: colors.primary + "18", borderColor: colors.primary + "40" },
+                    ]}
+                  >
+                    <Feather name="clipboard" size={12} color={colors.primary} />
+                    <Text style={[styles.pasteChipText, { color: colors.primary }]}>Paste UTR</Text>
+                  </TouchableOpacity>
+                </View>
                 <TextInput
                   placeholder="e.g. 428190827361"
                   placeholderTextColor={colors.textMuted}
@@ -372,11 +400,27 @@ export function WalletRechargeModal({
                     styles.utrInput,
                     {
                       backgroundColor: colors.backgroundSecondary,
-                      borderColor: colors.border,
+                      borderColor: utrNumber.length === 12 ? colors.success : colors.border,
                       color: colors.text,
                     },
                   ]}
                 />
+
+                {/* 3-Step Integrated Checkout Guide */}
+                <View style={[styles.stepsCard, { backgroundColor: colors.backgroundSecondary, borderColor: colors.border }]}>
+                  <Text style={[styles.stepItem, { color: colors.textMuted }]}>
+                    <Text style={{ fontWeight: "700", color: colors.text }}>1. </Text>
+                    Tap "Pay via UPI App" above to open GPay, PhonePe, or Paytm.
+                  </Text>
+                  <Text style={[styles.stepItem, { color: colors.textMuted }]}>
+                    <Text style={{ fontWeight: "700", color: colors.text }}>2. </Text>
+                    Copy the 12-digit UTR / reference number from your payment receipt.
+                  </Text>
+                  <Text style={[styles.stepItem, { color: colors.textMuted }]}>
+                    <Text style={{ fontWeight: "700", color: colors.text }}>3. </Text>
+                    Tap "Paste UTR" above and submit for instant verification.
+                  </Text>
+                </View>
 
                 {/* Submit Button */}
                 <TouchableOpacity
@@ -636,6 +680,36 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "700",
   },
+  utrHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: 14,
+  },
+  pasteChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  pasteChipText: {
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  stepsCard: {
+    padding: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    gap: 4,
+    marginTop: 6,
+  },
+  stepItem: {
+    fontSize: 11,
+    lineHeight: 16,
+  },
   utrInput: {
     borderWidth: 1,
     borderRadius: 10,
@@ -644,6 +718,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: "monospace",
     letterSpacing: 1.5,
+    marginTop: 4,
   },
   submitBtn: {
     paddingVertical: 14,

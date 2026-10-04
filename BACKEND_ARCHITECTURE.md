@@ -474,14 +474,18 @@ export async function getBlindParticipantId(userId: string): Promise<string> {
 }
 ```
 
-#### Database Sanitization:
-- In anonymous conversations, `Conversation.anonParticipantOneId` and `anonParticipantTwoId` store blind hashes.
-- `Message.senderId` is explicitly set to `null` in PostgreSQL; only `anonSenderId` (the blind hash) and `incognitoProfileId` are populated.
-- Queries for anonymous threads strictly omit any joins to the `User` table.
+#### Zero-Knowledge Author Sanitization & Blind DM Resolution:
+- Public Whisper Wall feeds and post details (`getIncognitoPosts`, `getIncognitoPostById`, and `GET /api/incognito`) strictly sanitize author identity:
+  - `profile.id` is mapped to `authorAnonymousId` (an opaque CUID).
+  - The server evaluates `isAuthor = (profile.userId === currentUserId)` in-memory and completely strips raw `User.id` before emitting JSON.
+  - When a student initiates a Whisper DM (`getOrCreateConversation`), they provide the recipient's `authorAnonymousId`. The backend securely resolves this internal `IncognitoProfile.id` in server memory and hashes both parties to HMAC Blind IDs (`getBlindParticipantId`). No raw `User.id` is ever disclosed over the network or stored in conversation records.
 
-#### Real-Time vs Polling Parity:
-- **Web**: Subscribes directly to PostgreSQL table change events via **Supabase Realtime** (`supabase.channel('conversation-${activeId}').on('postgres_changes', ...)`).
-- **Mobile**: Implements a 12-second background sync interval combined with immediate optimistic delivery and local caching via `AsyncStorage` (`@otium_thread_${id}`).
+#### Profile & Anonymous Alias Management (`/api/profile`):
+- `GET /api/profile`: Returns student identity, room/hostel data, `anonymousAlias`, and live `walletBalancePaise` / `walletBalanceRupees`.
+- `PATCH /api/profile`: Supports setting and updating `anonymousAlias` (3-25 alphanumeric/underscore characters), enforcing unique aliases across campus and upserting the student's `IncognitoProfile`.
+
+#### Dynamic Express Print Pricing (`GET /api/print/rates`):
+- Dynamically resolves live page rates from `prisma.printSetting` (B&W double/single sided, color double/single sided) in integer Paise and floating-point Rupees, preventing stale hardcoded pricing assumptions on both Web and Mobile.
 
 ---
 
