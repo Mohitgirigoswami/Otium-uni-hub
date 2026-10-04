@@ -1,7 +1,8 @@
 # Dependencies
 node_modules
 .agents
-/node_modules
+/node_modules  
+graphify-out
 mobile/node_modules
 .expo
 mobile/.expo
