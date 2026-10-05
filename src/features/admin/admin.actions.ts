@@ -831,7 +831,9 @@ const STANDARD_CAMPUS_SERVICES = [
 
 /**
  * 13. Get all service toggle records for a specific campus.
- * Automatically seeds/upserts default active states (isEnabled: true) if not yet configured.
+ * Seeds default active states (isEnabled: true) via a SINGLE createMany call
+ * (skipDuplicates: true) instead of N sequential upserts — avoids connection
+ * pool exhaustion on every /api/services request.
  * Includes safe fallback if the table hasn't been migrated yet (P2021).
  */
 export async function getCampusServices(
@@ -852,26 +854,19 @@ export async function getCampusServices(
       return { success: true, data: defaultServices };
     }
 
-    // Try ensuring all standard services exist for this campus
-    for (const std of STANDARD_CAMPUS_SERVICES) {
-      await (prisma as any).campusService.upsert({
-        where: {
-          campusId_serviceKey: {
-            campusId,
-            serviceKey: std.key,
-          },
-        },
-        create: {
-          campusId,
-          serviceKey: std.key,
-          serviceName: std.name,
-          isEnabled: true,
-          maintenanceMessage: "This service is temporarily paused for your campus.",
-        },
-        update: {},
-      });
-    }
+    // 1. Seed any missing rows in ONE query (skipDuplicates avoids upsert N-plex)
+    await (prisma as any).campusService.createMany({
+      data: STANDARD_CAMPUS_SERVICES.map((s) => ({
+        campusId,
+        serviceKey: s.key,
+        serviceName: s.name,
+        isEnabled: true,
+        maintenanceMessage: "This service is temporarily paused for your campus.",
+      })),
+      skipDuplicates: true,
+    });
 
+    // 2. Read the actual stored states (includes admin-disabled ones)
     const services = await (prisma as any).campusService.findMany({
       where: { campusId },
       orderBy: { serviceKey: "asc" },
@@ -882,7 +877,8 @@ export async function getCampusServices(
       data: services.length > 0 ? services : defaultServices,
     };
   } catch (error: any) {
-    // P2021: Table does not exist in database
+    // P2021: Table does not exist — return all-enabled defaults so app is usable
+    // NOTE: this means disabled services will appear enabled during DB outage
     console.warn("getCampusServices fallback (Table not migrated or DB error):", error?.message);
     return {
       success: true,
@@ -890,6 +886,7 @@ export async function getCampusServices(
     };
   }
 }
+
 
 /**
  * 14. Toggle campus-specific service status and update maintenance message

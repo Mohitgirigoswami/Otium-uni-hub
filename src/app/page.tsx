@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useUser } from "@/components/providers/UserContext";
+import { APP_CONFIG } from "@/lib/app-config";
 import {
   Printer,
   CalendarCheck,
@@ -20,6 +21,7 @@ import {
   CheckCircle2,
   ChevronDown,
   Building2,
+  Smartphone,
 } from "lucide-react";
 
 export default function LandingPage() {
@@ -130,7 +132,20 @@ export default function LandingPage() {
               View Print Station Rates
             </Button>
           </Link>
+          {/* Android APK Download — link managed centrally in src/lib/app-config.ts */}
+          <a
+            href={APP_CONFIG.APK_DOWNLOAD_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            download
+          >
+            <Button variant="outline" size="lg" className="gap-2">
+              <Smartphone className="w-4 h-4" />
+              Download Android App
+            </Button>
+          </a>
         </div>
+
       </section>
 
       {/* 2. Core Modules Grid */}

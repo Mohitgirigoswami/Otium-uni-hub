@@ -144,7 +144,11 @@ export function ClientServiceGuard({ serviceKey, children }: ClientServiceGuardP
 
     try {
       const collegeId = user?.collegeId || user?.college?.id;
-      const endpoint = collegeId ? `/services?campusId=${encodeURIComponent(collegeId)}` : "/services";
+      // Append bust=1 so admin toggles propagate immediately past the server cache
+      const bustParam = isManualPing ? "&bust=1" : "";
+      const endpoint = collegeId
+        ? `/services?campusId=${encodeURIComponent(collegeId)}${bustParam}`
+        : `/services${bustParam ? `?${bustParam.slice(1)}` : ""}`;
       const res = await apiClient.get(endpoint);
 
       if (res.success && Array.isArray(res.data)) {
@@ -188,6 +192,14 @@ export function ClientServiceGuard({ serviceKey, children }: ClientServiceGuardP
   useEffect(() => {
     checkService();
   }, [normalizedKey, user?.collegeId]);
+
+  // Re-check every 30s when service is disabled so re-enablement propagates fast
+  useEffect(() => {
+    if (!serviceStatus.isEnabled) {
+      const interval = setInterval(() => checkService(), 30_000);
+      return () => clearInterval(interval);
+    }
+  }, [serviceStatus.isEnabled, normalizedKey, user?.collegeId]);
 
   if (isChecking) {
     return <>{children}</>;

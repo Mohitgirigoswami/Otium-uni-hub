@@ -13,6 +13,8 @@ import {
   Image,
   KeyboardAvoidingView,
   Platform,
+  Share,
+  Linking,
 } from "react-native";
 import { Ionicons, Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useTheme } from "../../context/ThemeContext";
@@ -25,6 +27,11 @@ import { apiClient } from "../../services/apiClient";
 import { useUser } from "../../context/UserContext";
 
 const STORAGE_KEY_COLLEGES = "@otium_cached_colleges";
+
+/** APK download URL — update here when a new GitHub Release is published */
+const APK_DOWNLOAD_URL =
+  "https://github.com/Mohitgirigoswami/Otium-uni-hub/releases/latest/download/otium.apk";
+
 
 export function ProfileScreen() {
   const { theme: currentThemeId, colors, setTheme, isDark } = useTheme();
@@ -521,6 +528,70 @@ export function ProfileScreen() {
             v1.2.0 (SDK 54 Release)
           </Text>
         </View>
+      </Card>
+
+      {/* Share & Download App Card */}
+      <Card style={styles.sectionCard}>
+        <View style={styles.sectionHeaderRow}>
+          <View>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>
+              Share Otium with Classmates
+            </Text>
+            <Text style={[styles.sectionSubtitle, { color: colors.textSecondary }]}>
+              Invite your batch via WhatsApp or download the latest APK
+            </Text>
+          </View>
+        </View>
+
+        {/* Share via WhatsApp / native share */}
+        <TouchableOpacity
+          activeOpacity={0.8}
+          onPress={async () => {
+            try {
+              await Share.share({
+                message:
+                  `🔥 Hey! Check out Otium — the campus app for YMCA students!\n\n` +
+                  `✅ Print docs from your room (no queue)\n` +
+                  `✅ Track attendance before it's too late\n` +
+                  `✅ Anonymous Whisper Wall 👀\n` +
+                  `✅ Peer Gigs with escrow protection\n\n` +
+                  `Try instantly (no install): https://otium-uni-hub.vercel.app\n` +
+                  `📲 Android App: ${APK_DOWNLOAD_URL}`,
+                title: "Otium Uni Hub — Campus App",
+              });
+            } catch (e) {
+              // user dismissed share sheet — no action needed
+            }
+          }}
+          style={[
+            styles.shareBtn,
+            { backgroundColor: colors.primary, borderColor: colors.primary },
+          ]}
+        >
+          <Ionicons name="share-social-outline" size={17} color={colors.primaryForeground} />
+          <Text style={[styles.shareBtnText, { color: colors.primaryForeground }]}>
+            Share App with Classmates
+          </Text>
+        </TouchableOpacity>
+
+        {/* Direct APK download */}
+        <TouchableOpacity
+          activeOpacity={0.8}
+          onPress={() => Linking.openURL(APK_DOWNLOAD_URL)}
+          style={[
+            styles.shareBtn,
+            {
+              backgroundColor: colors.cardSecondary,
+              borderColor: colors.border,
+              marginTop: 10,
+            },
+          ]}
+        >
+          <Ionicons name="download-outline" size={17} color={colors.primary} />
+          <Text style={[styles.shareBtnText, { color: colors.primary }]}>
+            Download Latest APK (v1.0.5)
+          </Text>
+        </TouchableOpacity>
       </Card>
 
       {/* Sign Out Button */}
@@ -1066,6 +1137,21 @@ const styles = StyleSheet.create({
   },
   collegePillText: {
     fontSize: 12,
+    fontWeight: "700",
+  },
+  shareBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 13,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginTop: 14,
+  },
+  shareBtnText: {
+    fontSize: 13.5,
     fontWeight: "700",
   },
 });
