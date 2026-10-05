@@ -736,6 +736,16 @@ Otium uses physics-based spring transitions rather than linear CSS fades:
   - Enforces client-side 50MB file size checks prior to network transmission.
   - Sanitizes picked PDF filenames (`safeFileName = (asset.name || "document.pdf").replace(/[^a-zA-Z0-9._-]/g, "_")`) to prevent multipart header parsing failures.
 
+### 8.17 Whisper Wall DM Initiation & Route Parameter Consumption
+- **Author Identity Decoupled from Administrative Moderation (`mobile/src/features/whisper-wall/WhisperWallScreen.tsx`)**:
+  - Separates `isRealAuthor` (`item.isAuthor`) from `canDelete` (`isRealAuthor || user.role === 'SUPER_ADMIN' || user.role === 'CAMPUS_MODERATOR'`).
+  - Ensures administrative accounts (`SUPER_ADMIN`, `CAMPUS_MODERATOR`) retain moderation deletion capabilities without falsely suppressing the "Whisper DM" button or triggering self-chat blocking alerts.
+- **One-Time Navigation Route Parameter Consumption (`mobile/src/features/messages/MessagesScreen.tsx`)**:
+  - `MessagesScreen` consumes `route.params.conversationId` and immediately invokes `navigation.setParams({ conversationId: undefined, initialTab: undefined })`.
+  - Eliminates infinite re-opening loops when periodic conversation polling (12s timer) refreshes the inbox while a conversation is open or closed.
+- **Web Delta Sync ISO Date Normalization (`src/app/messages/page.tsx`)**:
+  - Formats delta-sync `after` query parameters strictly as ISO-8601 strings (`toISOString()`), eliminating localized date-string parsing failures on REST endpoints.
+
 ---
 *Document maintained by Antigravity AI Engineering Suite.*
 

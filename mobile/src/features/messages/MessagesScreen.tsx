@@ -222,12 +222,18 @@ export function MessagesScreen({ navigation, route }: any) {
   useEffect(() => {
     if (route?.params?.conversationId) {
       const convId = route.params.conversationId;
+      const isWhisper = route?.params?.initialTab === "whisper";
+      if (isWhisper) {
+        setActiveTab("whisper");
+      } else if (route?.params?.initialTab === "direct") {
+        setActiveTab("direct");
+      }
+
       const found = conversations.find((c) => c.id === convId);
       if (found) {
         openChat(found);
       } else {
         // Instant stub open: 0ms delay, never blocks user on connecting spinner
-        const isWhisper = route?.params?.initialTab === "whisper";
         const stub: ConversationItem = {
           id: convId,
           isAnonymousChat: isWhisper,
@@ -246,8 +252,11 @@ export function MessagesScreen({ navigation, route }: any) {
         openChat(stub);
         fetchConversations();
       }
+
+      // Clear params so closing chat or background poll intervals don't re-open it
+      navigation?.setParams({ conversationId: undefined, initialTab: undefined });
     }
-  }, [route?.params?.conversationId, conversations.length]);
+  }, [route?.params?.conversationId]);
 
   // Helper to persist thread messages to local storage
   const saveThreadLocally = (convId: string, msgs: any[]) => {

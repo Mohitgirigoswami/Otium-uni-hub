@@ -167,10 +167,9 @@ function MessagesContent() {
       if (!latestMsg?.createdAt) return;
 
       try {
+        const safeAfter = new Date(latestMsg.createdAt).toISOString();
         const res = await fetch(
-          `/api/chat/${activeConversationId}/messages?after=${encodeURIComponent(
-            latestMsg.createdAt
-          )}`
+          `/api/chat/${activeConversationId}/messages?after=${encodeURIComponent(safeAfter)}`
         );
         const json = await res.json();
         if (json.success && Array.isArray(json.data) && json.data.length > 0) {

@@ -498,6 +498,16 @@ export async function getBlindParticipantId(userId: string): Promise<string> {
   - `verifyAuth(req)` runs *before* multipart parsing to reject unauthenticated requests immediately.
   - Passes parsed `file`, `campusId`, and `auth.user.id` directly to `uploadPrintFile`, eliminating read-only `FormData.set()` runtime mutations in Next.js / Undici.
 
+#### Dual-Gateway Unified Authentication Resolution (`verifyAuth`):
+- **Cross-Platform Credential Resolution**:
+  1. **Mobile Bearer Header**: Reads and decodes `Authorization: Bearer <token>`.
+  2. **Web `otium_token` Cookie**: Parses signed JWT from `otium_token` cookie when no Authorization header is provided.
+  3. **NextAuth Session Cookie**: Resolves NextAuth session tokens via `getToken({ req, secret })` for standard browser sessions.
+- **Eradication of Web Polling 401s**: Eliminates 401 Unauthorized failures on internal REST routes (`/api/chat/[id]/messages`, `/api/profile`, etc.) when called from web browser contexts.
+
+#### Resilient Chat Delta Synchronization (`/api/chat/[id]/messages` & `getConversationMessages`):
+- **Date String Validation**: Safely validates `!isNaN(new Date(options.after).getTime())` before injecting into Prisma `createdAt: { gt: ... }` filters, preventing database query crashes on localized or malformed datetime strings.
+
 ---
 
 ### 3. Managed Proxy Escrow & Campus Freelance Gigs

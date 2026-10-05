@@ -505,7 +505,10 @@ export async function getConversationMessages(
 
       const whereClause: any = { conversationId };
       if (isDeltaSync && options?.after) {
-        whereClause.createdAt = { gt: new Date(options.after) };
+        const afterDate = new Date(options.after);
+        if (!isNaN(afterDate.getTime())) {
+          whereClause.createdAt = { gt: afterDate };
+        }
       }
 
       const queryOpts: any = {
@@ -568,7 +571,10 @@ export async function getConversationMessages(
 
     const whereClause: any = { conversationId };
     if (isDeltaSync && options?.after) {
-      whereClause.createdAt = { gt: new Date(options.after) };
+      const afterDate = new Date(options.after);
+      if (!isNaN(afterDate.getTime())) {
+        whereClause.createdAt = { gt: afterDate };
+      }
     }
 
     const queryOpts: any = {

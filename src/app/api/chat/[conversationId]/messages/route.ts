@@ -80,7 +80,7 @@ export async function POST(
       );
     }
 
-    const body = await req.json();
+    const body = await req.json().catch(() => ({}));
     const { content } = body;
 
     if (!content || typeof content !== "string" || !content.trim()) {

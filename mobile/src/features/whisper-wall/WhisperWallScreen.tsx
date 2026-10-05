@@ -700,7 +700,8 @@ export function WhisperWallScreen({ navigation }: any) {
               const avatarUri = `https://api.dicebear.com/9.x/bottts/png?seed=${encodeURIComponent(seed)}&size=80`;
               const mediaList = item.mediaUrls && item.mediaUrls.length > 0 ? item.mediaUrls : item.imageUrl ? [item.imageUrl] : [];
               const isLiked = item.userVote === "UP";
-              const isAuthor = !!item.isAuthor || (item.authorId && user?.id && item.authorId === user.id) || (user?.role === "SUPER_ADMIN");
+              const isRealAuthor = !!item.isAuthor || (item.authorId && user?.id && item.authorId === user.id);
+              const canDelete = isRealAuthor || user?.role === "SUPER_ADMIN" || user?.role === "CAMPUS_MODERATOR";
 
               return (
                 <Card style={styles.postCard}>
@@ -723,7 +724,7 @@ export function WhisperWallScreen({ navigation }: any) {
                         {item.category || "CONFESSION"}
                       </Badge>
                       {/* Author delete button */}
-                      {isAuthor && (
+                      {canDelete && (
                         <TouchableOpacity
                           onPress={() => handleDeletePost(item.id)}
                           style={[styles.deleteBtn, { backgroundColor: colors.destructive + "15", borderColor: colors.destructive + "30" }]}
@@ -856,7 +857,7 @@ export function WhisperWallScreen({ navigation }: any) {
                         </Text>
                       </TouchableOpacity>
 
-                      {!isAuthor && (
+                      {!isRealAuthor && (
                         <TouchableOpacity
                           style={[styles.whisperDmBtn, { backgroundColor: colors.primary + "15", borderColor: colors.primary + "30" }]}
                           onPress={() => handleStartWhisperChat(item)}
@@ -1328,13 +1329,15 @@ export function WhisperWallScreen({ navigation }: any) {
                     </TouchableOpacity>
                   </View>
 
-                  <Button
-                    title="Start Whisper DM"
-                    variant="default"
-                    size="sm"
-                    onPress={() => handleStartWhisperChat(activeModalPost)}
-                    leftIcon={<Ionicons name="chatbubble-ellipses-outline" size={14} color={colors.primaryForeground} />}
-                  />
+                  {!activeModalPost.isAuthor && (
+                    <Button
+                      title="Start Whisper DM"
+                      variant="default"
+                      size="sm"
+                      onPress={() => handleStartWhisperChat(activeModalPost)}
+                      leftIcon={<Ionicons name="chatbubble-ellipses-outline" size={14} color={colors.primaryForeground} />}
+                    />
+                  )}
                 </View>
               </View>
             )}
