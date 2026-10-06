@@ -18,6 +18,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { TabNavigator } from "./src/navigation/TabNavigator";
 import { Header } from "./src/components/Header";
 import { LoginScreen } from "./src/screens/LoginScreen";
+import { OnboardingScreen } from "./src/features/auth/OnboardingScreen";
 import { NotificationsModal } from "./src/components/NotificationsModal";
 import { UserProvider, STORAGE_KEYS } from "./src/context/UserContext";
 import { colors } from "./src/theme/colors";
@@ -243,22 +244,33 @@ function AppContent() {
 
           <NavigationContainer>
             {currentUser ? (
-              <UserProvider initialUser={currentUser} onLogout={() => setCurrentUser(null)}>
-                <View style={[styles.mainContainer, { backgroundColor: colors.background }]}>
-                  <Header
-                    title="Otium"
-                    badge="Campus Hub"
-                    campusName={currentUser.college?.name || "Campus Hub"}
-                    onNotificationPress={() => setIsNotificationsOpen(true)}
-                  />
-                  <TabNavigator />
-                  <NotificationsModal
-                    visible={isNotificationsOpen}
-                    onClose={() => setIsNotificationsOpen(false)}
-                    campusName={currentUser.college?.name || "Campus Hub"}
-                  />
-                </View>
-              </UserProvider>
+              /* Check if campus onboarding is needed */
+              !currentUser.collegeId ? (
+                <OnboardingScreen
+                  user={currentUser}
+                  onComplete={(updatedUser) => {
+                    setCurrentUser(updatedUser);
+                    AsyncStorage.setItem(STORAGE_KEYS.CACHED_USER, JSON.stringify(updatedUser)).catch(() => {});
+                  }}
+                />
+              ) : (
+                <UserProvider initialUser={currentUser} onLogout={() => setCurrentUser(null)}>
+                  <View style={[styles.mainContainer, { backgroundColor: colors.background }]}>
+                    <Header
+                      title="Otium"
+                      badge="Campus Hub"
+                      campusName={currentUser.college?.name || "Campus Hub"}
+                      onNotificationPress={() => setIsNotificationsOpen(true)}
+                    />
+                    <TabNavigator />
+                    <NotificationsModal
+                      visible={isNotificationsOpen}
+                      onClose={() => setIsNotificationsOpen(false)}
+                      campusName={currentUser.college?.name || "Campus Hub"}
+                    />
+                  </View>
+                </UserProvider>
+              )
             ) : (
               <LoginScreen onLoginSuccess={handleLoginSuccess} />
             )}

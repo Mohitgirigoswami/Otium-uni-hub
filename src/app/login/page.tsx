@@ -58,8 +58,9 @@ function LoginContent() {
 
   return (
     <div className="min-h-[calc(100vh-220px)] flex items-center justify-center py-10 px-4">
-      <div className="w-full max-w-4xl grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
-        {/* Left Side: Direct Functional Context */}
+      {/* flex-col-reverse: on mobile, auth card renders first (top), feature list below */}
+      <div className="w-full max-w-4xl flex flex-col-reverse md:grid md:grid-cols-2 gap-8 items-center">
+        {/* Left Side: Direct Functional Context — below auth card on mobile */}
         <div className="space-y-6">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-md bg-secondary text-foreground text-xs font-semibold border border-border">
             <Building2 className="w-3.5 h-3.5 text-primary" />

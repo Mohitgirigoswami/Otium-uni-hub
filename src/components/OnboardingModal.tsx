@@ -22,16 +22,12 @@ export function OnboardingModal() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    // Check if user is logged in, has NO collegeId assigned, and hasn't skipped in this session
+    // Show modal if user is logged in but has NO campus assigned
     if (!loading && user && !user.collegeId) {
-      const skipped = sessionStorage.getItem("otium_onboarding_skipped");
-      if (!skipped) {
-        setIsOpen(true);
-        // Pre-fill phone or department if already present
-        if (user.phone) setPhone(user.phone);
-        if (user.department) setDepartment(user.department);
-        if (user.year) setYear(String(user.year));
-      }
+      setIsOpen(true);
+      if (user.phone) setPhone(user.phone);
+      if (user.department) setDepartment(user.department);
+      if (user.year) setYear(String(user.year));
     } else {
       setIsOpen(false);
     }
@@ -106,7 +102,7 @@ export function OnboardingModal() {
   return (
     <Modal
       isOpen={isOpen}
-      onClose={handleSkip}
+      onClose={() => {/* Campus selection is required — modal cannot be dismissed */}}
       title=""
       maxWidth="lg"
       className="p-6 sm:p-8"
@@ -184,7 +180,7 @@ export function OnboardingModal() {
             />
           </div>
 
-          {/* Optional Department and Academic Year */}
+          {/* Department and Academic Year */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
@@ -202,44 +198,32 @@ export function OnboardingModal() {
             <div className="space-y-1.5">
               <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
                 <GraduationCap className="w-3.5 h-3.5 text-muted-foreground" />
-                <span>Academic Year</span>
+                <span>Academic Year *</span>
               </label>
               <select
                 value={year}
                 onChange={(e) => setYear(e.target.value)}
                 className="w-full h-9 px-3 rounded-lg border border-input bg-card text-foreground text-xs focus:outline-none focus:ring-2 focus:ring-ring"
               >
-                <option value="1">1st Year (Freshman)</option>
-                <option value="2">2nd Year (Sophomore)</option>
-                <option value="3">3rd Year (Junior)</option>
-                <option value="4">4th Year (Senior)</option>
-                <option value="5">5th Year (Dual Degree / Postgrad)</option>
+                <option value="1">1st Year</option>
+                <option value="2">2nd Year</option>
+                <option value="3">3rd Year</option>
+                <option value="4">4th Year</option>
+                <option value="5">5th Year (Dual / Postgrad)</option>
               </select>
             </div>
           </div>
         </div>
 
-        {/* Action Buttons */}
-        <div className="pt-2 flex flex-col-reverse sm:flex-row items-center justify-end gap-2.5">
-          <Button
-            type="button"
-            variant="ghost"
-            size="md"
-            onClick={handleSkip}
-            className="w-full sm:w-auto"
-          >
-            Skip for Now
-          </Button>
-
-          <Button
-            type="submit"
-            size="md"
-            isLoading={isSubmitting}
-            className="w-full sm:w-auto"
-          >
-            Save & Enter Campus Hub
-          </Button>
-        </div>
+        {/* Single CTA — no skip */}
+        <Button
+          type="submit"
+          size="md"
+          isLoading={isSubmitting}
+          className="w-full"
+        >
+          Save & Enter Campus Hub
+        </Button>
       </form>
     </Modal>
   );
